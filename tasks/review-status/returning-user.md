@@ -8,7 +8,15 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-07-04 (status corrections cycle 65)
+**Last Updated:** 2026-07-06 (source-verified cycle 82)
+
+**Executive Summary (cycle 82, 2026-07-06):** Full fresh source read against all three US-S* stories. The nine existing criteria hold as previously reported. Three new findings added from this read:
+
+1. **Welcome modal intrudes on returning users** — `maybeShowWelcomeModal()` fires on every page load unless the user explicitly checked "Don't show again"; active-session returning users see the onboarding modal before session content loads (`session-manager.js:175`, `app.js:57`).
+2. **Generated Files tab lacks file timestamps** — `populateFinalGenerateTab()` renders download links with no generation date (`final-generate.js:155–180`); `finalGeneratedAt` is in generation state but not surfaced. A returning user after a re-run cannot tell from the UI alone whether the files on disk pre-date their latest edits.
+3. **Four new proposed stories** (US-S4 through US-S7) documented below covering: direct-to-session URL landing, file timestamp transparency, persistent re-run affordance, and welcome-modal suppression for active sessions.
+
+All prior cycle 65 and cycle 10 pass findings confirmed intact with fresh line numbers.
 
 **Executive Summary (cycle 65, 2026-07-04):** All nine criteria now pass. Two previously-partial findings were stale: (1) US-S2.1 "step-click has no modal" — `handleStepClick()` at line 1113–1123 shows a "← Navigate back to…" modal when clicking backward through completed stages with downstream completed steps; (2) US-S2.3 "hover-only distinction" — back-nav and re-run modals have distinct titles and the ↻ button is visible at 0.55 opacity at rest. The stale-content inline banner (cycle 61) also addresses the previously-noted gap about no inline outdated marker on tab panels.
 
@@ -160,6 +168,50 @@ This is distinct from the Layout/Files freshness handling (US-S3.2, PASS) where 
 ### GAP-RU-DEC1 (LOW) — No per-tab decision count badges on tab labels
 
 After session restore, the returning user receives a summary message (GAP-110 resolved) with aggregate experience/skill counts. However, within individual review tabs (exp-review, skills-review, rewrite, ach-editor, publications-review), the tab labels carry no count badge (e.g., "7 Accepted" or "3/8") to convey completeness at a glance. The user must open each tab to verify the granular state of prior decisions.
+
+---
+
+---
+
+## Cycle 82 New Observations (2026-07-06)
+
+### GAP-RU-C82-A (MEDIUM) — Welcome modal fires for all returning users until dismissed
+
+`maybeShowWelcomeModal()` (`session-manager.js:175–201`) checks only `localStorage.getItem('cv-builder-welcome-dismissed')`. If the user has never actively checked the "Don't show automatically on startup" checkbox (`index.html:391–393`), the welcome modal fires on every `init()` call (`app.js:57`) — even when a live session with work in progress is being restored. The modal body is oriented at new users (3-step overview, prerequisites) and provides no value to a returning user mid-application. The checkbox is easy to miss because it sits left-aligned in the modal footer while the primary CTA ("Get Started") is right-aligned.
+
+**Evidence:** `session-manager.js:175–201`, `app.js:57`, `index.html:390–395`
+
+**Proposed story — US-S7:** "As a returning user continuing an active application, the onboarding modal should not interrupt me when a live session is already loaded. It should only appear when there is no active session or no master CV."
+
+---
+
+### GAP-RU-C82-B (HIGH) — Generated Files tab shows no file timestamp
+
+`populateFinalGenerateTab()` (`final-generate.js:107–200`) renders each downloadable file as an icon + label + description + Download button. No generation timestamp is shown. The `finalGeneratedAt` field is stored in `generationState` (`state-manager.js:333`) and restored from the backend (`session-manager.js:686`), but is not injected into the tab render. The position-bar freshness chip covers the boolean "outdated vs current" case but does not appear within the Generated Files tab itself, and is absent after a fresh page load if the chip threshold is not exceeded.
+
+A returning user who edited content in one session and returns later sees identical-looking download links regardless of whether the files pre-date or post-date their last edits.
+
+**Evidence:** `final-generate.js:155–180` (no timestamp in loop), `state-manager.js:333` (field exists), `session-manager.js:686` (restored from backend)
+
+**Proposed story — US-S5:** "As a returning user, each downloadable file should show a 'Generated on <date/time>' label so I can confirm at a glance whether the file reflects my latest decisions."
+
+---
+
+### GAP-RU-C82-C (LOW) — Session landing requires manual modal navigation after root-URL access
+
+When a returning user navigates to the root URL without a `?session=` parameter, `ensureSessionContext()` (`session-manager.js:457–467`) calls `openSessionsModal({ required: true })` and blocks on session selection. There is no "resume most recent session" shortcut. Users who previously worked in a session must open the modal, find their session (possibly paginated), and click Load before any context appears. For the common case of one active session per user, this is unnecessary friction.
+
+**Evidence:** `session-manager.js:457–467`, `session-switcher-ui.js:442–480` (recents strip exists but does not auto-navigate)
+
+**Proposed story — US-S4:** "As a returning user arriving at the root URL, if I have exactly one recently-active session, I should be taken to it directly (or offered a single-click 'Resume' option) instead of being required to navigate a full sessions modal."
+
+---
+
+### Terminology Flags (cycle 82)
+
+- **"Parked"** application status badge (`session-switcher-ui.js:375`) has no tooltip or glossary definition in the UI. A returning user scanning their sessions cannot distinguish "Parked = deferred intentionally" from the common sense of "dead end."
+- **"Active Sessions" vs "Saved Sessions"** in the Sessions modal are developer-centric terms. "Open (in memory)" and "Saved (on disk)" would map better to a user's mental model.
+- **Header session pill phase label** shows abbreviated internal phase names (e.g., `"rewrite rev"`, `"custom"`) despite `SESSION_PHASE_LABELS_SHORT` improvements. The abbreviations are still opaque to users unfamiliar with the internal phase vocabulary.
 
 ---
 

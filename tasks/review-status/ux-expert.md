@@ -3,11 +3,11 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# UX Expert Review
+# UX Expert Review Status
 
-**Date:** 2026-07-06 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75; GAP-UX-01 resolved cycle 76; GAP-UX-05 resolved cycle 77; US-U6 C1 fully resolved cycle 78)
-**Reviewer:** ux-expert persona
-**Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
+**Last Updated:** 2026-07-06 12:45 ET
+
+**Executive Summary:** Source-verified UX expert persona review against all US-U1 through US-U9 criteria. The application has strong foundations in workflow orientation, job input, rewrite review, and layout instruction. Key gaps remain in analysis result chunking/keyword visualisation, session-restoration context messaging, accessibility labelling for some icon-only buttons, skeleton loading patterns, and the "Proceed to Final Generation" button labelling ambiguity.
 
 ---
 
@@ -15,258 +15,196 @@
 
 ### US-U1: Workflow Orientation and Progress Visibility
 
-**Criterion 1 — Step indicator**
-✅ Pass — A persistent horizontal `<nav class="workflow">` bar (index.html:122–148) displays 12 named stages with emoji labels: Job Input → Analysis → Customise → Rewrites → Spell Check → Layout Review → File Review → Cover Letter → Screening → Interview Prep → Thank You → Harvest. Labels are meaningful and not numeric-only.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Step indicator — named stages, persistent | ✅ Pass | `index.html:122–148` — 12-step `<nav class="workflow">` with emoji + text labels (Job Input → Harvest) |
+| Completed/active/upcoming visual distinction | ✅ Pass | `styles.css:265–272` — `.step.active` (blue bg), `.step.completed` (green bg), `.step.upcoming` (light/grey), `.step.stale` (amber) — all distinct |
+| Back-navigation safety with warning | ✅ Pass | `workflow-steps.js:138–` — `_showReRunConfirmModal` shows downstream-aware confirmation before any back-nav or re-run |
+| Session restoration context | ⚠️ Partial | `session-manager.js:498` — `restoreSession()` restores phase + tab data; `app.js:63–73` shows "🔄 Connecting…" then "✅ Connection successful." BUT no explicit "You left off at X step for job Y" message is surfaced. Position bar shows job title (`index.html:81`) after restore, providing partial orientation only. |
+| Stage indicator updates without reload | ✅ Pass | `workflow-steps.js:930` — `updateWorkflowSteps(status)` runs after every `fetchStatus()` call; uses DOM classList manipulation without page reload |
 
-**Criterion 2 — Completed state signalling**
-✅ Pass — `workflow-steps.js:854–906` applies `.active` (blue), `.completed` (green/`#dcfce7`), `.upcoming` (muted grey), `.stale` (amber), and `.forward-skip` (dashed blue) classes. CSS at `styles.css:165–173` gives each distinct visual treatment with explicit background and text colour differences. Screen-reader text is appended as `.sr-only` spans with state descriptions.
-
-**Criterion 3 — Back-navigation safety**
-✅ Pass — Completed steps are clickable (`ui-core.js:1827–1924`). Both the ↻ re-run button and clicking a completed step in the workflow nav call `_showReRunConfirmModal`. `handleStepClick()` (`workflow-steps.js:1111–1123`) checks whether any downstream steps are completed and, if so, calls `_showReRunConfirmModal(step, 'back-nav', doNavigate)`, which shows the modal titled "← Navigate back to {step}?" listing all downstream completed stages with Cancel / Proceed buttons, focus-trapped and Escape-dismissable. Previous review said only the ↻ button triggered the warning — source-verified RESOLVED (cycle 68).
-
-**Criterion 4 — Session restoration context**
-✅ Pass — `session-manager.js:498` (`restoreSession`) restores the session; the position bar (index.html:78–87) shows the job title and company name via `#position-title` / `#position-company`. `#header-session-name` (index.html:41) shows the session identifier. `updateWorkflowSteps()` in `workflow-steps.js` is called after status fetch to restore step state.
-
-**Stage indicator update without reload**
-✅ Pass — `stateManager.onPhaseChange()` listener (`ui-core.js:1947–1950`) calls `updateWorkflowStepsClickable()` on phase change. `fetchStatus()` in `api-client.js:218–219` calls `updateWorkflowSteps(status)` on each poll.
-
-**Session age on restore** ✅ RESOLVED (cycle 76) — `updatePositionTitle()` in `session-actions.js` now dynamically injects `#position-session-age` below `#position-company` and populates it from `status.session_last_modified` (ISO string added to `StatusResponse` in `web_app.py` and `status_routes.py`). `_formatSessionAge()` returns "Last edited Xm/Xh/Xd ago" / "yesterday"; hidden when < 5min (actively in use) or > 14d (no longer useful). CSS class `position-session-age` adds italic styling at `styles.css:201`.
+**Gap note:** When returning to a saved session, no human-readable "Returning to: [stage name] — [job title]" banner is shown. The user must read the position bar and step highlight to self-orient.
 
 ---
 
 ### US-U2: Job Input and URL Ingestion UX
 
-**Criterion 1 — Input mode clarity**
-✅ Pass — `job-input.js:107–111` renders three mutually exclusive tabs: "Paste Text", "From URL", "Upload File" with `.input-tab.active` styling. CSS at `styles.css:1346–1352` clearly differentiates the active tab with a bottom border and colour change.
-
-**Criterion 2 — Protected-site guidance**
-✅ Pass — `job-input.js:140–149` renders a two-column grid: a green box listing "Works well with" (company career pages, AngelList, etc.) and an amber box listing "Copy manually from: LinkedIn / Indeed / Glassdoor" — specific site names are named, the copy is contextual, and the guidance appears inline without requiring a fetch failure first.
-
-**Criterion 3 — Fetch feedback**
-⚠️ Partial — `fetchJobFromURL()` calls `setLoading(true)` and disables the fetch button, but the fetch loading indicator is not guaranteed to appear within 300ms. The LLM busy overlay shows label and elapsed time for LLM calls, but URL fetch uses the simpler button-disabled pattern without a dedicated spinner visible near the fetch button.
-
-**Criterion 4 — Confirmation editability**
-⚠️ Partial — After URL fetch or paste, job text is stored and displayed with a "Load Different Job" option (job-input.js:75). Extracted fields (company name, role title) are editable via the Intake confirmation step, but this path is not immediately surfaced inline after text submission — a separate re-analysis step would be needed to correct an extracted field. No immediate inline-editable field set for company/role on the confirmation step was found in job-input.js.
-
-**Criterion 5 — Character-count guidance**
-✅ Pass — `job-input.js:322` defines `PASTE_MIN_CHARS = 200`. `_updatePasteCharCount()` at lines 331–337 renders "minimum 200 characters" hint while below threshold and "✓" when met. `job-input.js:344–345` additionally shows a field error when submitting short text. Minimum-length guidance is present and ARIA-live.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Input mode clarity — URL vs paste separate | ✅ Pass | `job-input.js:107–180` — three clearly-labelled tabs: "📝 Paste Text", "🔗 From URL", "📁 Upload File"; tab-based switching |
+| Protected-site guidance — specific, contextual | ✅ Pass | `job-input.js:510–532` — `showProtectedSiteModal()` shows site name, specific instructions, and tip to switch to Paste tab |
+| Fetch loading indicator | ✅ Pass | `job-input.js:456` — `setLoading(true, 'Fetching job from URL…')` triggers overlay before fetch |
+| Extracted-field inline editability | ⚠️ Partial | Intake confirmation card exists (referenced in `message-dispatch.js` via `_showIntakeConfirmCard`) but whether company name, role title, and date are individually inline-editable (not just re-triggering analysis) could not be confirmed from reviewed sources. |
+| Character-count guidance on paste | ✅ Pass | `job-input.js:322–338` — `PASTE_MIN_CHARS = 200`; live colour-coded counter shown immediately on render and each keystroke |
 
 ---
 
 ### US-U3: Analysis Results Readability
 
-**Criterion 1 — Chunking**
-✅ Pass — `styles.css:485–503` defines `.analysis-role-card`, `.analysis-section`, `.skill-badge`, `.kw-badge`, `.mismatch-callout` as clearly separate visual chunks. The analysis tab renders role identity, required qualifications, preferred list, keyword badges, and mismatch callouts as distinct card/panel sections.
-
-**Criterion 2 — Keyword visualisation**
-✅ Pass — `styles.css:500–501` defines `.kw-badge` with an absolutely-positioned `.kw-rank` number. Keywords display as ranked badges with a numeric rank indicator, not as a flat comma-separated list.
-
-**Criterion 3 — Mismatch prominence**
-✅ Pass — `.mismatch-callout` (`styles.css:502`) uses amber/warning styling (`#fffbeb`, amber border-left) and appears within the analysis section structure. `.skill-badge.missing` (`styles.css:495`) uses red background for missing skills.
-
-**Criterion 4 — Clarifying question flow**
-✅ Pass — `questions-panel.js:326` defines `GROUP_SIZE = 3`. `renderQuestionsPanel()` paginates questions into groups of 3, advancing to the next group after all chips in a group are answered. The `q-progress` element shows "Group N of M" progress. Questions are presented in batches, not all at once.
-
-**Criterion 5 — Analysis duration feedback**
-✅ Pass — The LLM busy overlay (`#llm-busy-overlay`, `#llm-busy-label`, `#llm-busy-elapsed`) shows a labelled spinner with elapsed time counter and a "Taking longer than usual" badge for slow calls (index.html:160–167). The label is `aria-live="polite"` with `role="status"`.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Chunking — distinct visual sections | ⚠️ Partial | `message-queue.js:199–248` — `appendFormattedAnalysis()` renders required skills, preferred skills, nice-to-have, and ATS keywords as separate `<h4>` sections. However the result appears inside the **chat conversation panel** as a scrolling message block, not as structured cards in the viewer pane. The Analysis viewer tab (`ui-core.js:587`) exists but delegates to `populateAnalysisTab()` whose implementation is not defined in reviewed sources — unclear if a separate structured rendering exists. |
+| Keyword visualisation — ranked/weighted | ⚠️ Partial | `message-queue.js:230–236` — ATS keywords rendered as equal-weight blue badge-spans; no rank order, size, or tier signal |
+| Mismatch prominence — above fold, callout | 🔲 Not Implemented | No mismatch or gap-highlight section found in `message-queue.js`, `job-analysis.js`, or any analysis renderer reviewed. No `mismatches` field in rendered output. |
+| Clarifying question flow — groups of ≤3 | ⚠️ Partial | `job-analysis.js:36–89` normalises and merges post-analysis questions. `questions-panel.js` (not fully reviewed) handles display. Group size limit of ≤3 per screen could not be confirmed from reviewed sources. |
+| Analysis duration — labelled loading state | ✅ Pass | `job-analysis.js:104–105` — `appendLoadingMessage('Analyzing job description...')` + `setLoading(true, 'Analysing job description…')`; `fetch-utils.js:139–145` — elapsed timer + "Taking longer than usual" badge after 30 s |
 
 ---
 
 ### US-U4: Review Table Interaction Quality
 
-**Criterion 1 — Toggle affordance clarity**
-✅ Pass — Review tables use 32×32px `.icon-btn` buttons (`styles.css:1199–1226`) with explicit `.active` state (green background, colour change). The `aria-pressed` attribute is set on rewrite accept/reject buttons (`rewrite-review.js:426–428`). Sufficient size at standard viewing distances.
-
-**Criterion 2 — Drag / reorder usability**
-⚠️ Partial — Up/down reorder buttons are present in review tables and are always rendered (not hover-only). However, no drag-and-drop is implemented; only up/down arrow buttons. Keyboard accessibility for reorder (arrow keys triggering reorder) is not confirmed from source — only Enter/Space on the button itself would work.
-
-**Criterion 3 — Row density**
-✅ Pass — Review tables show role, date, relevance score, and first bullet content at a glance via the `.review-table` structure. Row density is moderate.
-
-**Criterion 4 — Bulk actions**
-✅ Pass — A `.bulk-toolbar` (`styles.css:1368–1382`) with bulk accept/reject and selection actions is implemented for review tables. Rewrite review has "Accept All / Reject All" in the `.rewrite-tally-bar` (`rewrite-review.js:274–275`).
-
-**Criterion 5 — Inline expansion**
-✅ Pass — Rewrite cards expand inline within the same `#document-content` panel without page navigation. The `applyRewriteAction()` function shows the edit textarea below the diff card without navigating away (`rewrite-review.js:451`).
-
-**Criterion 6 — Relevance score meaning**
-⚠️ Partial — Relevance scores are shown as `.confidence-badge` elements (High/Medium/Low text labels). However, no numeric scale (e.g. "Relevance: 92 / 100") is displayed — only qualitative labels. The scale is implied by badge colour and label but not explicitly explained with a visible legend.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Toggle affordance — obvious, unambiguous state | ✅ Pass | `experience-review.js:248–254` — icon-btn buttons with `aria-pressed`, active class, colored icons (green/amber/red/eye-slash); `styles.css:1352` — `.icon-btn:focus-visible` focus ring |
+| Drag / reorder — discoverable, keyboard-accessible | ✅ Pass | `experience-review.js:252–254` — ↑/↓ up/down buttons with `aria-label`, always visible; bullet reorder via `showBulletReorder` modal |
+| Row density — enough info without expanding | ⚠️ Partial | Experience table rows include title, confidence badge, and LLM recommendation action. Whether the first bullet is shown inline without expanding could not be confirmed from reviewed sources; users may need to expand to decide. |
+| Bulk actions present for >8 rows | ✅ Pass | `experience-review.js:292–295` — "✨ Accept All Recommended", "Emphasize All", "Include All", "Exclude All" always visible above table; `skills-review.js:1055–1058` — same pattern for skills |
+| Inline expansion — no page navigation | ✅ Pass | `experience-review.js` — bullet expansion via DataTables child rows / bullet reorder modal; no page navigation |
+| Relevance score labelled with scale | ⚠️ Partial | `experience-review.js:211,223` — confidence badge ("High"/"Medium"/"Low") with title tooltip. No numeric relevance score (0–100) with scale label found. |
 
 ---
 
 ### US-U5: Rewrite Review Presentation
 
-**Criterion 1 — Inline diff**
-✅ Pass — `rewrite-review.js:370–371` renders `<del class="diff-removed">` (red strikethrough, `#fee2e2` background) and `<ins class="diff-added">` (green, `#dcfce7` background) within `.rewrite-inline-diff`. CSS at `styles.css:1283–1284` confirms red/strikethrough for removals and green for additions.
-
-**Criterion 2 — Accept / Reject / Edit controls**
-✅ Pass — `rewrite-review.js:426–428` renders Accept, Edit, Reject buttons within `.rewrite-actions` inside the same card as the diff. Controls are collocated with their diff.
-
-**Criterion 3 — Reason visibility**
-✅ Pass — `rewrite-review.js:414–417` renders `<details class="rewrite-rationale">` with a `<summary>` — the rationale is one click away inline, within the card. `styles.css:1290–1291` styles it as a collapsible detail element.
-
-**Criterion 4 — Edit path**
-✅ Pass — `rewrite-review.js:451` notes "Keep the inline diff visible as a reference; show the editable textarea below it." Editing preserves the original diff view for comparison. The diff is re-shown after edit is cancelled (`rewrite-review.js:527`).
-
-**Criterion 5 — Batch review efficiency**
-✅ Pass — `keyboard-shortcuts.js` implements: A key to accept focused card, R key to reject, Up/Down to navigate between cards, Ctrl+Enter for the primary action, and `?` for the shortcut help panel. A compact mode toggle (`rw-compact-toggle`) enables rapid single-line card review.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Inline diff — red strikethrough / green additions | ✅ Pass | `rewrite-review.js:349–393` — LCS word-level diff; `renderDiffHtml()` uses `<del class="diff-removed">` and `<ins class="diff-added">` |
+| Accept / Reject / Edit collocated with diff | ✅ Pass | `rewrite-review.js:444–451` — Accept, Edit, Reject buttons rendered inside `.rewrite-actions` within the same card as the diff |
+| Reason visibility — within one click/hover | ✅ Pass | `rewrite-review.js:432–439` — `<details class="rewrite-rationale"><summary>Rationale & Evidence</summary>` — one click to expand |
+| Edit path — free-text without destroying diff | ✅ Pass | `rewrite-review.js:470–486` — edit mode: diff dimmed to 55% opacity and kept visible as reference; textarea injected below; `saveRewriteEdit()` records edited text |
+| Batch review efficiency — keyboard navigation | ✅ Pass | `keyboard-shortcuts.js:12–16` — ↑/↓ card navigation, A=accept, R=reject; "Accept All"/"Reject All" bulk buttons; compact mode toggle |
 
 ---
 
 ### US-U6: Generation and Output State Feedback
 
-**Criterion 1 — Generation progress feedback**
-✅ RESOLVED (cycle 78) — `generateFinalOutputs()` (`layout-instruction.js`) now shows a persistent three-step checklist inside `#processing-indicator` via `_showGenStepProgress(activeIdx)`. Each step transitions: ○ pending → ⏳ active → ✅ complete as generation progresses (advancing every 2500ms). The `<ol id="cv-gen-step-list">` is rendered by `layout-instruction.js` (not `index.html`) so it was editable. The label (`<p id="processing-indicator-label">`) is hidden while the step list is visible; `showProcessing()` restores it for the "Applying instruction…" path. CSS classes `.cv-gen-step.is-active`, `.is-complete`, `.is-pending` control display.
-
-**Criterion 2 — Output preview**
-✅ Pass — Layout review (`layout-instruction.js:296`) renders an `<iframe id="layout-preview">` that shows the CV HTML inline. The download tab provides file links with in-browser access.
-
-**Criterion 3 — Download options**
-✅ Pass — `download-tab.js` renders a grid of files including PDF, DOCX (ATS and human), HTML preview, and cover letter files. Multiple download options are surfaced.
-
-**Criterion 4 — Error recovery**
-✅ Pass — `layout-instruction.js` (cycle 59) now adds a "View HTML preview" link below the renderer failure error detail, opening `/api/cv/preview-output/html` in a new tab. The HTML fallback is surfaced inline alongside the PDF failure.
-
-**Criterion 5 — Output filename**
-✅ Pass — `cv_orchestrator.py:1452` constructs `filename_base = f"CV_{company}_{role}_{timestamp}"` and lines 3951/4556 produce `CV_{company}_{role}_{timestamp}_ATS.docx` and `CV_{company}_{role}_{timestamp}.docx`. The naming convention matches the acceptance criteria.
-
-**Criterion 6 — Version label**
-⚠️ Partial — The layout preview status card shows a generated timestamp. However, if a user generates multiple times in a session, there is no numbered version list with a "current" label — the download grid silently reflects only the most recent generation.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Generation progress — step-labelled | ✅ Pass | `layout-instruction.js:1191–1205` — `_showGenStepProgress()` renders step checklist (Rendering HTML / Generating PDF / Building DOCX files) with pending/active/complete CSS classes |
+| Output preview — in-browser before download | ✅ Pass | `final-generate.js:75–97` — `<iframe id="final-cv-preview">` with show/hide toggle; HTML preview immediately accessible |
+| Download options — PDF + alternatives | ✅ Pass | `download-tab.js:44–77` — PDF, DOCX (human + ATS), HTML all listed; ATS vs human labelled with icons |
+| Error recovery — readable message + fallback | ✅ Pass | `layout-instruction.js:107–119` — preview renderer failure shows "View HTML preview" fallback link |
+| Output filename convention | ✅ Pass | `cv-preview.py:387–393` — `CV_{company}_{role}_{timestamp}.pdf`; `_ATS` suffix for ATS DOCX |
+| Version label — when multiple versions exist | ⚠️ Partial | `download-tab.js:178–179` — shows "Run #N — date" only when `generation_run > 1`. No persistent list of prior versions; cannot download an earlier version. |
+| Performance (locally ≤2 s) | — N/A | Cannot measure from source alone |
 
 ---
 
 ### US-U7: Accessibility and Keyboard Navigation
 
-**Criterion 1 — Focus management**
-✅ Pass — `ui-core.js:249–346` implements `_focusStack`, `setInitialFocus()`, `trapFocus()`, and `restoreFocus()` for modal focus management. `confirmDialog()` (`ui-core.js:371–443`) also implements its own focus trap with Escape key support and focus restoration.
-
-**Criterion 2 — Focus visibility**
-✅ Pass — `:focus-visible` selectors throughout `styles.css` apply `outline: 2px solid var(--cv-accent)`. `.intake-field-row input:focus` at `styles.css:1791–1796` sets `border-color: var(--cv-accent); outline: 2px solid var(--cv-accent); outline-offset: 2px; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);` — the `outline: none` without replacement cited in the earlier review has been corrected; the current code provides a proper WCAG-compliant focus indicator.
-
-**Criterion 3 — Table keyboard navigation**
-✅ Pass — Tab ARIA pattern (`ui-core.js:461–487`) implements ArrowLeft/ArrowRight/Home/End for tab navigation. `keyboard-shortcuts.js:84–124` provides Up/Down arrow for review card navigation. Enter/Space activate focused tabs and buttons.
-
-**Criterion 4 — ARIA labels**
-✅ Pass — Icon-only buttons have `aria-label` attributes throughout (index.html:66, 82, 100, 118, 157, 206, 235). Workflow steps have `aria-current="step"` set on the active step (`ui-core.js:1922–1924`). A `#workflow-stage-announcer` aria-live region exists (index.html:150–151). Modals have `role="dialog"`, `aria-modal="true"`, and `aria-labelledby`.
-
-**Criterion 5 — Colour-independence**
-✅ Pass — `rewrite-review.js:424` renders `#rw-decision-badge-${cardId}` (initially hidden). `applyRewriteAction()` at line 508–512 shows a persistent "✓ Accepted" or "✗ Rejected" text badge with background colour on the card after each decision — state is communicated by both text and colour. ATS score uses colour-coded badges; the text label ("High"/"Medium"/"Low") also communicates the score level independent of colour.
-
-**Criterion 6 — Error messages**
-✅ Pass — Field validation errors use `aria-describedby` (`job-input.js:116`) and `.field-error` elements with `aria-live="polite"` (`styles.css:1364–1366`). The settings status message uses `aria-live="polite"` (index.html:589).
-
----
-
-### US-U9: HTML Layout Review Interaction Quality
-
-**Criterion 1 — Instruction field clarity**
-✅ Pass — `layout-instruction.js:302` renders a `.layout-scope-label` reading "Describe a layout change (spacing, margins, column widths, section order). Text content is finalised — content edits are not applied here." The textarea placeholder (layout-instruction.js:363) has concrete examples.
-
-**Criterion 2 — Processing feedback**
-✅ Pass — `#processing-indicator` (`layout-instruction.js:374–377`) with a spinner and "Applying instruction..." text appears during submission. `#confirmation-message` (`layout-instruction.js:379`) appears after completion.
-
-**Criterion 3 — Change attribution**
-✅ Pass — `#confirmation-message` shows a confirmation after each instruction is applied. The instruction history list (`#instruction-history`) is updated after each application (`layout-instruction.js:1037`).
-
-**Criterion 4 — Clarification handling**
-— Not Verified — The backend conversation manager handles ambiguous instructions; no frontend-level clarification prompt UI was found in layout-instruction.js. If the LLM cannot parse the instruction, response flows through the chat conversation rather than an inline clarifying prompt panel.
-
-**Criterion 5 — Instruction history with Undo**
-✅ Pass — `layout-instruction.js:49–51` implements `_layoutUndoStack` (capped at 20 entries). `renderInstructionHistory()` (`layout-instruction.js:1043+`) renders each history entry with individual Undo buttons (sequential — only the most recent can be undone at a time, noted in the `disabled` title at line 1056).
-
-**Criterion 6 — Single proceed action**
-✅ Pass — `layout-instruction.js:380` renders `<p id="layout-two-step-hint">` below the instruction textarea. `refreshLayoutReviewState()` shows/hides it alongside `#confirm-layout-btn`. Text: "Once the preview looks right, confirm the layout — then generate your final submission files." GAP-291 resolved in cycle 31. (Previously ⚠️ — stale; source-verified resolved 2026-07-05.)
-
-**Criterion 7 — Content safety assurance**
-✅ Pass — The `.layout-scope-label` states "Text content is finalised — content edits are not applied here." This notice is visible before the user types any instruction.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Focus management — modal open/close | ✅ Pass | `ui-core.js:252–346` — `_focusStack`, `setInitialFocus()`, `trapFocus()`, `restoreFocus()` implemented and wired in `openSettingsModal()`, `openModal()` etc. |
+| Focus visibility — styled focus ring, no global removal | ✅ Pass | `styles.css:258,712,759,1436,1496` — `focus-visible` rules on `.step`, `.action-btn`, `.tab`, `.rw-btn`, `.btn-primary`; no `outline: none` found in stylesheet |
+| Tab keyboard navigation — review tables | ✅ Pass | `ui-core.js:464–490` — Arrow/Home/End keys navigate tabs; `keyboard-shortcuts.js` provides A/R/↑/↓ for review cards |
+| ARIA labels — icon-only buttons | ⚠️ Partial | `experience-review.js:248–254` — action buttons have `aria-label`. BUT `rewrite-review.js:295` — compact toggle button "⊞ Compact" has `title` but no `aria-label`. `layout-instruction.js:404–407` — "Generate Final Files" button no `aria-label`. Coverage is partial across inline-rendered JS HTML. |
+| Colour-independence — status by colour + text | ✅ Pass | Confidence badges show text level; action buttons have icon + title + aria-label; `styles.css:1847–1853` — high-contrast media query adds 2px borders to interactive elements |
+| Form errors — `aria-describedby` + announced | ✅ Pass | `job-input.js:113–122` — `aria-describedby="paste-char-count paste-error"` on textarea; `_showFieldError()` sets `aria-invalid="true"`; error spans have `aria-live="polite"` |
 
 ---
 
 ### US-U8: Responsive Behaviour and Loading Performance
 
-**Criterion 1 — Minimum viable layout at 1280×800**
-⚠️ Partial — The 12-step workflow nav scrolls horizontally. Cycle 66 added `justify-content: flex-start` at `max-width:1400px` (prevents left-items cut-off on scroll), reduced step pill padding/gap/font at `max-width:1280px`, and `scrollbar-width: thin` globally. The bar still requires horizontal scroll at 1280×800; full collapse or step-label abbreviation is not yet implemented.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| 1280×800 — no horizontal page scroll | ⚠️ Partial | `styles.css:263` — workflow step bar scrolls horizontally within its own container (acceptable). Main layout uses flex/percent widths. No 1280px breakpoint confirmed; cannot verify without runtime test. |
+| Column collapsing at ≤1400 px | ⚠️ Partial | `styles.css:1307` — `.table-container { overflow-x: auto }` — tables scroll horizontally rather than hiding low-priority columns at narrow widths. No responsive column-hide breakpoints found. |
+| Initial page load ≤2 s locally | — N/A | Bootstrap, DataTables, Font Awesome loaded from CDN in `index.html:17–23`. Cannot measure latency from source. |
+| No layout shift — skeleton placeholders | ⚠️ Partial | No skeleton or shimmer CSS patterns found. Empty-state divs (`index.html:240–245`) reserve space before data but fixed min-heights for async content areas are absent. |
+| Long table scroll performance | — N/A | DataTables pagination in use; virtual scrolling not required. Cannot confirm at runtime. |
 
-**Criterion 2 — Column collapsing in tables**
-⚠️ Partial — No `@media` query hides review table columns at narrow widths. The session manager table hides on mobile (`styles.css:338–343` at `max-width:700px`), but review tables lack this pattern.
+---
 
-**Criterion 3 — Initial page load ≤2s locally**
-— Not Verified — Cannot assess runtime performance from static code review. CSS uses CDN-hosted Bootstrap, Font Awesome, DataTables, jQuery, and marked.js — all loaded synchronously or with `defer`. Bundle.js is a local build.
+### US-U9: HTML Layout Review Interaction Quality
 
-**Criterion 4 — No layout shift during async loads**
-✅ Pass — `styles.css:1354,1357` sets `min-height: 120px` on `#rewrite-cards` and `#skills-table-container`, preventing cumulative layout shift while async content loads. GAP-290 resolved in cycle 31. (Previously ⚠️ — stale; source-verified resolved 2026-07-05.)
-
-**Criterion 5 — Long table scroll performance**
-— Not Verified — No virtual scrolling or CSS containment was found for the skills review table. Performance depends on runtime rendering of 30+ row tables.
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Instruction field — labelled scope | ✅ Pass | `layout-instruction.js:308` — `<p class="layout-scope-label">💡 Describe a layout change … Text content is finalised — content edits are not applied here.</p>` rendered above textarea |
+| Placeholder examples | ✅ Pass | `layout-instruction.js:366–370` — `placeholder="e.g., Move Publications section after Skills\nor: Shorten the second bullet…"` — multi-line examples |
+| Processing feedback after instruction | ✅ Pass | `layout-instruction.js:1170–1183` — `showProcessing(true, label)` shows `#processing-indicator` with spinner; preview updates on completion |
+| Change attribution after apply | ✅ Pass | `layout-instruction.js:816` — `showConfirmationMessage('✅ ' + response.summary)` inline; summary also appended to instruction history |
+| Clarification for ambiguous instructions | ✅ Pass | `layout-instruction.js:759–770,1240–1295` — backend returns `error: 'clarify'`; `showClarificationDialog()` renders inline accessible form |
+| Instruction history with per-entry Undo | ✅ Pass | `layout-instruction.js:1091–1130` — `renderInstructionHistory()` renders each entry with timestamp, text, summary, and sequential Undo button (older entries disabled with tooltip) |
+| Single proceed action — unambiguous | ⚠️ Partial | Two separate buttons exist: `confirm-layout-btn` ("Confirm Layout") and `proceed-to-finalise-btn` ("Generate Final Files") — both conditionally visible via state machine. Users who applied no instructions skip auto-confirm, but those who did must click two buttons. The chat-panel action button label also changes (`index.html:196`). Two-step model lacks an orientation notice explaining the confirm-then-generate flow. |
+| Content-safety assurance | ✅ Pass | `layout-instruction.js:308` — inline scope label communicates content immutability; `appendLayoutSafetyAlert()` flags sanitisation events |
 
 ---
 
 ## Generated Materials Evaluation
 
-**Output filename convention**
-✅ Pass — Files are named `CV_{company}_{role}_{timestamp}.docx`, `CV_{company}_{role}_{timestamp}_ATS.docx`, `CV_{company}_{role}_{timestamp}_preview.html` (`cv_orchestrator.py:1452, 2366, 3951, 4556`). Convention is consistent and includes company, role, and date.
-
-**ATS-optimised DOCX differentiation**
-✅ Pass — ATS files have `_ATS` suffix and `download-tab.js:44–48` applies a robot icon and description "ATS-optimised DOCX (plain text, no formatting)" to distinguish them from human-readable PDFs.
-
-**In-browser preview**
-✅ Pass — Layout review shows an iframe preview of the HTML CV (`layout-instruction.js:296`). The download tab provides links to open HTML preview files in-browser.
-
-**Rewrite audit trail**
-✅ Pass — `_renderRewriteAuditLog()` (`rewrite-review.js:161–198`) produces an auditable history of accept/reject/edit decisions per bullet, with original and proposed text, displayed as a collapsible section after the rewrite panel.
-
-**Relevance score in generated output**
-⚠️ Partial — ATS score is surfaced in the position bar as a score badge and in the ATS Score tab. Review tables show confidence badges but without numeric scale labels or a visible legend.
+| Aspect | Status | Evidence |
+|--------|--------|----------|
+| Filename convention — Company, Role, Date | ✅ Pass | `cv-preview.py:387–393` — `CV_{company}_{role}_{timestamp}` with `_ATS` suffix |
+| ATS vs Human output distinction | ✅ Pass | `download-tab.js:44–68` — labelled "ATS-optimised" vs "Human-readable" with 🤖/📄 icons |
+| In-browser HTML preview available | ✅ Pass | `final-generate.js:75–97` — iframe preview with show/hide toggle |
+| Persuasion quality report | ✅ Pass | `download-tab.js:258–346` — persuasiveness panel with severity, score, per-bullet findings, narrative-thread and arc advisories |
+| Rewrite audit log — decisions traceable | ✅ Pass | `rewrite-review.js:180–217` — collapsible audit log with outcome icons and final text |
+| Multiple generation run labelling | ⚠️ Partial | `download-tab.js:178–179` — Run #N label only after first run; no prior-version list |
 
 ---
 
 ## Additional Story Gaps / Proposed Story Items
 
-**GAP-UX-01: Session age not shown on restoration — RESOLVED (cycle 76)**
-`updatePositionTitle()` (`session-actions.js`) dynamically injects `#position-session-age` using `_formatSessionAge(status.session_last_modified)`. Backend: `session_last_modified` ISO string added to `StatusResponse` dataclass (`web_app.py`) and populated from `entry.last_modified` in `status_routes.py`. US-U1 Criterion 4 ✅.
+1. **US-U10 (Proposed): Analysis Tab Structured Panel** — Analysis output renders as a conversation bubble in `#conversation` (`message-queue.js:199–248`). No structured card/panel layout in the viewer pane. Needed: required quals card, preferred quals card, ranked keyword grid, mismatch callout — all in the `#document-content` viewer pane.
 
-**GAP-UX-02: Back-navigation on completed steps lacks destructive-action warning — RESOLVED (stale, cycle 68)**
-Source-verified: `handleStepClick()` (`workflow-steps.js:1111–1123`) already shows `_showReRunConfirmModal(step, 'back-nav', doNavigate)` when back-navigating to a completed step with downstream completed stages. Modal titled "← Navigate back to {step}?" lists affected stages and requires explicit Proceed. US-U1 Criterion 3 ✅.
+2. **US-U11 (Proposed): Session Return Context Banner** — No "Welcome back — you left off at [Step] for [Job Title], last active [time ago]" message on session restore (`app.js:63–73`). The position bar and step highlight orient the user partially, but an explicit toast or conversation message with last-active timestamp would reduce disorientation.
 
-**GAP-UX-03: Paste text minimum-length hint** ~~absent~~ **— RESOLVED (stale)**
-`job-input.js:322–345` implements `PASTE_MIN_CHARS = 200` with inline guidance in `_updatePasteCharCount()`. Minimum-length hint is present and live (US-U2 Criterion 5 ✅).
+3. **US-U12 (Proposed): Keyword Visual Ranking** — ATS keywords are flat equal-weight badges (`message-queue.js:232–236`). A rank tier or #N badge (as already exists on rewrite keyword pills in `rewrite-review.js:407`) would show which keywords are most critical.
 
-**GAP-UX-04: Questions presented all at once** **— RESOLVED (stale)**
-`questions-panel.js:326` sets `GROUP_SIZE = 3` and pages questions in groups. US-U3 Criterion 4 ✅.
+4. **US-U13 (Proposed): Skeleton Loading Placeholders** — No CSS skeleton or shimmer pattern exists for async-loaded content areas. Empty-to-filled transitions produce visible layout shift. Min-height reservations + loading spinners inside content areas is the minimal fix.
 
-**GAP-UX-05: Relevance/confidence scores lack explicit scale labels — RESOLVED (cycle 77)**
-Confidence badges now carry `title` tooltip attributes with qualitative descriptions (e.g. "Strong alignment with the job requirements"). The Confidence column header in all three review tables (experience, skills, achievements) now reads "Confidence ⓘ" with a `title` listing all five levels. Implemented via `CONFIDENCE_COLUMN_LEGEND` constant in `recommendation-helpers.js` and tooltip propagation through `_parseConfidence`. US-U4 Criterion 6 ✅.
+5. **US-U14 (Proposed): Gap/Mismatch Visibility** — The analysis result has no above-fold mismatch section. This is the highest-value information for a job application tool and is completely absent from all reviewed sources.
 
-**GAP-UX-06: HTML fallback alongside error** **— RESOLVED (stale, cycle 59)**
-`layout-instruction.js` adds "View HTML preview" link beside PDF failure. US-U6 Criterion 1 (step progress bar with checkmarks) fully RESOLVED cycle 78 via `_showGenStepProgress()` and `.cv-gen-step-list` in `#processing-indicator`. Both gaps now closed.
+6. **Terminology — "Customise" / "Customizations" inconsistency** — Step nav: "⚙️ Customise" (`workflow-steps.js:945`); tab label: "Customisations" (`ui-core.js:356`); action button: "⚙️ Recommend Customizations" (`index.html:191`). Three different forms for the same step.
 
-**GAP-UX-07: Colour-only rewrite card state** **— RESOLVED (stale)**
-`rewrite-review.js:508–512` shows persistent "✓ Accepted" / "✗ Rejected" text badge. US-U7 Criterion 5 ✅.
+7. **Terminology — "File Review" / "Download Files" / "download"** — Step nav: "⬇️ Download Files" (`workflow-steps.js:948`); chat step label: "⬇️ File Review" (`index.html:136`); continue button: "Continue to File Review →". Three different labels for the same step.
 
-**GAP-UX-08: intake-field-row focus outline** **— RESOLVED (stale)**
-`styles.css:1791–1796` applies `outline: 2px solid var(--cv-accent); outline-offset: 2px` on `.intake-field-row input:focus`. WCAG 2.1 AA compliant. US-U7 Criterion 2 ✅.
+8. **Terminology — "Harvest"** — "🌾 Harvest" as a final step label may not be immediately intuitive. "Save Improvements" or "Update Master CV" would be clearer without training.
 
-**GAP-UX-09: Workflow nav horizontal scroll at narrow widths — PARTIAL FIX (cycle 66)**
-`styles.css` now: (1) switches `.workflow-steps` to `justify-content: flex-start` at `max-width:1400px` so scrollable content is not cut off on the left; (2) reduces step pill padding to `6px 10px`, gap to `10px`, and font to `0.9em` at `max-width:1280px`; (3) adds `scrollbar-width: thin` globally. The 12-step bar still requires horizontal scroll at 1280×800 but the scroll now starts from step 1 (not mid-bar) and pills are more compact. Full nav collapse/abbreviation at very narrow widths remains unimplemented (US-U8 Criterion 1).
-
-**GAP-UX-10: Layout review two-button proceed path** — RESOLVED (stale, cycle 31)
-`layout-instruction.js:380` renders `<p id="layout-two-step-hint">` shown/hidden alongside `#confirm-layout-btn`. US-U9 Criterion 6 ✅.
-
-**GAP-UX-11: No skeleton placeholders for async content areas** — RESOLVED (stale, cycle 31)
-`styles.css:1354,1357` sets `min-height: 120px` on `#rewrite-cards` and `#skills-table-container`. US-U8 Criterion 4 ✅.
+9. **Terminology — Layout two-step model unexplained** — "Confirm Layout" then "Generate Final Files" are two sequential buttons. The UI does not explain to the user that both steps are required or why. A single explanatory sentence near the Confirm button (or collapsing to one action when no instructions were applied) would help.
 
 ---
 
-## Evidence Summary
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, web/job-input.js, web/job-analysis.js, web/rewrite-review.js, web/layout-instruction.js, web/workflow-steps.js, web/experience-review.js, web/final-generate.js, web/download-tab.js, web/keyboard-shortcuts.js, web/message-queue.js, web/session-switcher-ui.js, scripts/cv-preview.py
 
-| Story | Result | Key Evidence |
-| ------- | -------- | -------------- |
-| US-U1 Workflow orientation | ✅ | index.html:122–148; workflow-steps.js:778+; styles.css:165–173; back-nav modal RESOLVED (workflow-steps.js:1111–1123); session age RESOLVED (session-actions.js `_formatSessionAge`, cycle 76) |
-| US-U2 Job input UX | ✅ | job-input.js:107–183; protected-site guidance present; min-length hint present (PASTE_MIN_CHARS=200) |
-| US-U3 Analysis readability | ✅ | styles.css:484–503; kw-badge rank numbers present; questions paged by GROUP_SIZE=3 |
-| US-U4 Review table interaction | ✅ / ⚠️ | styles.css:1199–1226; rewrite-review.js:274–275 (bulk); relevance badges lack numeric scale |
-| US-U5 Rewrite review | ✅ Pass | rewrite-review.js:370–371 (diff); keyboard-shortcuts.js (A/R/Up/Down); rationale via `<details>` |
-| US-U6 Generation feedback | ✅ | CV filenames pass; HTML fallback alongside error fixed (cycle 59); step checklist with ○/⏳/✅ states in #processing-indicator (cycle 78 `_showGenStepProgress`) |
-| US-U7 Accessibility | ✅ | Focus trap in ui-core.js:249–346; ARIA labels throughout; intake focus outline corrected at styles.css:1791 |
-| US-U9 Layout review UX | ✅ | Scope label present; undo stack implemented; `#layout-two-step-hint` resolved (cycle 31); clarification panel resolved (GAP-295, cycle 32) |
-| US-U8 Responsive/performance | ⚠️ Partial | 12-step nav overflows at narrow widths (cycle 66 partial); min-height placeholders present (cycle 31); CDN blocking not assessed |
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|-------|---------|-----------|--------|------------|-------|
+| US-U1 | 4 | 1 | 0 | 0 | 0 |
+| US-U2 | 4 | 1 | 0 | 0 | 0 |
+| US-U3 | 1 | 3 | 0 | 1 | 0 |
+| US-U4 | 4 | 2 | 0 | 0 | 0 |
+| US-U5 | 5 | 0 | 0 | 0 | 0 |
+| US-U6 | 5 | 1 | 0 | 0 | 1 |
+| US-U7 | 5 | 1 | 0 | 0 | 0 |
+| US-U8 | 0 | 2 | 0 | 0 | 3 |
+| US-U9 | 7 | 1 | 0 | 0 | 0 |
+
+**Key evidence references:**
+- US-U1 Step indicator → `index.html:122–148`
+- US-U1 Step CSS states → `styles.css:265–272`
+- US-U1 Back-nav confirm → `workflow-steps.js:138`
+- US-U1 Session restore → `session-manager.js:498`, `app.js:63–73`
+- US-U2 Input tabs → `job-input.js:107–180`
+- US-U2 Protected site modal → `job-input.js:510–532`
+- US-U2 Character count → `job-input.js:322–338`
+- US-U3 Analysis render → `message-queue.js:199–248`
+- US-U3 Keywords (flat) → `message-queue.js:230–236`
+- US-U3 Mismatch → not found in reviewed sources
+- US-U4 Bulk actions → `experience-review.js:292–295`
+- US-U4 Icon-btn ARIA → `experience-review.js:248–254`
+- US-U5 LCS diff → `rewrite-review.js:349–393`
+- US-U5 Edit preserves diff → `rewrite-review.js:470–486`
+- US-U5 Keyboard shortcuts → `keyboard-shortcuts.js:12–16`
+- US-U6 Step progress → `layout-instruction.js:1191–1205`
+- US-U6 Filename → `cv-preview.py:387–393`
+- US-U6 Run label → `download-tab.js:178–179`
+- US-U7 Focus management → `ui-core.js:252–346`
+- US-U7 Focus-visible → `styles.css:258,712,759,1436,1496`
+- US-U7 Form error ARIA → `job-input.js:113–122`
+- US-U8 Horizontal scroll handling → `styles.css:263,1307`
+- US-U9 Scope label → `layout-instruction.js:308`
+- US-U9 Clarification dialog → `layout-instruction.js:1240–1295`
+- US-U9 Instruction history → `layout-instruction.js:1091–1130`
+- US-U9 Two-step proceed → `index.html:196`, `layout-instruction.js:376–404`
+
+**Evidence standard:** Every conclusion supported by file:line evidence from source-read files only. No tasks/gaps.md or tasks/ui-review.md consulted.

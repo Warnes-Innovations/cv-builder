@@ -1,14 +1,34 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 81)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 82)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
-- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), 2026-06-30 (cycle 13), 2026-06-30 (cycle 14), 2026-07-01 (cycle 15–16), and 2026-07-01 (cycle 29)
-- independent heuristic UX evaluation (all cycles through 2026-07-01 cycle 29)
+- refreshed persona review files under `tasks/review-status/` dated 2026-04-22, 2026-06-18 (cycle 1), 2026-06-18 (cycle 2), 2026-06-20 (cycle 4), 2026-06-20 (cycle 5), 2026-06-22 (cycle 6), 2026-06-22 (cycle 7), 2026-06-29 (cycle 8), 2026-06-29 (cycle 9), 2026-06-30 (cycles 10–11), 2026-06-30 (cycle 12), 2026-06-30 (cycle 13), 2026-06-30 (cycle 14), 2026-07-01 (cycle 15–16), 2026-07-01 (cycle 29), and 2026-07-06 (cycle 82)
+- independent heuristic UX evaluation (all cycles through 2026-07-06 cycle 82)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325.
+
+## 2026-07-06 (Cycle 82) Reconciliation Notes
+
+Full 15-persona + heuristic review cycle. No code fixes in this cycle — discovery only. Added GAP-300 through GAP-325 from new findings across all persona reviews.
+
+- **trust-compliance** — System prompt lacks anti-fabrication instruction (GAP-300, CRITICAL)
+- **accessibility** — ATS HTML `<html>` tag missing `lang="en"` (GAP-301); Font Awesome icons missing `aria-hidden="true"` in generated HTML CV (GAP-302); review sub-tab buttons missing tab ARIA semantics (GAP-303); model table not keyboard-accessible (GAP-304); alert modal focus stack isolation bug (GAP-305)
+- **graphical-designer** — `--cv-card-bg` CSS variable undefined, position-style picker transparent background (GAP-306)
+- **persuasion-expert** — `check_has_result_clause()` has severity `'info'` not `'warn'`, badge never visible (GAP-307)
+- **hr-ats** — `_NON_BLOCKING_CHECKS` exempts 6 structural failures, contradicts "any fail blocks download" (GAP-308)
+- **master-cv-curator** — Duplicate `id` attributes on publication modal heading (bug, GAP-309); experience bullets not editable in Master CV tab (GAP-310); backup restore requires manual reload (GAP-311); phase lock exposes raw enum "refinement" (GAP-312)
+- **returning-user** — No file timestamps on Generated Files tab (GAP-313); welcome modal fires for active-session users (GAP-314)
+- **hiring-manager** — Cover letter tone hardcoded `startup/tech` default (GAP-315); word count mismatch 250–300w backend vs 300–400w spec (GAP-316); zero-bullet job entries not guarded (GAP-317)
+- **resume-expert** — First-author status 0-weight in publication scoring (GAP-318); publication shortlist not presented proactively (GAP-319); summary line-count not validated (GAP-320)
+- **trust-compliance** — `ai_attribution` resets per session, not persisted to config.yaml (GAP-321); "Candidate to confirm" / "Weak evidence" inconsistency (GAP-322)
+- **returning-user** — Single active session requires full modal to resume (GAP-323)
+- **power-user** — Keyboard card nav absent for Experiences/Skills/Achievements DataTable tabs (GAP-324)
+- **recruiter-ops** — Finalise tab hidden; reached only via mislabeled "Package Application Files" button (GAP-325)
+
+---
 
 ## 2026-07-06 (Cycle 81) Reconciliation Notes
 
@@ -3564,3 +3584,295 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 **Description:** `codex-skills/cv-e2e-browser-test/` mirrors `.claude/commands/e2e-browser-test.md` for the Codex agent tool, with its own header noting "Adapted from `.claude/commands/e2e-browser-test.md`." It still reflects the old 11-phase version (App load through Error handling, no Goals/Tagline/Summary/Publications/ATS Score/Layout Review/Master CV/Cover Letter/Screening/Interview Prep/Thank You/Harvest, and no Part 2 persona passes) and was not updated alongside the Claude version's expansion to 33 phases.
 **Affected stories:** Internal tooling consistency (affects whoever runs the Codex-agent variant of this test expecting parity with the Claude Code version).
 **Fix:** Either regenerate `codex-skills/cv-e2e-browser-test/` from the current `e2e-browser-test.md` content, or replace it with a thinner pointer/adapter that reads the Claude version directly instead of maintaining a parallel copy (removing the drift risk structurally rather than re-syncing it manually each time).
+
+---
+
+## Cycle 82 Discoveries (2026-07-06)
+
+*Added by Phase 3 assembly agent, Cycle 82. All items source-verified with file:line evidence from persona review files.*
+
+---
+
+## GAP-300: No Anti-Fabrication Instruction in LLM System Prompt
+
+**Priority:** CRITICAL
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by trust-compliance, persuasion-expert, resume-expert.
+**Description:** The LLM system prompt (`conversation_manager.py:424–495`) defines recommendation structure and confidence levels but contains no explicit instruction to restrict rewrites to facts present in master data, avoid inventing metrics, or flag hallucinated claims. The persuasion check pipeline (`run_persuasion_checks()`, lines 1349–1428) covers writing style (verb strength, passive voice, word count) only. A rewrite changing "improved efficiency" to "improved efficiency by 40%" passes all checks without a flag — the fabricated metric is never flagged. `apply_rewrite_constraints()` preserves numbers already in the original but does not detect numbers invented in the proposed text. There is no diff-level check comparing quantified claims between `r.original` and `r.proposed`.
+**Affected stories:** US-C1, US-C3, US-R3, US-P2
+**Fix:** (a) Add an explicit anti-fabrication instruction to the system prompt at `conversation_manager.py:424–495`: "Do not invent metrics, titles, dates, or achievements not present in the master data. If a claim cannot be verified from the provided information, omit it." (b) Add a persuasion check that detects new numeric tokens in `r.proposed` that are absent in `r.original` and surfaces a "New claim — verify accuracy" badge.
+
+---
+
+## GAP-301: ATS HTML Template Missing `lang="en"` on Root `<html>` Element
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
+**Description:** `cv_orchestrator.py:1199` generates the ATS DOCX intermediate HTML as `'<html><head>'` without a `lang` attribute on the root element. Screen readers use the `lang` attribute to determine the correct pronunciation engine. Without it, AT may default to the OS language or produce incorrect pronunciation. The human-facing HTML CV template correctly has `<html lang="en">` (confirmed in generated output), but the ATS-format HTML does not.
+**Affected stories:** US-X7 (proposed), US-H1
+**Fix:** Change `cv_orchestrator.py:1199` from `'<html><head>'` to `'<html lang="en"><head>'`.
+
+---
+
+## GAP-302: Font Awesome Icons in Generated HTML CV Missing `aria-hidden="true"`
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
+**Description:** Section heading icons (`<i class="fas fa-user-circle">`, `<i class="fas fa-trophy">`, etc.) and sidebar contact icons (`<i class="fas fa-envelope">`, `<i class="fab fa-linkedin">`) in generated HTML CV output lack `aria-hidden="true"`. Screen readers will read aloud the Font Awesome Unicode character glyph names or the icon CSS class names depending on the AT and browser, producing noise like "fas fa-envelope" read before the email address. Evidence: `CV_Genentech_SeniorRPackageDevelo_2026-03-26.html:702–714` (contact icons), `:772–847` (section heading icons). The icons are decorative — the text adjacent to them is the meaningful content.
+**Affected stories:** US-X6 (proposed)
+**Fix:** Add `aria-hidden="true"` to all `<i class="fa*">` elements in the Jinja2/Python templates used to generate the HTML CV in `cv_orchestrator.py`. Search for all `<i class="fa` patterns and add the attribute.
+
+---
+
+## GAP-303: Review Sub-Tab Buttons Missing Tab ARIA Semantics
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
+**Description:** The customization stage sub-tabs (Experiences, Skills, Achievements, Summary, Publications, etc.) are `<button>` elements with a `.active` CSS class toggle but no `role="tab"`, `aria-selected`, or `aria-controls` attributes (`review-table-base.js:672–676`). Screen readers cannot determine which sub-tab is selected or navigate using AT tab-list patterns (arrow keys, tab/role semantics). The main workflow tab bar correctly uses `role="tab"` and `aria-selected` (`review-table-base.js:136–148`), but the customization stage sub-tabs within the viewer do not follow the same pattern.
+**Affected stories:** US-X4 (proposed), US-X3
+**Fix:** Update `review-table-base.js:672–676` to add `role="tab"`, `aria-selected="true/false"`, and `aria-controls="[panel-id]"` to each `.review-subtab` button. Add `role="tablist"` to the container. Add `role="tabpanel"` and `aria-labelledby` to each panel.
+
+---
+
+## GAP-304: Model Catalog Table Rows Not Keyboard-Accessible
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
+**Description:** The LLM model selection table in the model wizard (`#model-table`, `ui-core.js:1570–1626`) uses `tbody.onclick` delegation but adds no `tabindex`, `role`, or `keydown` handlers to `<tr>` elements. Keyboard users cannot Tab into rows or use Enter/Space to select a model from the full catalog table. The quick-model button list in Step 1 is keyboard-accessible but the full catalog table in Step 3 is mouse-only.
+**Affected stories:** US-X5 (proposed), US-X3
+**Fix:** Add `tabindex="0"` and `role="row"` to each `<tr>` in the model table, and add a `keydown` handler for Enter/Space that fires the same selection logic as the `onclick` delegation. Or expose all models in the keyboard-accessible quick-model button list as an alternative.
+
+---
+
+## GAP-305: Alert Modal Uses Separate Focus Stack From Other Modals
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
+**Description:** `showAlertModal()` in `ui-helpers.js:34–49` calls `trapFocus()` and `setInitialFocus()` but does not push to `_focusStack` (unlike `openSettingsModal()` which calls `_focusStack.push(document.activeElement)` before opening). `closeAlertModal()` uses its own `_alertPreviousFocus` variable rather than `restoreFocus()`. This means if an alert opens while another modal is already focus-trapped, the `_focusTrapStack` and `_focusStack` can diverge: the trap listener from the underlying modal may be consumed incorrectly by the alert's close path. In practice, closing the alert may fail to restore focus to the intended element inside the underlying modal.
+**Affected stories:** US-X8 (proposed), US-X2
+**Fix:** Refactor `showAlertModal()`/`closeAlertModal()` in `ui-helpers.js` to use the same `_focusStack.push()` / `restoreFocus()` coordination pattern used by `openSettingsModal()` and `openModal()` in `ui-core.js`, rather than the separate `_alertPreviousFocus` variable.
+
+---
+
+## GAP-306: `--cv-card-bg` CSS Variable Undefined — Position-Style Picker Transparent
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by graphical-designer.
+**Description:** `var(--cv-card-bg)` is used at `styles.css:1600` in the `.position-style-option` selector but is not defined anywhere in `:root`. CSS variable resolution silently falls back to `transparent`, causing the position-style picker buttons to render with invisible background. The `:root` block defines 95 CSS custom properties (`styles.css:18–126`) but `--cv-card-bg` is absent. This is a design system integrity issue and a rendering defect.
+**Affected stories:** US-G1.4, US-G2.3
+**Fix:** Add `--cv-card-bg: var(--cv-bg-light);` (or `--cv-card-bg: var(--cv-white);`) to the `:root` block in `styles.css`. Value should be consistent with the intended card surface color used elsewhere.
+
+---
+
+## GAP-307: `check_has_result_clause()` Severity `'info'` Prevents Amber Badge
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by persuasion-expert.
+**Description:** `check_has_result_clause()` at `llm_client.py:1259` fires with `severity: 'info'` when a bullet lacks any metric or outcome word. The rewrite review panel only surfaces amber persuasion badges for checks with `severity: 'warn'` or higher. Because `'info'` is below the badge threshold, result-clause findings are never visually surfaced to users reviewing rewrite cards — the advisory is silently produced but invisible. US-P4 acceptance criterion "Missing result clause flagged" is nominally met at the code level but fails in the UI because of the severity mismatch.
+**Affected stories:** US-P4, US-C1
+**Fix:** Change `severity` from `'info'` to `'warn'` in `check_has_result_clause()` at `llm_client.py:1259` so that result-clause findings surface as amber badges in the rewrite review panel.
+
+---
+
+## GAP-308: Six Structural ATS Validation Checks Are Non-Blocking, Contradicting Story Spec
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by hr-ats.
+**Description:** `download-tab.js:151–161` defines `_NON_BLOCKING_CHECKS` which exempts the following checks from blocking file downloads even on `fail` status: `docx_zero_shapes`, `docx_standard_headings`, `docx_heading1_present`, `docx_date_format_consistent`, `html_jsonld_valid_person`, `html_jsonld_knows_about`. US-H6 acceptance criterion states "Any fail blocks download with a clear explanation." The current implementation allows downloads when structural failures occur — a hiring manager or ATS system receiving a non-conformant DOCX with creative heading names or invalid JSON-LD will get a degraded document without warning at download time.
+**Affected stories:** US-H6
+**Fix:** Either (a) tighten the blocking logic so at minimum structural failures (`docx_heading1_present`, `docx_standard_headings`, `html_jsonld_valid_person`) block download, or (b) update the US-H6 acceptance criterion to explicitly enumerate which checks are advisory-only vs. blocking, and surface advisory-only failures with a distinct visual treatment in the validation table.
+
+---
+
+## GAP-309: Duplicate `id` Attributes on Publication Modal Heading — aria-labelledby Broken
+
+**Priority:** HIGH (Bug)
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
+**Description:** `master-cv.js:316` sets two `id` attributes on the same `<h2>` element: `id="master-pub-modal-title-heading" id="pub-modal-title-heading"`. HTML parsers retain only the first `id` (`master-pub-modal-title-heading`). JavaScript at `master-cv.js:1497` and `1526` references `pub-modal-title-heading` (the second id) to update the title between "Add Publication" and "Edit Publication" — these calls silently fail (`getElementById()` returns `null`) in conformant parsers. Additionally, the modal's `aria-labelledby="master-pub-modal-title"` points to a non-existent id (neither of the two ids on the heading), so screen readers cannot announce the modal title programmatically.
+**Affected stories:** US-M4, US-X2
+**Fix:** (1) Remove the duplicate `id` and choose a single canonical id (e.g., `pub-modal-title-heading`). (2) Update `aria-labelledby` on the modal overlay to point to that canonical id. (3) Update the JS references at `master-cv.js:1497` and `1526` to use the same id.
+
+---
+
+## GAP-310: Experience Bullets Not Editable in Master CV Tab
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
+**Description:** The Work Experience section in the Master CV tab (`master-cv.js:904`) shows a "Bullets" count column displaying `exp.achievements.length`, but provides no interface to view, add, edit, or reorder the individual achievement bullet entries. Users who need to durably edit experience bullets outside the session-specific Harvest flow must edit `Master_CV_Data.json` directly. This creates an asymmetry: all other master data sections (skills, education, publications, certifications) have CRUD interfaces in the tab.
+**Affected stories:** US-M5 (proposed), US-A10
+**Fix:** Add an expandable bullet management panel per experience row in the Master CV tab that allows viewing, adding, editing, and deleting achievement bullets. This mirrors the existing modal pattern used for skills and publications in the same tab.
+
+---
+
+## GAP-311: Backup Restore Requires Manual Tab Reload — No Auto-Refresh
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
+**Description:** After a backup restore succeeds, `master-cv.js:2529` displays "Reload the tab to see the updated data" rather than automatically calling `populateMasterTab()` (or equivalent). The user must manually navigate away from the tab and back, or reload the page, to see the restored data. During this window the user sees stale data that no longer reflects the restored state, creating a risk of editing over the restored content.
+**Affected stories:** US-M6 (proposed)
+**Fix:** After a successful backup restore, call `populateMasterTab()` automatically from the success handler in `master-cv.js` instead of instructing the user to reload manually. Replace the instruction text with a success message.
+
+---
+
+## GAP-312: Phase Lock Banner Exposes Internal Enum Value "refinement"
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
+**Description:** The phase-lock banner in the Master CV tab (`master-cv.js:88`) renders "The current stage is **refinement**". "refinement" is the internal `Phase` enum value (`conversation_manager.py:48`). Users who see this message during an active application workflow do not understand what "refinement" means. `SESSION_PHASE_LABELS_SHORT` in `utils.js` already maps `refinement` → "Finalise" (confirmed in GAP-112 resolution). The same map should be used in the lock banner.
+**Affected stories:** US-M8 (proposed)
+**Fix:** Import or inline the `SESSION_PHASE_LABELS_SHORT` map in `master-cv.js` and use it when building the phase-lock banner text: "The current stage is **Finalise**" (or similar human label) instead of the raw enum value.
+
+---
+
+## GAP-313: Generated Files Tab Shows No File Timestamps
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by returning-user.
+**Description:** `populateFinalGenerateTab()` (`final-generate.js:107–200`) renders each downloadable file as an icon + label + description + Download button. No generation timestamp is shown alongside the file. The `finalGeneratedAt` field is stored in `generationState` (`state-manager.js:333`) and restored from the backend on session load (`session-manager.js:686`), but is not injected into the tab render. A returning user who made content changes in a prior session sees download links that look identical regardless of whether the files pre-date or post-date their most recent edits. The position-bar freshness chip covers the boolean "outdated vs current" case but does not appear within the Generated Files tab itself.
+**Affected stories:** US-S5 (proposed), US-S3
+**Fix:** In `populateFinalGenerateTab()` (`final-generate.js:107–200`), inject a "Generated: [date/time]" label beneath each file entry using `generationState.finalGeneratedAt` (already available in state). Format as a human-readable relative or absolute timestamp consistent with other time displays in the application.
+
+---
+
+## GAP-314: Welcome Modal Fires for Active-Session Returning Users
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by returning-user.
+**Description:** `maybeShowWelcomeModal()` (`session-manager.js:175–201`) checks only `localStorage.getItem('cv-builder-welcome-dismissed')`. If the user has never checked the "Don't show automatically on startup" checkbox (`index.html:391–393`), the welcome modal fires on every `init()` call (`app.js:57`) — including when a live session with work in progress is being restored. The modal body is oriented at new users (3-phase workflow overview, prerequisites) and provides no value to a returning user mid-application. The "Don't show automatically" checkbox is easy to miss because it sits left-aligned in the modal footer while the primary CTA ("Get Started") is right-aligned.
+**Affected stories:** US-S7 (proposed), US-F1, US-S1
+**Fix:** Add an active-session check to `maybeShowWelcomeModal()`: if `restoreSession()` has already loaded a session with `serverHasData === true`, skip showing the modal regardless of the `localStorage` flag. Alternatively, suppress the modal if the current phase is beyond `PHASES.INIT`.
+
+---
+
+## GAP-315: Cover Letter Tone Defaults to `startup/tech` Regardless of Job Domain
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by hiring-manager.
+**Description:** The cover letter tone dropdown defaults to `startup/tech` via `cover-letter.js:246`: `|| 'startup/tech'`. The 5-tone guidance dict exists (`master_data_routes.py:97–103`) and the job analysis already extracts `domain` and `culture_indicators` (`master_data_routes.py:1604`). A user generating a cover letter for a pharma/biotech role will receive `startup/tech` tone framing unless they manually change the dropdown. No auto-suggestion or pre-selection based on job analysis domain is implemented.
+**Affected stories:** US-M6, US-A7
+**Fix:** After job analysis completes, map `analysis.domain` or `analysis.culture_indicators` to a recommended tone value and pre-select the dropdown (or display a hint "Based on job analysis, we suggest Pharma/Biotech tone"). A simple domain-to-tone map (e.g., `pharma` → `pharma/biotech`, `academic` → `academia`, `finance` → `financial_services`) would cover most cases.
+
+---
+
+## GAP-316: Cover Letter Word Count Target Mismatch — Backend 250–300w vs Story 300–400w
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by hiring-manager, persuasion-expert.
+**Description:** `_cover_letter_word_count_instruction()` in `master_data_routes.py:118–122` returns "250–300 words" for standard roles. The client-side `_validateCoverLetter()` in `cover-letter.js:607–631` uses a green-zone target of ≤300w for standard roles. The user story specifies 300–400 words as the standard range. Letters generated to the backend's 250–300w target will consistently fall below what hiring managers expect for substantive roles. Confirmed independently by two personas (hiring-manager and persuasion-expert).
+**Affected stories:** US-M6, US-P5
+**Fix:** Align both backend prompt instruction (`master_data_routes.py:118–122`) and client validation (`cover-letter.js:607–631`) to the story spec: 300–400 words for standard roles. Review exec and academic role ranges for consistency.
+
+---
+
+## GAP-317: Zero-Bullet Job Entries Not Guarded — Renders Bare Job Title
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by hiring-manager.
+**Description:** `cv_orchestrator.py:4465–4483` fires an advisory when `bullet_count == 1` ("Only 1 bullet remaining — consider adding more"). However, when a user excludes all bullets for a job entry (`bullet_count == 0`), no advisory fires and the job entry renders as a bare title + company + dates with no content — a credibility failure on the generated CV. The condition `if bullet_count == 1` at line 4470 does not handle the `0` case.
+**Affected stories:** US-M2
+**Fix:** Add a `bullet_count == 0` guard in `cv_orchestrator.py` at line 4465: fire a hard advisory (or gate the customization confirmation) when all bullets for a job entry are excluded. Consider blocking generation when any included job entry has zero bullets, or at minimum surfacing a distinct error-level advisory distinguishable from the 1-bullet warning.
+
+---
+
+## GAP-318: First-Author Status Contributes 0 Points to Publication Scoring
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by resume-expert.
+**Description:** `is_first_author` is detected (`cv_orchestrator.py:892–895`) and displayed in the publications review table as a ★ star indicator (`publications-review.js:148`), and the US-R2 acceptance criterion explicitly lists "first-author status" as a scoring factor. However, `_select_publications()` at `cv_orchestrator.py:3764–3806` does not include first-author status in its scoring function — the field is detected but contributes 0 points. Publications by first authors are not ranked higher than those by middle authors with equivalent recency/keyword match.
+**Affected stories:** US-R2
+**Fix:** Add a first-author bonus (e.g., +10 points, normalized relative to the recency/keyword score range) to `_select_publications()` at `cv_orchestrator.py:3764–3806` when `pub.get('is_first_author') is True`.
+
+---
+
+## GAP-319: Ranked Publication Shortlist Not Presented Proactively
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by resume-expert.
+**Description:** The publications review tab exposes `relevance_score` and `rationale` per publication (`publications-review.js:149–153`), and the scoring algorithm ranks publications by recency, entry type, keyword-title match, and domain bonus. However, the ranked shortlist is not presented to the user before they navigate to the Publications sub-tab. There is no proactive assistant message after customization recommendations saying "Your top recommended publications for this role are: X, Y, Z." The US-R2 acceptance criterion states the ranked shortlist should be "presented" (not merely available). This mirrors the pattern used for experiences and skills which are summarized in the assistant recommendation message.
+**Affected stories:** US-R2, US-R-NEW-5
+**Fix:** After customization recommendations are generated, include a publications summary in the assistant message listing the top N recommended publications (with relevance scores) in descending order. This mirrors how experience and skill recommendations are surfaced.
+
+---
+
+## GAP-320: Summary Line-Count Not Validated — Dense Paragraphs Pass
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by resume-expert.
+**Description:** `_validate_summary()` in `cv_orchestrator.py:3606–3646` validates word count (40–250 words) but not line count. The US-R4 acceptance criterion requires 4–6 lines for the professional summary. A 250-word single dense paragraph block passes the word-count gate but violates the line-count criterion — hiring managers expect a scannable summary, not a prose block.
+**Affected stories:** US-R4
+**Fix:** Add a line/sentence count check in `_validate_summary()`: split the summary on `.` or `\n` and count clauses/sentences; warn if > 7 (too blocky) or < 3 (too terse for senior candidates). Consider a separate newline-count check (warn if no line breaks in summaries > 80 words).
+
+---
+
+## GAP-321: `ai_attribution` Resets Per Session — Not Persisted to config.yaml
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by trust-compliance.
+**Description:** The AI-assistance disclosure checkbox (`index.html:647–649`) seeds from `generation.ai_attribution` in per-session status (`ui-core.js:188`). `ui-core.js:211–213` reads `ai_attribution` from per-session state, not from `config.yaml`. Enabling the disclosure in session A does not carry it over to session B. Users who need to routinely disclose AI assistance (e.g., for legal or ethical contexts) must re-enable the setting on every new session — a compliance friction point.
+**Affected stories:** US-C5 (proposed), US-C3
+**Fix:** Persist `ai_attribution` as a global default in `config.yaml` (e.g., under `generation.ai_attribution_default`). Seed new sessions from this global default. Allow per-session override but ensure the global preference is respected across sessions without manual re-enabling.
+
+---
+
+## GAP-322: "Candidate to Confirm" (Rewrites Tab) vs "Weak Evidence" (Skills Tab) — Inconsistent Labels
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by trust-compliance, applicant.
+**Description:** The same concept (a skill addition backed by weak or unverified evidence) is labeled differently in two tabs: "⚠ Candidate to confirm" in the Rewrites tab (`rewrite-review.js:397–398`) and "⚠ Weak evidence" / "⚠ Verify evidence" in the Skills tab (`skills-review.js:730–731`). "Candidate to confirm" is ambiguous (reads as "the job applicant is a candidate") and lacks a tooltip. "Weak evidence" is clearer and already has an evidence tooltip. The inconsistency was flagged independently by trust-compliance and applicant personas.
+**Affected stories:** US-C9 (proposed), US-C1, US-A4
+**Fix:** Standardize the label to "⚠ Weak evidence" (or "⚠ Verify before including") in the Rewrites tab to match the Skills tab. Add a tooltip to the Rewrites tab badge showing the evidence basis (matching the tooltip pattern in `skills-review.js:731`).
+
+---
+
+## GAP-323: Single Active Session Requires Full Modal to Resume at Root URL
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by returning-user.
+**Description:** When a returning user navigates to the root URL without a `?session=` parameter, `ensureSessionContext()` (`session-manager.js:457–467`) calls `openSessionsModal({ required: true })` and blocks on session selection. There is no "resume most recent session" shortcut. The recents strip in the sessions modal (`session-switcher-ui.js:442–480`) exists but does not auto-navigate. Users with a single active session must open the full 980px modal, find their session, and click Load before any context appears.
+**Affected stories:** US-S4 (proposed), US-S1
+**Fix:** In `ensureSessionContext()`, if there is exactly one session in "active" (in-memory) state, auto-load it directly without requiring the sessions modal. If there are 2+ active sessions, show the modal as today. A "Resume most recent session" shortcut button in the modal would also reduce friction for users with multiple sessions.
+
+---
+
+## GAP-324: Keyboard Card Navigation Absent for Experiences/Skills/Achievements DataTable Tabs
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by power-user, accessibility-specialist.
+**Description:** `_getCards()` in `keyboard-shortcuts.js:65–69` returns review cards only when `tab === 'rewrite'` or `tab === 'spell'`. On Experiences, Skills, and Achievements review tabs, `_getCards()` returns an empty array and the ↑/↓/A/R keyboard shortcuts are silently non-functional. These tabs use DataTable rows (`<tr>` elements), not `.rewrite-card`/`.spell-card` DOM elements. Power users reviewing 30+ experience entries must use the mouse for each row — the keyboard review efficiency that makes the Rewrites tab fast is unavailable on the largest review surfaces.
+**Affected stories:** US-W4 (proposed), US-W1, US-X3
+**Fix:** Extend `_getCards()` to detect the active review tab and return the appropriate DataTable rows (`.dt-tr` or `tr[data-exp-id]`, `tr[data-skill-name]`, etc.) on Experiences, Skills, and Achievements tabs. Wire `A`/`R` shortcut handlers to the relevant include/exclude toggle actions for DataTable rows. This likely requires updating `keyboard-shortcuts.js` and adding coordinating event-target resolution in `experience-review.js`, `skills-review.js`, and `achievements-review.js`.
+
+---
+
+## GAP-325: Finalise Tab Hidden — Only Reachable Via Mislabeled "Package Application Files" Button
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 82) by recruiter-ops.
+**Description:** The Finalise tab (`index.html:227`) has `style="display:none"` and is absent from `STAGE_TABS` (`ui-core.js:353–366`). The archive flow is reachable only via the `finalise-action-btn` labeled "📦 Package Application Files" (`index.html:198`) — a label that sounds like a file-zipping operation, not an archival checkpoint. Recruiters and applicants reviewing the workflow nav see no "Finalise" or "Archive" step pill; the action button alone signals that archiving is available, and only after the user has visited the File Review tab. The readiness checklist (`finalise.js:163–214`) and the archive confirmation are fully implemented but inaccessible without knowing to click this button.
+**Affected stories:** US-O4 (proposed), US-O1, US-A9
+**Fix:** Either (a) expose the Finalise tab as a visible step in `STAGE_TABS` (making it part of the workflow nav), or (b) rename the action button to "Archive Application" / "Finalise & Archive" to accurately signal the step's purpose. Additionally, surface a compact readiness badge (e.g., "3/3 required files ready ✅") in the position bar or File Review tab so users know their package status before reaching the hidden finalise step.

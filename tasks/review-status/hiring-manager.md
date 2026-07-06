@@ -6,11 +6,11 @@
   For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# Hiring Manager Persona Review
+# Hiring Manager Review Status
 
-**Persona:** US-M* — Hiring Manager / Department Head  
-**Cycle:** Source-first review, 2026-07-01; stale AC2.2/AC2.3 corrected 2026-07-04 (cycle 71); GAP-NEW-HM-07 and GAP-NEW-HM-08 resolved 2026-07-06 (cycle 80)  
-**Branch:** `feature/multi-user-deployment`
+**Last Updated:** 2026-07-06 14:30 ET
+
+**Executive Summary:** Source-verified hiring manager persona review. The application is well-structured for guiding users toward professional output. Most story criteria are implemented; the primary gaps are: no automatic tone pre-selection from job analysis, cover letter word count targets diverge from story spec, publication count exposed in review UI (ambiguously contradicts story), and no automated page-1 sparseness check. Generated materials quality controls (action verb advisory, weak-bullet detection, 2-bullet minimum advisory, deduplication) are all implemented.
 
 ---
 
@@ -18,235 +18,189 @@
 
 ### US-M1: First Impression — Page 1 Layout
 
-**AC1.1** Page 1 contains name, contact, summary, selected achievements, and education — all visible without scrolling.
-
-✅ **Pass** — `cv-template.html:639–683` renders name (`<h1 class="name">`), contact block (`.contact-info`, lines 527–563), education sidebar (`.sidebar-section` lines 565–574), professional summary (`<section class="section">`, lines 647–652), and selected achievements (`<section class="section">`, lines 654–663) all within `#cv-body`. Page 1 is the opening viewport of the single continuous column body.
-
-**AC1.2** Summary is role-specific: contains the job title or near-equivalent, years of experience, and one specific differentiator.
-
-⚠️ **Partial** — The orchestrator (`cv_orchestrator.py:1688`) applies approved summary rewrites from the LLM-generated summary, and `agent_bridge.py:219–221` instructs the LLM to generate "a 3-5 sentence plain-text summary." The backend builds the summary prompt with job analysis data (title, required skills, ATS keywords) injected via `build_render_ready_content`, so the LLM receives role context. However, there is no explicit post-generation validation that confirms the output contains the job title, a years-of-experience figure, and a differentiator. The quality of role-specificity is entirely LLM-dependent with no enforcement gate.
-
-**AC1.3** Page 1 has no overflow.
-
-⚠️ **Partial** — `cv_orchestrator.py` runs staged-generation layout estimation (`layout_digest.py` referenced at line 68–70 in the template comment). The ATS validation in `cv_orchestrator.py:5026–5040` checks page count but does not specifically verify that page 1 content does not bleed. The layout estimator produces a heuristic character count, not a pixel-accurate measurement. No per-page pixel overflow check exists.
-
-**AC1.4** Page 1 has no visibly unbalanced whitespace (neither column ends with >~2 cm blank area).
-
-🔲 **Not Implemented** — No automated check for column-balance whitespace exists in any of the source files reviewed. Page count is validated (`cv_orchestrator.py:5020–5040`) but column balance within page 1 is not measured.
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Name prominent at top | ✅ Pass | `cv-template.html:642` — `<h1 class="name">{{ personal_info.name }}</h1>`; `.name { font-size: 2.2rem; font-weight: 700 }` at line 212 — largest text element |
+| Contact information in sidebar | ✅ Pass | `cv-template.html:528–564` — sidebar left column with Font Awesome icon-prefixed contact fields (email, phone, LinkedIn, website) |
+| Professional summary on page 1 | ✅ Pass | `cv-template.html:648–653` — Summary section is first in right column |
+| Selected Achievements on page 1 | ✅ Pass | `cv-template.html:655–663` — "Selected Achievements" second in right column, after Summary |
+| Education in sidebar | ✅ Pass | `cv-template.html:566–575` — Education in sidebar with degree, institution, year |
+| 2-column layout with sidebar differentiation | ✅ Pass | `cv-template.html:86–93` — left-col 32% width with `background-color: var(--sidebar-bg)` (#eef2f5) |
+| Page 1 overflow protection | ⚠️ Partial | `.job-entry { page-break-inside: avoid }` (cv-template.html:278–281) and section-title keep-together (lines 250–255) prevent splits. However, no automated gate warns when summary + achievements push onto page 2. ATS check (cv_orchestrator.py:5796–5814) checks total pages, not page-1 balance. |
+| No visibly unbalanced whitespace | 🔲 Not Implemented | No automated check for "page 1 is half-full" condition. Story requires flagging a >2cm blank gap. No such check in `cv_orchestrator.py` or `layout-instruction.js`. |
+| Name is largest text element | ✅ Pass | `.name { font-size: 2.2rem }` (line 212) vs. `.section-title { font-size: 1.1rem }` (line 235) — name is 2× larger |
 
 ---
 
 ### US-M2: Work Experience — Credibility and Relevance
 
-**AC2.1** Every bullet starts with a strong action verb.
-
-✅ **Pass** — Backend: `cv_orchestrator.py:3963–3981` (`_enhance_achievement_for_ats`) checks the opening word against `_STRONG_VERBS_LOWER` (line 3999) and logs a warning when the check fails. The `check_persuasion` method (lines 4140–4218) flags `weak_verb` and `no_strong_verb` findings; commit `ae04e11` (GAP-17) also added repeated opening-verb detection — when the same verb opens ≥3 bullets in one experience entry, subsequent occurrences are flagged as `repeated_verb` with severity `warning`. Frontend: `achievements-review.js:524–571` shows inline `⚠ Weak opening verb` badges in the Experience Bullets tab; `spell-check.js` now shows a pre-generation advisory count of weak-verb bullets before the user proceeds (GAP-09, commit `cb20ed8`); and `rewrite-review.js:101–116` surfaces persuasion warnings at the Rewrites stage requiring acknowledgment before proceeding.
-
-**AC2.2** Each job entry has at least 2 bullets.
-
-✅ **Pass (stale — cycle 71)** — `_detect_sparse_experiences()` at `cv_orchestrator.py:5100` (`min_bullets=2`) returns warnings for entries with fewer than 2 selected bullets. Called at line 2114; results included in metadata at line 2258. `download-tab.js:417–426` renders a yellow warning card: "Sparse experience entries (N) — fewer than 2 bullets: {company · title — 0 or 1 bullet selected}. Include at least 2 bullets per role to demonstrate impact."
-
-**AC2.3** Bullets are ≤2 lines each.
-
-✅ **Pass (stale — cycle 71)** — `_detect_long_bullets()` at `cv_orchestrator.py:5075` (`max_chars=200`) returns warnings for bullets exceeding 200 characters ("Long bullets typically wrap to 3+ lines in the generated DOCX"). Called at line 2111; results in metadata at line 2257. `download-tab.js:406–415` renders a yellow warning card: "Long bullet points detected (N) — may exceed 2 lines: {company · title (N chars) text}. Consider shortening — aim for ≤200 characters."
-
-**AC2.4** Job entries are not split across pages (`page-break-inside: avoid`).
-
-✅ **Pass** — `cv-template.html:278–281` applies `page-break-inside: avoid` to `.job-entry`. `cv-style.css:91–93` applies the same rule to `.experience-item`. Both the HTML template and standalone CSS stylesheet enforce this rule.
-
-**AC2.5** Relevance-ordered bullets within each entry (most relevant first, per content customisation step).
-
-✅ **Pass** — `cv_orchestrator.py:3179–3221` implements per-experience bullet ordering. By default, bullets are sorted descending by keyword-overlap relevance score (`_ach_relevance`, line 3208–3216). User manual reordering is preserved via `achievement_orders` in customizations (lines 3184–3206). The template (`cv-template.html:675–681`) renders `ordered_achievements` when present.
-
-**AC2.6** System warns if a bullet lacks an action verb.
-
-✅ **Pass** — Backend `cv_orchestrator.py:4165–4173` generates `no_strong_verb` findings. Backend `ae04e11` (GAP-17) adds `repeated_verb` findings for ≥3 same-verb occurrences per experience. Frontend `achievements-review.js:542–571` shows inline verb badges in the Experience Bullets editor. `spell-check.js` pre-generation modal counts and shows weak-verb bullets (GAP-09). `rewrite-review.js:104–116` surfaces backend persuasion warnings at the Rewrites stage with acknowledgment gate.
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Job title bold, prominent | ✅ Pass | `cv-template.html:290–293` — `.job-role { font-weight: 700; font-size: 1rem }` |
+| Company + date same line as title | ⚠️ Partial | `cv-template.html:671–675` — `job-header` flex row puts job-role and job-company on same line; dates are a separate `.job-dates` div below. Acceptable layout but date is not on same line as company. |
+| Achievement bullets, not duty prose | ✅ Pass | `cv_orchestrator.py:4337–4344` — weak verb detection flags "Responsible for," "Duties included" patterns |
+| Metrics where present | ✅ Pass | `cv_orchestrator.py:4356–4365` — `_METRIC_RE` detects missing quantification; advisory generated |
+| Relevant bullets first | ✅ Pass | `cv-template.html:676` — `exp.ordered_achievements` preferred; relevance-driven ordering |
+| At least 2 bullets per job | ⚠️ Partial | `cv_orchestrator.py:4465–4483` — advisory fires for count == 1 only; count == 0 (all bullets rejected) is not guarded |
+| Bullets ≤ 2 lines | ✅ Pass | `cv_orchestrator.py:4391–4399` — "too long" advisory at >35 words |
+| page-break-inside: avoid on job entries | ✅ Pass | `cv-template.html:278–281` |
+| Relevance-ordered bullets within entries | ✅ Pass | Template uses `exp.ordered_achievements` (cv-template.html:676) |
+| System warns if bullet lacks action verb | ✅ Pass | `cv_orchestrator.py:4336–4354` — weak_verb and no_strong_verb advisories |
 
 ---
 
 ### US-M3: Skills Section Readability
 
-**AC3.1** Skills grouped into named categories on the human-readable PDF.
-
-✅ **Pass** — `cv_orchestrator.py:533–595` (`_group_skills_by_category`, `_organize_skills_by_category`) groups skills by `category` field. `cv-template.html:610–635` renders each category as `<div class="skill-group"><h4>{{ cat.category }}</h4><ul class="skill-list">…</ul></div>`.
-
-**AC3.2** Categories ordered by relevance to the target role.
-
-✅ **Pass** — `cv_orchestrator.py:541–580` (`_sort_categories`) applies variant-specific priority orders (`standard`, `technical`, `academic`) and falls back to remaining categories alphabetically. The user can further specify `skill_category_order` in customizations (line 3469). For standard variant, priority is `['Core Expertise', 'Programming', 'Technical', 'Tools', 'General']`. Additionally, commit `4c90a09` (GAP-11) adds role-aware category ordering in the Skills review table: each category is scored by how many of its skills appear in the job's `required_skills` (2 pts) or `nice_to_have_skills` (1 pt), with categories sorted highest-scoring first in the review UI, giving the user an informed view of what to prioritize.
-
-**AC3.3** No duplicate skills (exact match or obvious aliases).
-
-✅ **Pass** — `cv_orchestrator.py:590–595` calls `_deduplicate_skills` before grouping. The deduplication logic uses canonical synonym matching.
-
-**AC3.4** Skills section occupies no more than 1.5 sidebar columns total.
-
-🔲 **Not Implemented** — No measurement or enforcement of the 1.5-sidebar-column size cap exists. `max_skills` parameter (lines 907, 2020, 2230) caps skill count but does not relate to a rendered column height check.
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Skills grouped into named categories | ✅ Pass | `cv-template.html:624–635` — skills rendered as `skill-group` divs with `h4` category label |
+| Categories ordered by relevance | ✅ Pass | `cv_orchestrator.py:558–583` — `_sort_categories()` with priority order by template variant; custom `skill_category_order` from session |
+| No duplicate skills | ✅ Pass | `cv_orchestrator.py:506–529` — `_deduplicate_skills()` merges by canonical synonym name |
+| Skills section ≤ 1.5 sidebar columns | ⚠️ Partial | No automated check for skills section length relative to sidebar space. Skills capped via `generation.max_skills` config but no explicit sidebar-overflow guard |
+| Job-specific terms visible | ✅ Pass | Skills ordered by relevance score; ATS keyword match drives selection |
+| No unsupported skills | ✅ Pass | `web/skills-review.js:730–734` — "Weak evidence" badge with tooltip when skill is `candidate_to_confirm` |
 
 ---
 
 ### US-M4: Multi-Page Flow and Readability
 
-**AC4.1** `page-break-inside: avoid` applied to every job entry; split entries not permitted.
-
-✅ **Pass** — `cv-template.html:278–281` (`page-break-inside: avoid` on `.job-entry`) and `cv-style.css:91–93` (`page-break-inside: avoid` on `.experience-item`) both enforce this. The template also applies `break-after: avoid-page; page-break-after: avoid` to `.section-title` (line 244–245) plus a "keep-together" rule for the title and first content block (lines 249–256).
-
-**AC4.2** Sidebar content is balanced across pages (not empty on any page that has main content).
-
-⚠️ **Partial** — The template uses a faux-column technique (`cv-template.html:381–401`): a `background-image: linear-gradient` on `#cv-body` paints the sidebar background color across all print pages even when sidebar content ends before the right column. This ensures visual balance (sidebar background fills the page height), but it does not ensure sidebar *content* appears on every page. If the sidebar has no content on page 2 (which is typical since sidebar has contact/education/awards fixed on page 1), the gradient fakes the visual but no actual sidebar items appear on subsequent pages. The user story specifies "Sidebar content is balanced across pages (not empty on any page that has main content)" — the current implementation satisfies the visual color balance but not the content balance criterion.
-
-**AC4.3** Total page count is 2–3 for a senior candidate; system warns if output is 1 or >3 pages.
-
-✅ **Pass** — `cv_orchestrator.py:5020–5040` validates page count against configurable `ideal_min` (default 2), `ideal_max` (default 3), and `absolute_max` (default 4). A single page triggers `warn`; above `absolute_max` triggers `fail`. The ATS report surfaces these findings to the user. Commit `cb20ed8` (GAP-05) additionally promotes this from advisory to a hard blocking gate: `_confirmProceedToGenerate()` in `web/spell-check.js` now shows a dedicated confirm dialog when `pageWarning` is set; the user must explicitly acknowledge before generation can proceed.
-
-**AC4.4** Publications included only when flagged as relevant for the role type.
-
-⚠️ **Partial** — `cv_orchestrator.py:3416–3460` selects publications by relevance scoring (recency, article type, keyword overlap) but does not gate publication inclusion on role type. Publications are always included when `self.publications` is non-empty, unless the user explicitly rejects them via `rejected_publications` in customizations (line 3418). The story criterion requires automatic suppression for non-research roles; this requires user action rather than automatic role-type gating.
-
-**AC4.5** When publications are included, the section is headed "Selected Publications" — not "Publications" — signalling deliberate curation.
-
-⚠️ **Partial** — The heading logic at `cv-template.html:691–695` applies "Selected Publications" only when `total_publications_count > (publications | length)` (i.e., a subset was selected). When all publications are included, the heading reads "Publications." This is correct per US-M7 (which specifies the *opposite* rule: "Selected Publications" only when a subset). However, for AC4.5 as stated in US-M4, the heading is "Selected Publications" only if some were filtered out — which is implementation-correct per the story specification.
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| page-break-inside: avoid on job entries | ✅ Pass | `cv-template.html:278–281` |
+| Sidebar colour fills full page height including pages 2+ | ✅ Pass | `cv-template.html:378–401` — faux-column gradient with `-webkit-box-decoration-break: clone` |
+| Total page count 2–3 for senior; warn if 1 or >3 | ✅ Pass | `cv_orchestrator.py:5803–5814` — warn on 1, pass on 2–3, warn on >3, fail on >4 |
+| Publications only when relevant | ✅ Pass | `cv_orchestrator.py:3492–3500` — position-style default suppresses publications when domain excludes them |
+| Publications section always final | ✅ Pass | `cv-template.html:689` — publications block is last in right-col structure |
+| "Selected Publications" heading when subset | ✅ Pass | `cv-template.html:692–696` — conditional: "Selected Publications" when `total_publications_count > publications|length` |
+| No page opening with continuation bullet | ⚠️ Partial | `.job-entry { page-break-inside: avoid }` handles most cases but very long entries may be forced to split by renderer. No post-render automated verification. |
+| Page 3 sidebar content balanced | ⚠️ Partial | Faux-column fills sidebar visual bg on all pages; no automated check that sidebar has textual content on pages where main content exists |
+| "Selected Publications" heading — not full-list when shown fully | ✅ Pass | Conditional logic in both HTML template (line 692–696) and DOCX generator (cv_orchestrator.py:4950–4951) |
 
 ---
 
 ### US-M5: Visual Identity and Professionalism
 
-**AC5.1** All fonts embedded in the PDF.
-
-⚠️ **Partial** — WeasyPrint embeds fonts by default when the font files are available at render time. `cv_orchestrator.py:1269–1395` uses Chrome headless as primary with WeasyPrint as fallback. The template loads Google Fonts from a CDN (`cv-template.html:22`). In offline or headless environments, CDN fonts may not be available, causing fallback to system fonts that may not be embedded. No explicit verification step checks that fonts are embedded in the output PDF.
-
-**AC5.2** Sidebar background colour present on every page, including pages 2+.
-
-✅ **Pass** — `cv-template.html:381–401` implements the faux-column gradient technique with `-webkit-box-decoration-break: clone; box-decoration-break: clone` ensuring the sidebar background gradient is reproduced on every page fragment in print. Both `-webkit-print-color-adjust: exact` and `print-color-adjust: exact` are applied.
-
-**AC5.3** No content clipped at page margins.
-
-⚠️ **Partial** — Page margins are controlled by the `--page-margin` CSS variable (default `0.5in`, `cv-template.html:33`) and applied via `@page { margin: var(--page-margin) }` (line 447–448). The layout review step allows the user to adjust margins. No automated clipping detection exists.
-
-**AC5.4** Font Awesome icons rendered correctly.
-
-⚠️ **Partial** — `cv-template.html:21` loads Font Awesome 6 from `cdnjs.cloudflare.com`. In a network-available environment this works. For offline/headless PDF generation, the CDN font may not be available, causing icon glyphs to render as empty squares. No bundled Font Awesome fallback is included in the template.
-
-**AC5.5** PDF passes visual QC against a reference screenshot.
-
-🔲 **Not Implemented** — No automated visual QC comparing rendered page images against a reference screenshot exists in any reviewed source file.
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Dark navy primary for headings | ✅ Pass | `cv-template.html:25` — `--primary-color: #2c3e50` |
+| Serif font for name, sans-serif for body | ✅ Pass | `cv-template.html:211` — `.name { font-family: 'Merriweather', serif }`; body `'Inter', sans-serif` (line 49) |
+| Section titles uppercase with border-bottom | ✅ Pass | `cv-template.html:233–246` — `.section-title { text-transform: uppercase; border-bottom: 1px solid #ddd }` |
+| Icon-prefixed contact fields | ✅ Pass | `cv-template.html:531` — Font Awesome icons |
+| Font Awesome from CDN — offline risk | ⚠️ Partial | `cv-template.html:21` — CDN link. No bundled fallback. If network unavailable at render time, icons show as blank squares. |
+| Google Fonts from CDN — offline risk | ⚠️ Partial | `cv-template.html:22` — CDN link. No bundled fallback. System font fallback changes visual appearance significantly. |
+| PDF font embedding checked | ✅ Pass | `cv_orchestrator.py:5751–5791` — pypdf check with warn if fonts not embedded |
+| Sidebar background on every page | ✅ Pass | `cv-template.html:383–401` — faux-column gradient with `box-decoration-break: clone` |
+| No content clipped at margins | ✅ Pass | `@page { margin: var(--page-margin) }` configurable via Layout panel |
 
 ---
 
 ### US-M6: Cover Letter Tone and Relevance
 
-**AC6.1** Company name and role title appear in paragraph 1.
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Company name and role in paragraph 1 | ✅ Pass | `cover-letter.js:583–605` — para1 check; warns if company name or job title missing in first 100 words |
+| Company-specific reference | ✅ Pass | `cover-letter.js:562–580` — company reference check; `master_data_routes.py:1624–1627` — company_context injected into prompt |
+| Body paragraphs cite specific achievements | ✅ Pass | `master_data_routes.py:1582–1593` — top 4 achievements injected into prompt; lines 1629–1639 — approved rewrites injected |
+| Closing with direct interview request | ✅ Pass | `cover-letter.js:642–675` — assertive vs. passive CTA detection; `master_data_routes.py:1668` — prompt requires direct interview request |
+| Length within role-appropriate range | ⚠️ Partial | **Mismatch with story spec**: Story requires 300–400w standard. Backend uses 250–300w standard (`master_data_routes.py:122`); client validation uses hi-end of 300w (`cover-letter.js:616`). Letters targeting 280w may read thin for substantive roles. |
+| Tone applied based on inferred employer type | ⚠️ Partial | 5-tone guidance dict exists (`master_data_routes.py:97–103`) but tone is always manually selected. Default is hardcoded `startup/tech` (`cover-letter.js:246`). No auto-suggestion from `job_analysis.domain` or `culture_indicators`. |
+| No generic opening | ✅ Pass | `cover-letter.js:526–542` |
+| "I" as first body word flagged | ✅ Pass | `cover-letter.js:544–560` |
 
-✅ **Pass** (cycle 80) — `_validateCoverLetter` in `cover-letter.js` now includes a "Paragraph 1 role context" rule (Rule 2b). It extracts the first body paragraph (splitting on `\n\n+`, skipping the salutation), then checks whether the company name (from `_lastAnalysisData.company_name`) and the role title (from `_lastAnalysisData.title`) appear in it. Renders pass/warn/fail with a detail message identifying the missing term(s). 4 new unit tests in `cover-letter.test.js`.
+---
 
-**AC6.2** At least one company-specific reference if extractable from the job posting.
+### US-M7: Selected Publications — Credibility and Relevance Signalling
 
-✅ **Pass** — `cover-letter.js:130–134` provides a `cl-company-context` textarea for the user to paste company-specific initiatives/products/values. `master_data_routes.py:1586–1589` injects this as `COMPANY CONTEXT` into the prompt with explicit instruction to "weave these specifics into the letter" (line 1629). This is user-facilitated rather than automatically extracted, but the mechanism is present and functional.
-
-**AC6.3** Body paragraphs cite specific, named achievements — not generic claims.
-
-⚠️ **Partial** — `master_data_routes.py:1592–1601` injects up to 5 approved rewrite bullets into the prompt as "TAILORED CV BULLETS (approved by candidate — reference at least one in the letter)." The prompt also includes top achievements from the master data (`top_ach_titles`, lines 1549–1560). The client-side validator (`cover-letter.js:606–620`) checks for quantified achievements (percentages, dollar amounts, action verbs). However, there is no enforcement that the LLM actually uses named achievements rather than generic paraphrasing.
-
-**AC6.4** Closing paragraph ends with a direct interview request.
-
-✅ **Pass** — `master_data_routes.py:1630` explicitly instructs: "Close with a specific, confident request for an interview or a conversation about the role. Name the role explicitly. Avoid passive language such as 'I look forward to hearing from you.'" The client-side validator (`cover-letter.js:578–603`) checks the last paragraph for assertive CTA patterns (interview, discuss, available for) and warns on passive closings.
-
-**AC6.5** Length within range: 300–400w standard; 400–500w executive; 500–600w research/academic.
-
-✅ **Pass** — `master_data_routes.py:111–122` (`_cover_letter_word_count_instruction`) returns the correct range based on role_level and domain. The range is injected into the prompt (line 1625). Client-side validator (`cover-letter.js:543–576`) applies the same role-differentiated targets with a progress bar and pass/warn/fail status.
-
-**AC6.6** Tone setting applied based on inferred employer type.
-
-✅ **Pass** — `master_data_routes.py:97–103` defines `_TONE_GUIDANCE` for five employer types (startup/tech, pharma/biotech, academia, financial, leadership). `cover-letter.js:19–25` exposes all five tones in the UI dropdown. The selected tone's guidance is injected into the LLM prompt (`master_data_routes.py:1569`, line 1606). The user selects the tone rather than it being automatically inferred, but the mapping is complete and applied correctly.
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Heading "Selected Publications" when subset | ✅ Pass | `cv-template.html:692–696`; `cv_orchestrator.py:4950–4951` |
+| Heading "Publications" when full list | ✅ Pass | Same conditional else branch |
+| Publication count NOT shown in generated CV/ATS doc | ✅ Pass | Template renders heading text only; no count suffix in generated documents |
+| Each entry: authors, title, venue, year | ✅ Pass | `cv-template.html:700–715` — `formatted_citation` rendered with venue warning flag |
+| First-author visibility | ✅ Pass | `cv-template.html:709–711` — ★ star for first author; DOCX: `cv_orchestrator.py:4953` |
+| Entry count matches user-confirmed count | ✅ Pass | `cv_orchestrator.py:3510–3514` — accepted_publications from user decisions |
+| Publications always final section | ✅ Pass | `cv-template.html:689` — structurally last in right-col |
+| Entries without venue flagged | ✅ Pass | `publications-review.js:154` — ⚠ tooltip in review UI; `cv_orchestrator.py:4966–4970` — "[venue unavailable]" in DOCX |
+| Publication count in review UI | ❌ Fail | `publications-review.js:70–73` — context note shows `"N of M publications recommended"`. Story criterion: count "never shown" — ambiguous whether this covers the review UI or only the generated document. If covering the UI, this is a Fail. The raw "of 52" figure may inadvertently pressure users to add more publications. |
 
 ---
 
 ## Generated Materials Evaluation
 
-### US-M7: Selected Publications — Credibility and Relevance Signalling
+**CV Template — Pass overall:**
+- Typographic hierarchy: Merriweather serif for name (2.2rem), Inter sans-serif for body (1rem). Clear visual distinction.
+- Colour scheme: dark navy (#2c3e50) primary, accent blue (#2980b9), sidebar grey (#eef2f5) — professional and consistent.
+- Page flow: `page-break-inside: avoid` on `.job-entry`; `break-after: avoid-page` on `.section-title` prevents orphaned headings.
+- Sidebar continuity: faux-column gradient (`cv-template.html:383–401`) maintains visual consistency on pages 2+.
 
-**AC7.1** Section heading is "Selected Publications" when a subset is shown; "Publications" when all are shown.
+**Font loading risk — Partial:**
+- Both Font Awesome and Google Fonts are loaded from external CDNs (`cv-template.html:21–22`). WeasyPrint may fetch these at render time; Chrome headless also requires network access. On air-gapped or restricted hosts, icons will appear as blank squares and body fonts will fall back to system defaults — substantially degrading visual quality.
 
-✅ **Pass** — HTML template: `cv-template.html:691–695` renders "Selected Publications" when `total_publications_count > (publications | length)`, otherwise "Publications." ATS DOCX: `cv_orchestrator.py:4586–4591` applies the same logic. ATS validator: `cv_orchestrator.py:4874–4889` validates that the DOCX heading is either "Publications" or "Selected Publications" — `_allowed = {'Publications', 'Selected Publications'}` (line 4880). GAP-218 is confirmed resolved.
+**Summary validation — Partial:**
+- `cv_orchestrator.py:3607–3646` checks: no "I" opening, word count 40–250w, top-3 required skills. Does not check whether the summary states the job title equivalent or years of experience (both required by US-M1 acceptance criteria).
 
-**AC7.2** Publication count never shown in the generated CV or ATS document (no "(4 of 52)" or similar suffix).
+**Cover letter — Partial:**
+- Quality controls (5 client-side rules) are robust. Backend prompt engineering is solid. Word count target for standard roles is 250–300w (code) vs. 300–400w (story spec) — letters will often be shorter than managers expect.
 
-✅ **Pass** — The `.pub-count` CSS class is defined in `cv-template.html:503` but never instantiated as a rendered element in the template body. The template heading (lines 691–695) contains only the heading text and no count suffix. The ATS DOCX heading (line 4590–4591) similarly omits any count notation. No `(N of M)` or similar pattern appears in either template.
-
-**AC7.3** Each entry displays: authors, title, venue, year — in that order of scan priority.
-
-✅ **Pass** — `cv_orchestrator.py:813–896` formats publications via `format_publication` (APA style from `bibtex_parser.py`) and the `formatted_citation` field is used in both the HTML template (`cv-template.html:702–707`) and DOCX generation (`cv_orchestrator.py:4593–4603`). The APA citation format places authors, title, journal/venue, and year in standard order. First-author status is marked with a `★` indicator (`cv-template.html:708–710`) when `pub.is_first_author` is set (orchestrator line 888–892).
-
-**AC7.4** Total entry count matches what the applicant confirmed in the Customisation step.
-
-✅ **Pass** — `cv_orchestrator.py:3428–3440` preserves accepted_publications from the user's explicit confirmation: when `accepted_pubs` is not None, only the keys in `accepted_pubs` (minus `rejected_pubs`) are included. The order is also preserved per the user's decision.
-
-**AC7.5** Selected Publications is always the final section of the CV.
-
-✅ **Pass** — `cv-template.html:688–715` renders the publications section as the last `<section>` element in `<main class="right-col">`, after Experiences. The template structure guarantees this ordering: Summary → Achievements → Experience → Publications. No mechanism allows publications to appear before experience.
-
-**AC7.6** No entry appears without a venue — entries missing a venue are flagged during Customisation.
-
-✅ **Pass** (cycle 80) — `cv_orchestrator.py:899` sets `entry['venue_warning']` to a non-empty string when no venue is found; the UI already shows a `⚠` icon. Now the generated output also marks venue-less entries: (1) `templates/cv-template.html` renders `<span class="pub-venue-warning">[venue unavailable]</span>` (styled amber italic, with tooltip) after each publication citation when `pub.venue_warning` is truthy; (2) `cv_orchestrator.py` — `_generate_ats_docx` appends `' [venue unavailable]'` to the citation string; `_generate_human_docx` adds an italic amber-coloured run after the citation. Both DOCX paths include the marker.
+**Publications — Pass:**
+- Heading logic correctly differentiates "Selected" vs. full list in both HTML and DOCX. First-author visibility, venue warnings, and user curation controls all implemented.
 
 ---
 
-## Summary Table
+## Additional Story Gaps / Proposed Story Items
 
-| Story | Criterion | Status |
-|-------|-----------|--------|
-| US-M1 | Page 1 complete: name, contact, summary, achievements, education visible | ✅ Pass |
-| US-M1 | Summary is role-specific (job title, years, differentiator) | ⚠️ Partial |
-| US-M1 | Page 1 no overflow | ⚠️ Partial |
-| US-M1 | Page 1 no unbalanced whitespace | 🔲 Not Implemented |
-| US-M2 | Every bullet starts with strong action verb | ✅ Pass |
-| US-M2 | Each job entry has ≥2 bullets | ✅ Pass (stale corrected cycle 71) |
-| US-M2 | Bullets ≤2 lines each | ✅ Pass (stale corrected cycle 71) |
-| US-M2 | Job entries not split across pages | ✅ Pass |
-| US-M2 | Relevance-ordered bullets within each entry | ✅ Pass |
-| US-M2 | System warns if bullet lacks action verb | ✅ Pass |
-| US-M3 | Skills grouped into named categories | ✅ Pass |
-| US-M3 | Categories ordered by relevance to role | ✅ Pass |
-| US-M3 | No duplicate skills | ✅ Pass |
-| US-M3 | Skills section ≤1.5 sidebar columns | 🔲 Not Implemented |
-| US-M4 | page-break-inside: avoid on job entries | ✅ Pass |
-| US-M4 | Sidebar content balanced across pages | ⚠️ Partial |
-| US-M4 | Page count 2–3, hard gate if 1 or >3 (GAP-05 resolved) | ✅ Pass |
-| US-M4 | Publications only when role-relevant | ⚠️ Partial |
-| US-M4 | Publications heading correct (Selected vs full) | ⚠️ Partial |
-| US-M5 | Fonts embedded in PDF | ⚠️ Partial |
-| US-M5 | Sidebar background on every page | ✅ Pass |
-| US-M5 | No content clipped at margins | ⚠️ Partial |
-| US-M5 | Font Awesome icons rendered | ⚠️ Partial |
-| US-M5 | PDF visual QC against reference | 🔲 Not Implemented |
-| US-M6 | Company name + role title in paragraph 1 | ✅ Pass |
-| US-M6 | Company-specific reference in letter | ✅ Pass |
-| US-M6 | Body cites specific named achievements | ⚠️ Partial |
-| US-M6 | Closing ends with direct interview request | ✅ Pass |
-| US-M6 | Length within role-differentiated word range | ✅ Pass |
-| US-M6 | Tone applied based on employer type | ✅ Pass |
-| US-M7 | Section heading correct (Selected vs full) | ✅ Pass |
-| US-M7 | No count notation in heading | ✅ Pass |
-| US-M7 | Each entry: authors, title, venue, year | ✅ Pass |
-| US-M7 | Count matches applicant confirmation | ✅ Pass |
-| US-M7 | Publications always final section | ✅ Pass |
-| US-M7 | Venue-less entries flagged during Customisation | ✅ Pass |
+**GAP-HM-NEW-01: Auto-suggest cover letter tone from job analysis**
+Job analysis extracts `domain` and `culture_indicators` (`master_data_routes.py:1604`). A simple mapping to pre-select the tone dropdown (or display a hint) would prevent the common error of generating a pharma cover letter with startup language.
+
+**GAP-HM-NEW-02: Cover letter word count standard target mismatch**
+Backend targets 250–300w for standard roles (`master_data_routes.py:122`); story spec requires 300–400w. Align both backend prompt and client validation to the story spec range.
+
+**GAP-HM-NEW-03: Page 1 fullness advisory**
+Story (US-M1): flag if either column ends with a >2cm blank gap. No heuristic exists. Even a rough chars-on-page estimate would help prevent sparse-looking first pages.
+
+**GAP-HM-NEW-04: Summary does not validate role-title presence or years-of-experience**
+`_validate_summary()` (cv_orchestrator.py:3607) checks skills but not job-title near-match or "X years of experience" language. Both are required by US-M1 acceptance criteria for the summary.
+
+**GAP-HM-NEW-05: 0-bullet job entry not guarded**
+`cv_orchestrator.py:4470` — advisory fires only for count == 1. A job with all bullets rejected (count == 0) renders as a bare title with company/dates only. This is a credibility failure. Add a hard advisory (or gate) for count == 0.
+
+**GAP-HM-NEW-06: Publication count in review UI vs. story intent**
+`publications-review.js:72–73` shows "N of M publications recommended." If the story intent is that candidates should never see the total count (to prevent prestige-signalling pressure), the "of M" portion should be removed from the UI context note. If the intent is only for generated documents, this is N/A.
 
 ---
 
-## Open Issues Identified
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/routes/master_data_routes.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py, web/cover-letter.js, web/publications-review.js, web/skills-review.js, templates/cv-template.html
 
-**GAP-NEW-HM-01** — `✅` Minimum-bullet-count advisory exists (US-M2 AC2.2) — stale; corrected cycle 71: `_detect_sparse_experiences()` at `cv_orchestrator.py:5100` detects entries with fewer than `min_bullets=2` bullets and surfaces a yellow warning card in the Download tab (`download-tab.js:417–426`). Generation is not blocked (advisory only), which is consistent with the acceptance criterion as stated.
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|-------|---------|-----------|--------|------------|-------|
+| US-M1 | 6 | 1 | 0 | 1 | 0 |
+| US-M2 | 7 | 2 | 0 | 0 | 0 |
+| US-M3 | 5 | 1 | 0 | 0 | 0 |
+| US-M4 | 6 | 3 | 0 | 0 | 0 |
+| US-M5 | 5 | 2 | 0 | 0 | 0 |
+| US-M6 | 6 | 2 | 0 | 0 | 0 |
+| US-M7 | 7 | 0 | 1 | 0 | 0 |
 
-**GAP-NEW-HM-02** — `✅` Long-bullet advisory exists (US-M2 AC2.3) — stale; corrected cycle 71: `_detect_long_bullets()` at `cv_orchestrator.py:5075` uses a `max_chars=200` character-count heuristic to detect over-long bullets and surfaces a yellow warning card in the Download tab (`download-tab.js:406–415`). The check is a character-count approximation (not a rendered-line-count), but the advisory mechanism exists.
+**Key evidence references:**
+- US-M1 name prominence: `cv-template.html:210–218` — `.name { font-size: 2.2rem }`
+- US-M1 page-1 overflow (no gate): `cv_orchestrator.py:5796–5814` — total page count only
+- US-M1 whitespace (not implemented): no check found in cv_orchestrator.py or layout-instruction.js
+- US-M2 weak verb detection: `cv_orchestrator.py:4336–4354`
+- US-M2 2-bullet advisory: `cv_orchestrator.py:4465–4483`
+- US-M2 0-bullet gap: `cv_orchestrator.py:4470` — `if bullet_count == 1:` only
+- US-M3 skill deduplication: `cv_orchestrator.py:506–529`
+- US-M3 category ordering: `cv_orchestrator.py:558–583`
+- US-M4 page-break-inside: `cv-template.html:278–281`
+- US-M4 sidebar fill: `cv-template.html:383–401`
+- US-M5 CDN fonts risk: `cv-template.html:21–22`
+- US-M5 font embedding check: `cv_orchestrator.py:5751–5791`
+- US-M6 tone guidance dict: `master_data_routes.py:97–103`
+- US-M6 word count mismatch: `master_data_routes.py:118–122` (250–300w) vs. story 300–400w
+- US-M6 tone default hardcoded: `cover-letter.js:246` — `|| 'startup/tech'`
+- US-M6 para1 check: `cover-letter.js:583–605`
+- US-M7 heading conditional HTML: `cv-template.html:692–696`
+- US-M7 heading conditional DOCX: `cv_orchestrator.py:4950–4951`
+- US-M7 first-author star: `cv-template.html:709–711`
+- US-M7 pub count in UI: `publications-review.js:70–73`
 
-**GAP-NEW-HM-03** — `🔲` Skills section size not enforced (US-M3 AC3.4): No check verifies that the skills section fits within 1.5 sidebar columns. The `max_skills` parameter caps count but not rendered height.
-
-**GAP-NEW-HM-04** — `🔲` No automated column-balance whitespace check (US-M1 AC1.4): The layout estimator does not detect large bottom-of-column blank areas. Requires pixel-level measurement or a layout-digest heuristic.
-
-**GAP-NEW-HM-05** — `⚠️` Font Awesome and Google Fonts depend on CDN availability at PDF render time (`cv-template.html:21-22`): In offline or headless server environments, icons render as empty squares and fonts fall back to system fonts. Consider bundling FA and Inter/Merriweather font files.
-
-**GAP-NEW-HM-06** — `⚠️` Publications not automatically suppressed for non-research roles (US-M4 AC4.4): The system selects and scores publications by relevance, but always includes them if present. An explicit role-type gate (suppressing publications for pure business/leadership/industry roles) is not implemented.
-
-**GAP-NEW-HM-07** — `✅ RESOLVED (cycle 80)` Cover letter paragraph-1 company/role verification: `_validateCoverLetter` in `cover-letter.js` now extracts the first body paragraph and checks that both company name (`_lastAnalysisData.company_name`) and role title (`_lastAnalysisData.title`) appear in it. Renders pass/warn/fail with a detail message identifying any missing term. 4 new unit tests.
-
-**GAP-NEW-HM-08** — `✅ RESOLVED (cycle 80)` Venue-less publications now render `[venue unavailable]` in both the HTML output (`templates/cv-template.html`, `.pub-venue-warning` class, amber italic) and both DOCX generators in `cv_orchestrator.py` (`_generate_ats_docx` appends the string; `_generate_human_docx` adds an italic amber-coloured run).
+**Evidence standard:** Every conclusion supported by file:line evidence. No findings taken from tasks/gaps.md or tasks/ui-review.md.

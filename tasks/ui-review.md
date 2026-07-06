@@ -1,352 +1,295 @@
 <!--
   Copyright (C) 2026 Gregory R. Warnes
   SPDX-License-Identifier: AGPL-3.0-or-later
+
+  This file is part of CV-Builder.
+  For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# CV Builder UI Review — Cycle 29
+# UI Review — Cycle 82
 
-**Date:** 2026-07-01
+**Date:** 2026-07-06
 **Branch:** `feature/multi-user-deployment`
-**Commit baseline:** `5aedf24` (code-review fixes — empty-string guard + template path constant)
-**Personas reviewed:** 14 persona sub-agents + 1 heuristic sub-agent (15 total)
-**New gaps added this cycle:** GAP-271 through GAP-295 (25 new entries)
+**Personas evaluated:** 15 persona sub-agents + 1 heuristic sub-agent
+**Method:** Source-first, evidence-cited review. All conclusions backed by file:line references.
 
 ---
 
-## Executive Summary
+## Summary Counts
 
-### Cycle 27–28 Fixes Confirmed Working
+| Persona | Stories | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|---------|---------|---------|-----------|--------|------------|-------|
+| Applicant (US-A*) | 16 | 90 | 8 | 1 | 3 | 0 |
+| UX Expert (US-U*) | 9 | 35 | 12 | 0 | 1 | 4 |
+| Resume Expert (US-R*) | 7 | 29 | 7 | 0 | 0 | 0 |
+| Hiring Manager (US-M*) | 7 | 42 | 11 | 1 | 1 | 0 |
+| Persuasion Expert (US-P*) | 6 | 20 | 8 | 0 | 2 | 1 |
+| HR/ATS (US-H*) | 8 | 44 | 8 | 0 | 1 | 1 |
+| Accessibility Specialist (US-X*) | 4+generated | 16 | 7 | 5 | 0 | 0 |
+| First-Time User (US-F*) | 3 | 3 | 10 | 1 | 0 | 0 |
+| Returning User (US-S*) | 3 | 9 | 0 | 0 | 0 | 0 |
+| Power User (US-W*) | 3+generated | 20 | 4 | 0 | 0 | 0 |
+| Recruiter/Ops (US-O*) | 3 | 6 | 6 | 0 | 0 | 0 |
+| Master CV Curator (US-M*) | 4 | 16 | 1 | 0 | 0 | 0 |
+| Trust & Compliance (US-C*) | 3+generated | 19 | 9 | 2 | 3 | 2 |
+| Graphical Designer (US-G*) | 3 | 6 | 6 | 0 | 0 | 0 |
+| Heuristic (Nielsen H1–H10 + extras) | 10+7 | 3 (Good) | 11 (Minor) | 3 (Major) | — | — |
 
-| Fix | GAP | Confirmed by |
-| --- | --- | --- |
-| Repeated-verb detection added to `check_persuasion()` | GAP-17 (PARTIAL advance) | Persuasion Expert |
-| Intake confirmation card source-verified as implemented | GAP-23 RESOLVED | Applicant |
-| Fallback HTML uses Jinja2 template matching primary path | GAP-132 RESOLVED | Resume Expert, Graphical Designer |
-| `:root {}` CSS design tokens block (8 tokens) | GAP-133 (PARTIAL) | Graphical Designer |
-| Template path extracted to class constants `_CV_TEMPLATE_FILE` | code-review fix | Resume Expert |
-| Empty-string guard `if not html_content:` | code-review fix | Resume Expert |
-
-### Overall Cycle 29 Verdict
-
-The core end-to-end workflow is solid and well-tested (1427 Python tests passing, 1 skipped). The primary remaining friction points are:
-
-1. **Five overlapping navigation layers** (header pills, position bar, 12-step nav, tab bar, action buttons) causing cognitive overload on first load
-2. **Dual nav systems** (workflow step pills vs. tab bar) with no visible relationship explained to users
-3. **WCAG accessibility violations** (focus outline removed at `styles.css:1651`, missing `aria-label` on spell-check buttons, focus stack bug in ATS modals)
-4. **Terminology inconsistency** (British/American English mixed; developer-centric labels: "LLM", "Temperature", "ATS DOCX", "list_models", "fallback_static")
-5. **Post-archive notes not wired** to sessions modal (PATCH endpoint exists in backend but no frontend field)
-
----
-
-## Status Summary by Persona
-
-| Persona | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | Key Findings |
-| --- | --- | --- | --- | --- | --- |
-| Applicant (US-A1–A12) | ~18 | ~8 | 7 | 0 | "queued" status missing; prior-session clarifications not pre-populated; skill inter-category move absent; re-run keyboard shortcut missing |
-| UX Expert (US-U1–U9) | 21 | 16 | 1 | 3 | Back-nav warning absent on step click; questions all-at-once; responsive overflow; focus outline removed |
-| Resume Expert (US-R*) | ~14 | 4 | 0 | 2 | Publication ranked shortlist absent; summary line-count not validated; pub journal names not spell-seeded |
-| Hiring Manager (US-M*) | 20 | 9 | 0 | 4 | Min-bullet-count NI; bullet line-length NI; CDN font dependency partial; venue-less pubs silent |
-| Persuasion Expert (US-P*) | ~10 | 4 | 0 | ~2 | No narrative-thread counter; pub omission rationale absent; cover letter word count overshoot |
-| HR/ATS (US-H*) | 15 | 5 | 5 | 0 | US Letter/font-embed not checked; download not blocked on fail; skill_type not harvested back |
-| Accessibility (US-X*) | 11 | 3 | 1 | 0 | Focus outline removed (WCAG AA); spell-check aria-label missing; ATS modal focus stack bug |
-| First-Time User (US-F*) | 3 | 3 | 0 | 0 | Unexplained terms on first load; 10-tab Customise overload; optional/required post-gen distinction |
-| Returning User (US-S*) | 7 | 2 | 0 | 0 | rerun affordance hover-only; no inline "Outdated" watermark in Rewrites/SpellCheck tabs |
-| Power User (US-W*) | 8 | 1 | 0 | 0 | No session text-search; changed-item count absent from re-run message; no bulk-decision undo |
-| Recruiter Ops (US-O*) | 7 | 2 | 1 | 0 | Post-archive notes not editable in sessions modal |
-| Master CV Curator (US-MC*) | 4 | 1 | 0 | 0 | Stale "Finalise tab" label; 409 error text mismatches UI terminology |
-| Trust/Compliance (US-C*) | 6 | 3 | 0 | 0 | Cold-restore silent; rewrite_audit invisible post-stage; customization soft gate only |
-| Graphical Designer (US-G*) | 6 | 6 | 0 | 0 | Token coverage still partial; duplicate @keyframes; no responsive breakpoint; CV header alignment |
-| **Heuristic** | H7🟢 | H1🟡H3🟡H5🟡H9🟡H10🟡 | H2🟠H4🟠H6🟠H8🟠 | — | Top critical: 5-layer nav overload; dual nav; button/content spatial mismatch |
+**Overall pass rate (named persona stories, excluding heuristic):** ~76% pass, ~18% partial, ~4% fail/not-impl.
 
 ---
 
-## Heuristic Evaluation Summary
+## Top 15 New Gaps by Severity
+
+These are newly discovered issues from Cycle 82 that are **not already tracked** in gaps.md (which covers through GAP-299).
+
+| Rank | Severity | Summary | Persona(s) | Key Evidence |
+|------|----------|---------|------------|-------------|
+| 1 | **CRITICAL** | No anti-fabrication instruction in LLM system prompt — rewrites may invent metrics or claims absent from master data | trust-compliance | `conversation_manager.py:424–495` |
+| 2 | **HIGH** | ATS HTML template missing `lang="en"` on `<html>` element | accessibility | `cv_orchestrator.py:1199` |
+| 3 | **HIGH** | Font Awesome icons in generated HTML CV missing `aria-hidden="true"` (section headings + contact icons) | accessibility | `CV_Genentech...html:702–714, 772–847` |
+| 4 | **HIGH** | Review sub-tab buttons (Experiences, Skills, etc.) missing `role="tab"`, `aria-selected`, `aria-controls` | accessibility | `review-table-base.js:672–676` |
+| 5 | **HIGH** | Model catalog table rows not keyboard-accessible (no `tabindex`/`keydown` on `<tr>`) | accessibility | `ui-core.js:1570–1626` |
+| 6 | **HIGH** | `--cv-card-bg` CSS variable undefined — position-style picker renders with transparent background | graphical-designer | `styles.css:1600` |
+| 7 | **HIGH** | `check_has_result_clause()` severity is `'info'` not `'warn'` — result-clause advisory badge never visibly surfaces | persuasion-expert | `llm_client.py:1259` |
+| 8 | **HIGH** | 6 structural ATS validation checks in `_NON_BLOCKING_CHECKS` are advisory-only, contradicting US-H6 "any fail blocks download" | hr-ats | `download-tab.js:151–161` |
+| 9 | **HIGH** | Duplicate `id` attributes on publication modal heading — `aria-labelledby` points to non-existent id; JS title update silently fails | master-cv-curator | `master-cv.js:316` |
+| 10 | **HIGH** | Alert modal uses separate focus stack from other modals — `_focusStack`/`_focusTrapStack` can diverge on nested modals | accessibility | `ui-helpers.js:34–49` |
+| 11 | **MEDIUM** | Generated Files tab shows no file timestamps despite `finalGeneratedAt` available in state | returning-user | `final-generate.js:155–180`, `state-manager.js:333` |
+| 12 | **MEDIUM** | Welcome modal fires for active-session returning users — no active-session guard | returning-user | `session-manager.js:175` |
+| 13 | **MEDIUM** | Cover letter defaults to `startup/tech` tone regardless of job domain; no auto-suggestion from analysis | hiring-manager | `cover-letter.js:246` |
+| 14 | **MEDIUM** | Cover letter word count mismatch: backend targets 250–300w, story requires 300–400w | hiring-manager, persuasion | `master_data_routes.py:122` |
+| 15 | **MEDIUM** | Zero-bullet job entries not blocked — advisory fires only for count==1; count==0 renders bare title | hiring-manager | `cv_orchestrator.py:4465–4470` |
+
+---
+
+## Heuristic Ratings — Nielsen's 10 + Additional UX Dimensions
 
 ### Nielsen's 10 Heuristics
 
-| # | Heuristic | Rating | Key Evidence |
-|---|-----------|--------|-------------|
-| H1 | Visibility of System Status | 🟡 Minor | `#llm-status-pill` 8-state system is good; defaults to `⚠ Not ready` with no CTA to fix it |
-| H2 | Match Between System and Real World | 🟠 Major | "Harvest", "Temperature", "ATS DOCX", "LLM", "list_models", "fallback_static" are developer-centric; British/American English mixed |
-| H3 | User Control and Freedom | 🟡 Minor | Stop button + session conflict options work; `window.confirm` fallback coexists with `confirmDialog` |
-| H4 | Consistency and Standards | 🟠 Major | British/American English mixing pervasive; two confirm-dialog implementations; CTA buttons inconsistently use arrows |
-| H5 | Error Prevention | 🟡 Minor | Pre-rewrite gate exists; LLM busy overlay prevents double-submit; empty profile doesn't block session start |
-| H6 | Recognition Rather Than Recall | 🟠 Major | 23 tabs visible simultaneously before filtering; tab labels ("Ach-editor", "Goals") don't convey action or state |
-| H7 | Flexibility and Efficiency | 🟢 Good | Keyboard shortcuts (Ctrl+Enter, A/R/arrows); recent models list; session recents strip; auto-save |
-| H8 | Aesthetic and Minimalist Design | 🟠 Major | 5 header pill buttons, 6 position-bar controls, 12 step pills, 23 tabs — all visible simultaneously |
-| H9 | Help Users Recognize / Recover from Errors | 🟡 Minor | Raw `❌ Model switch failed: ${msg}` messages lack next-step guidance |
-| H10 | Help and Documentation | 🟡 Minor | Help modal is context-free — same welcome modal regardless of where user is stuck |
+| # | Heuristic | Rating | Key Finding |
+|---|-----------|--------|------------|
+| H1 | Visibility of System Status | 🟡 Minor | Dead `#llm-status-bar` region; `#llm-busy-state-badge` timing unpredictable; token count shown without limit label |
+| H2 | Match Between System and Real World | 🟡 Minor | "ATS," "Harvest," "LLM," "Master CV," "Authentication" (conflates API key + OAuth) — opaque without tooltips |
+| H3 | User Control and Freedom | 🟡 Minor | `window.confirm()` still used; no multi-step undo for experience/skill decisions; "Take Over" has no data-loss warning |
+| H4 | Consistency and Standards | 🟡 Minor | Mixed UK/US English in same workflow step; two modal close-button patterns; tab slug naming inconsistency |
+| H5 | Error Prevention | 🟠 **Major** | Un-review gate uses suppressible `window.confirm()`; LLM wizard closeable during active test; "Take Over" irreversible without warning |
+| H6 | Recognition Rather Than Recall | 🟡 Minor | Action buttons disappear with no inactive placeholder; provider/model settings require recall of internal key strings |
+| H7 | Flexibility and Efficiency | 🟢 Good | Full keyboard shortcut system; bulk accept/reject; compact rewrite mode; non-linear step navigation |
+| H8 | Aesthetic and Minimalist Design | 🟡 Minor | 12-step workflow nav; 10 simultaneous Customise sub-tabs; 5-control header; three chrome rows consume ~210px |
+| H9 | Help Users Recognise, Diagnose, and Recover | 🟡 Minor | Connection failures revert to auth step without diagnostic; conflict banner offers no cause explanation |
+| H10 | Help and Documentation | 🟡 Minor | Help modal is static, stage-unaware; no inline contextual help on review tabs; Harvest tooltip hover-only |
 
-### Top 5 UX Issues
+### Additional UX Dimensions
 
-| Rank | Severity | Issue | Evidence |
-|------|----------|-------|----------|
-| 1 | 🔴 Critical | **Five simultaneous navigation layers** cause cognitive overload on first load | index.html:44–70 (header), 75–111 (position bar), 122–148 (workflow nav), 206–234 (tabs), 183–199 (action buttons) |
-| 2 | 🔴 Critical | **Dual navigation systems** (12-step workflow bar vs. tab bar) have no visible relationship; `STAGE_TABS` mapping is internal-only | ui-core.js:349–362 vs index.html:122–148 and 206–234 |
-| 3 | 🟠 Major | **Generation pipeline requires 4 sequential clicks in different UI locations** with no connecting explanation | index.html:194–198; app.js:152–155 |
-| 4 | 🟠 Major | **Action buttons in left chat panel; content in right viewer panel** — when chat collapses, CTAs disappear with no fallback | index.html:157, 183–199 |
-| 5 | 🟠 Major | **LLM status defaults to `⚠ Not ready`** with no affordance to configure | index.html:56–58; ui-core.js:760–800 |
+| Dimension | Rating | Key Finding |
+|-----------|--------|------------|
+| Cognitive Load | 🟠 **Major** | 10 simultaneous Customise tabs with no progress indicator; split-panel forces cross-region context switching |
+| Visual Hierarchy | 🟡 Minor | All primary action buttons equal weight; 210px chrome before workspace |
+| Information Architecture | 🟡 Minor | "File Review" / "Generated Files" / "Download Generated Files" — three labels for same stage |
+| Workflow Momentum | 🟡 Minor | No Customise-stage progress counter visible; `_explicitlyReviewed` gate hidden until user tries to advance |
+| Feedback Loops | 🟢 Good | Elapsed LLM timer; toast notifications with aria-live; ATS score auto-refresh; layout freshness chip |
+| Error Recovery | 🟡 Minor | No Retry button adjacent to conversation error message; analyze-btn may stay disabled after failure |
+| Affordance Clarity | 🟡 Minor | Upcoming vs. clickable step pills visually indistinct; toggle-chat glyph unclear |
+| Terminology Clarity | 🟡 Minor | "Customise" (10 tasks), "Harvest," "ATS DOCX," "Copilot multiplier" — opaque without hover |
 
-### Terminology Labeling: Critical Issues
+### Top 5 Heuristic Issues by Impact
 
-| Label | Location | Issue |
-|-------|----------|-------|
-| `"Harvest"` | index.html:146 | Agricultural metaphor; users won't know this writes back to Master CV |
-| `"Temperature"` | index.html:610 | LLM parameter, not a user concept; should be in Advanced section |
-| `"LLM"` / `"LLM Configuration Wizard"` | index.html:53, 425 | Technical acronym; should be "AI Model" / "AI Provider Setup" |
-| `"ATS DOCX"` / `"Human PDF"` | index.html:642–645 | Format-system distinction invisible to users; needs plain-language labels |
-| `"list_models"` / `"fallback_static"` | ui-core.js:1554–1558 | Internal API source labels exposed in model table |
-| `"Customise"` (British) vs. `"Customizations"` (American) | index.html:128, STAGE_TABS | Mixed English standards throughout |
-| `"Experiences"` vs. `"Experience Bullets"` (two sibling tabs) | index.html:212–213 | Nearly identical names; distinction invisible |
-| `"Goals"` tab | index.html:210 | Refers to generation targets, not user career goals |
-| `"Package Application Files"` | index.html:198 | Ambiguous — "Finalise" used elsewhere for same action |
+1. **🟠 Major — Cognitive overload in Customization stage:** 10 simultaneous tab panels, no stage-level progress counter, `_explicitlyReviewed` gate invisible, `window.confirm()` gate suppressible. Highest abandonment risk point. (`app.js:128–142`, `ui-core.js:354–366`)
+2. **🟠 Major — 210px chrome height reduces usable workspace:** Three stacked rows (header ~80px, position bar ~70px, workflow nav ~60px) consume ~210px before main panel. At 768px viewport, workspace is ~558px. (`styles.css:449`)
+3. **🟠 Major — "Take Over" destructive action has no warning:** Ownership conflict button performs irreversible ownership claim with no data-loss warning; `window.confirm()` remains adjacent. (`index.html:413–416`, `app.js:139`)
+4. **🟡 Minor — Action buttons disappear with no inactive placeholder:** Workflow action buttons use `display:none`; returning users must infer state from conversation history alone. (`index.html:189–199`)
+5. **🟡 Minor — Dual LLM status displays with one dead region:** `#llm-status-bar` is permanently `display:none`; code updating it produces invisible feedback, creating a maintenance trap. (`index.html:175–178`)
 
 ---
 
-## Persona Findings (Detail)
+## Full Persona Reviews
 
-### Applicant (US-A1–A12)
+### Applicant Persona (US-A1–US-A12)
 
-**Pass highlights:** URL fetch with protected-site warnings; clarification questions with button choices; rewrite card diff + submit gate; HTML preview + JSON-LD; cover letter DOCX+PDF; Harvest opt-in; change badges on re-run.
+**Overall:** Strong implementation. Core intake-through-generation pipeline is complete and solid. 90 pass, 8 partial, 1 fail across 16 stories.
 
-**Confirmed gaps:**
-- "queued" application status not in lifecycle — US-A1 ❌
-- Prior-session clarification answers not pre-populated — US-A2 🔲
-- Skill inter-category move absent in skills review UI — US-A3 🔲
-- Layout-refine has no clarification loop for ambiguous instructions — US-A5b 🔲
-- Total session time absent from finalise confirmation summary — US-A9 ❌
-- Natural-language / document ingestion paths for master CV updates — US-A10 🔲
-- Keyboard shortcut for re-run not in keyboard-shortcuts.js — US-A12 ❌
+**Passing highlights:** URL/paste/upload intake (US-A1 ✅); analysis with clarification Q&A and prior-answer reuse (US-A2 ✅ 6/7); full review surface with confidence badges, up/down ordering, bulk actions (US-A3 ✅ 7/7); rewrite review with LCS word diff, weak-evidence badges, bulk controls, compact mode (US-A4 ✅ 8/8); spell-check pipeline (US-A4b ✅ 7/7); HTML preview then PDF+DOCX final generation (US-A5a–US-A5c ✅); finalise+archive with git commit and readiness checklist (US-A9 ✅ 5/5).
+
+**Key gaps:** Mismatch analysis UI absent (LLM prompt only, no structured panel); category creation not implemented in skills tab (🔲); "Persuasion checks" label is internal jargon; NL→JSON master CV update and document ingestion absent (US-A10, 🔲); ↻ re-run button hover-only at 0.55 opacity; Interview Prep tab is a placeholder stub with no "Coming soon" label.
+
+**Terminology issues:** "LLM:" pill, "ATS" unexplained on first use, "🌾 Harvest" opaque, UK/US spelling mix, re-run affordance touch/keyboard gap, "File Review" passive framing.
 
 ---
 
-### UX Expert (US-U1–U9)
+### UX Expert Persona (US-U1–US-U9)
 
-**Pass highlights:** Workflow step diff (active/completed/stale/forward-skip) with sr-only text; session restoration context; analysis result chunking with ranked keyword badges; rewrite diff + rationale; keyboard shortcuts for review cards; undo stack in layout review.
+**Overall:** Strong foundations in workflow orientation, rewrite review, and layout instructions. Key gaps in analysis chunking, session return context, and skeleton loading.
 
-**Confirmed gaps:**
-- Completed step click navigates silently without downstream-aware warning — US-U1 ⚠️ (only ↻ button triggers confirm; direct click does not)
-- All post-analysis questions rendered simultaneously — US-U3 ❌ (story calls for ≤3 at a time)
-- Relevance/confidence scores lack explicit scale — US-U4 ⚠️
-- `styles.css:1651` removes `outline` on `.intake-field-row input:focus` with no replacement — US-U7 ❌ (WCAG 2.1 AA violation)
-- 12-step workflow nav overflows horizontally at narrow widths (no media query) — US-U8 ⚠️
-- Color-only rewrite card state — no text label "Accepted"/"Rejected" — US-U7 ⚠️
+**Passing highlights:** Workflow steps bar with 4 visual states; job input with 3 tabs + protected-site guidance; rewrite review LCS diff with collocated actions (US-U5 ✅ 5/5); generation progress checklist (US-U6 ✅); layout review with per-entry Undo (US-U9 ✅ 7/8).
+
+**Key gaps:** No "Welcome back — you left off at [Step] for [Job Title]" banner on session restore; analysis output renders in conversation panel as scrolling message, not structured cards in viewer pane; ATS keywords are flat equal-weight badges (no rank tier); mismatch panel completely absent (🔲); no skeleton/shimmer CSS pattern for async content areas; multiple-run version label only appears after first run.
+
+**Terminology:** "Customise" / "Customizations" / "Recommend Customizations" — three forms; "File Review" / "Download Files" — two names for same step.
 
 ---
 
-### Resume Expert (US-R*)
+### Resume Expert Persona (US-R1–US-R7)
 
-**Pass highlights:** Metric-preservation gate via `apply_rewrite_constraints()`; 10-check persuasion pipeline; relevance-primary bullet sort; synonym deduplication; full rewrite audit trail.
+**Overall:** Core selection, rewrite, and audit pipeline is excellent. Minor gaps in publication ranking criteria and summary validation depth.
 
-**Confirmed gaps:**
-- Publication ranked shortlist with per-item relevance scores not shown before accept/reject — US-R2 ⚠️
-- Summary line-count (4–6 lines) not validated; only word count (40–250) checked — US-R4 ⚠️
-- Opening summary sentence structure (role type + years + differentiator) not validated — US-R4 ⚠️
-- Publication author/journal names not seeded into custom spell dictionary — US-R7 minor
+**Passing highlights:** Required/preferred split, synonym deduplication (US-R1); recency bias avoidance, bullet reordering (US-R2); skills optimization (US-R5 ✅ 5/5); rewrite audit traceability (US-R6 ✅ 4/4); spell-check with context-aware rules (US-R7 ✅ 7/7).
+
+**Key gaps:** `is_first_author` detected and shown (star indicator, `publications-review.js:148`) but contributes 0 points to `_select_publications()` scoring (`cv_orchestrator.py:3764–3806`); ranked publication shortlist not presented proactively; `_validate_summary()` validates word count (40–250w) but not line count (4–6 lines per story spec); publication dictionary not seeded with journal/author names — false positives possible.
 
 ---
 
-### Hiring Manager (US-M*)
+### Hiring Manager Persona (US-M1–US-M7)
 
-**Score: 20 Pass / 9 Partial / 0 Fail / 4 Not Implemented**
+**Overall:** Generated CV template strong — layout, hierarchy, page-flow controls well implemented. Cover letter and edge-case content checks are partial.
 
-**Pass highlights:** Bullet sort by keyword overlap; page-break-inside:avoid on job entries; page-count hard gate; skills deduplication + role-aware category order; cover letter tone differentiation.
+**Passing highlights:** Name/contact/summary/achievements layout (US-M1 partial); action verb and metric advisories (US-M2 partial); skills deduplication and category ordering (US-M3); multi-page sidebar fill, page count 2–3 (US-M4 partial); publications heading logic (US-M7 partial).
 
-**Not implemented:**
-- Minimum 2 bullets per job entry enforcement (GAP-266 existing)
-- Individual bullet rendered-line-count check (GAP-267 existing)
-- Skills section rendered column-height enforcement
-- PDF visual regression against reference screenshot
-- Column-balance whitespace measurement
-
-**Key partials:** Font Awesome + Google Fonts CDN-dependent (offline/headless risk); sidebar content-empty on pages 2+; venue-less publications silent in generated PDF/DOCX.
+**Key gaps:** No automated page-1 fullness advisory; zero-bullet job entry (all bullets rejected) renders bare job title — advisory fires only for count==1, not count==0 (`cv_orchestrator.py:4470`); cover letter hardcoded `startup/tech` tone default; backend word count 250–300w vs. story spec 300–400w; Font Awesome + Google Fonts from CDN — offline render risk.
 
 ---
 
-### Persuasion Expert (US-P*)
+### Persuasion Expert Persona (US-P1–US-P6)
 
-**Pass highlights:** Hard metric-preservation gate; 10 persuasion checks including new repeated_verb (cycle 27); publication ranking by LLM relevance; cover letter CTA enforcement; batch terminology consistency check.
+**Overall:** Persuasion check engine is comprehensive (10 checks). Hard metric-preservation constraint via `apply_rewrite_constraints()` is the strongest implementation. Gaps in enforcement coverage and cross-document consistency.
 
-**Medium gaps (new):**
-- No runtime narrative-thread counter — "warns if >2 equally-weighted threads" unimplemented — US-P1
-- Publication omission rationale not surfaced — low-ranked items disappear silently — US-P2
-- Cover letter word count 300–400w standard (story specifies ≤300w) — US-P3
-- No cross-document register consistency check across CV / cover letter / screening — US-P6
+**Passing highlights:** Strong action verb, word count, passive voice, keyword appendage, positive metric framing (US-P4 5/7); CTA assertive check, filler phrases, company/role reference (US-P5 partial); batch terminology consistency (US-P6 partial).
+
+**Key gaps:** `check_has_result_clause()` fires as `'info'` not `'warn'` — result-clause badge never shows as amber; narrative-thread advisory fires at generate time, not during Customise phase; no parallel structure check; front-loading not checked; cover letter word count target 300–400w exceeds story ceiling ≤300w for standard roles; no cross-document narrative framing consistency.
 
 ---
 
-### HR/ATS (US-H1–H8)
+### HR/ATS Persona (US-H1–US-H8)
 
-**Pass highlights:** ATS DOCX no tables/shapes/headers; standard Heading 1 section labels; contact block format; weighted keyword scoring (2:1 hard/soft); 17-check post-gen validation; live score badge; hard/soft DOCX split.
+**Overall:** Strong ATS DOCX structure — zero tables, correct heading hierarchy, calibri fonts, JSON-LD schema.org/Person. Key gaps in non-blocking check alignment and acronym injection.
 
-**Confirmed fails:**
-- PDF US Letter page size not verified programmatically — US-H1 ❌
-- PDF font embedding not verified — US-H1 ❌
-- Candidate name casing not validated (all-caps, lowercase) — US-H3 ❌
-- ATS validation fail does NOT block download — US-H6 ❌
-- `skill_type` classification not written back to `Master_CV_Data.json` via harvest — US-H8 ❌
+**Passing highlights:** Zero tables/shapes, contact in body, calibri fonts, JSON-LD (US-H1–H2 ✅); phone normalization (US-H3 ✅); keyword presence check, synonym matching (US-H4 partial); 2:1 weighted ATS score (US-H7 partial); hard/soft DOCX split, JSON-LD `additionalType` (US-H8 partial).
 
-**Partials:** LinkedIn URL may be shortened form (no https:// enforcement); year-only date only warns post-generation; bonus keywords show Matched badge per-row instead of distinct ★; `hasOccupation` uses `Role` not `Occupation` type.
+**Key gaps:** `_NON_BLOCKING_CHECKS` exempts 6 structural failures from blocking download, contradicting "any fail blocks download" (`download-tab.js:151–161`); acronym + full form not injected (🔲, `US-H4`); JSON-LD validation checks only `name` and `email` (not `telephone`, `hasOccupation`); "Basis: review_checkpoint" developer label exposed verbatim in ATS Score modal.
 
 ---
 
-### Accessibility Specialist (US-X*)
+### Accessibility Specialist Persona (US-X1–US-X3 + Generated Materials)
 
-**Pass highlights:** Full WCAG 2.1 tab keyboard pattern; `_focusStack`/`trapFocus`/`restoreFocus` on all primary modals; `role="dialog" aria-modal="true" aria-labelledby`; `aria-pressed` on review buttons; `#workflow-stage-announcer` aria-live; `prefers-contrast: more` outlines; `prefers-reduced-motion` suppression.
+**Overall:** Solid foundation — focus management, focus traps, keyboard navigation, live regions, reduced-motion, and high-contrast media queries all implemented. Five clear failures remain.
 
-**Confirmed gaps:**
-- `styles.css:1651` removes `outline` on `.intake-field-row input:focus` with no visual replacement — WCAG 2.1 AA Level violation ❌
-- Spell-check action buttons ("Apply", "Ignore", "Add to Dictionary") use `title` only — no `aria-label` ⚠️
-- `openAtsReportModal()` and `openJobAnalysisModal()` call `trapFocus` without pushing to `_focusStack` — focus restored to wrong element on close ⚠️
-- Settings modal + master-CV editor form inputs lack `aria-describedby` and `aria-invalid` ⚠️
+**Failures (❌):**
+- Review sub-tab buttons are plain `<button>` with CSS `.active` only — no `role="tab"`, `aria-selected`, `aria-controls` (`review-table-base.js:672–676`)
+- Model catalog table rows click-only — no `tabindex`, `role`, or `keydown` handlers on `<tr>` (`ui-core.js:1570–1626`)
+- Font Awesome icons in generated HTML CV section headings lack `aria-hidden="true"` (`cv_orchestrator.py` templates)
+- Sidebar contact icons in generated HTML lack `aria-hidden="true"`
+- ATS DOCX HTML template: `<html><head>` without `lang="en"` (`cv_orchestrator.py:1199`)
 
----
-
-### First-Time User (US-F*)
-
-**Pass highlights:** Onboarding modal adapts to 3 states (missing profile / empty / ready); "? Help" button always accessible; Analyse Job button highlights when description loaded but unanalyzed.
-
-**Confirmed gaps:**
-- "Rewrites", "Customise", "Layout Review", "Harvest" appear on first load with no explanation — US-F1 ⚠️
-- Customise stage exposes 10 tabs simultaneously with no recommended visit order or required/optional labels — US-F2 ⚠️
-- "Generated Files" vs "File Review" tab distinction not communicated — US-F3 ⚠️
-- Post-generation steps (Cover Letter through Harvest) have no "optional" label — US-F3 ⚠️
-- ATS DOCX vs Human PDF distinction unexplained at download surface — US-F3 ⚠️
+**Partial failures:** Alert modal focus stack isolation (`ui-helpers.js:34–49`); `confirmDialog()` `aria-labelledby` targets a `<p>` not a heading; secondary text contrast ~4.0:1 (below AA 4.5:1); `.toggle-chat` has no `:focus-visible` rule.
 
 ---
 
-### Returning User (US-S*)
+### First-Time User Persona (US-F1–US-F3)
 
-**Pass highlights:** `restoreBackendState()` comprehensive; downstream-awareness dialogs have distinct text for back-nav vs re-run; stale-step detection + `contentRevision` freshness model.
+**Overall:** Onboarding modal well-structured. Job Input clear. Customise stage and generation pipeline confusing for first-time users.
 
-**Confirmed gaps:**
-- ↻ rerun affordance on completed step pills is hover/focus-only — not persistently discoverable — ⚠️
-- No inline "Outdated" watermark in Rewrites/SpellCheck content panels when step is stale; only the step pill turns amber — ⚠️
+**Failure (❌):** Relationship between "Generate Preview →", "Open Layout Review →", "Confirm Layout", and "Continue to File Review →" is not explained as a pipeline (`index.html:193–198`).
 
----
-
-### Power User (US-W*)
-
-**Pass highlights:** Keyboard shortcuts fully implemented (`keyboard-shortcuts.js`); session switcher with sortable table + status badges; 3 persistent session-identity signals; re-run clarification amend modal; change badges after re-run.
-
-**Remaining gaps:**
-- No text-search filter in sessions modal (scroll to find by company/role) — W2
-- Changed-item count absent from assistant re-run message (per-item badges exist, no aggregate total) — W3
-- No undo for bulk review-table actions (Exclude All) — W1
+**Key gaps:** Customise stage exposes 9+ tabs simultaneously with no orientation; "Goals" tab contains document length constraints — label/content mismatch; "Harvest," "ATS," "ATS DOCX," "Non-confidential" require hover to understand; post-layout optional steps (Cover Letter, Screening, Interview Prep, Thank You, Harvest) unlock simultaneously with no distinction from required steps.
 
 ---
 
-### Recruiter Ops (US-O*)
+### Returning User Persona (US-S1–US-S3)
 
-**Pass highlights:** `_collectDownloadableFiles()` builds typed deduplicated file list; 6 human-readable application status options; freeform notes textarea with character counter; file naming uses `{Company}_{Role}_{timestamp}` convention.
+**Overall:** All 9 criteria across 3 stories pass. Three new observations added this cycle.
 
-**Confirmed gaps:**
-- Post-archive notes NOT editable from sessions modal — `PATCH /api/sessions/metadata` accepts `notes` but `session-switcher-ui.js` has no notes field — ❌
-- Dual-tab ambiguity in Download stage — "Generated Files" and "File Review" roles unexplained to each other — ⚠️
-- `cvData.metadata?.generation_date` can be absent, leaving download cards silent — ⚠️
+**All stories pass (US-S1 ✅ 3/3, US-S2 ✅ 3/3, US-S3 ✅ 3/3).**
 
----
-
-### Master CV Curator (US-MC*)
-
-**Pass highlights:** Phase-gated write access at both backend and UI; Harvest opt-in only; Import BibTeX modal with per-entry validation; Convert Text → BibTeX → review → import pipeline.
-
-**Confirmed gaps:**
-- Stale label: `web/master-cv.js:~285` says "The Harvest feature (Finalise tab)…" — should be "Harvest tab"
-- 409 error message says "post-job finalise workflow" — mismatches visible UI term "Harvest step" / `refinement` phase
-- Phase-lock banner not repeated within Publications section; curators scrolled down may miss it
+**New observations (Cycle 82):**
+- Welcome modal fires for active-session returning users — no active-session guard in `maybeShowWelcomeModal()` (`session-manager.js:175`)
+- Generated Files tab shows no file timestamps despite `finalGeneratedAt` available in state (`final-generate.js:155–180`, `state-manager.js:333`)
+- Root URL access always requires full sessions modal navigation — no auto-resume shortcut for single active session (`session-manager.js:457–467`)
 
 ---
 
-### Trust / Compliance (US-C*)
+### Power User Persona (US-W1–US-W3)
 
-**Pass highlights:** Word-level `<del>`/`<ins>` diff on all rewrite cards; explicit accept/edit/reject with `aria-pressed`; submit gate requires all cards decided AND persuasion warnings acknowledged; Harvest is fully opt-in; download tab cross-checks rewrite audit mismatches.
+**Overall:** Strong power-user feature set — keyboard shortcuts, bulk actions, re-run affordances, layout undo, session management. Two key gaps in keyboard coverage and session quick-access.
 
-**Confirmed gaps:**
-- `rewrite_audit` not surfaced post-stage — audit log disappears once user advances past Rewrites (GAP-265 existing)
-- Rationale section silently absent when orchestrator doesn't populate `r.rationale`
-- Customization stage has soft gate only (browser `confirm`); unreviewed AI recommendations apply silently
-- Cold-restore of prior rewrite decisions fires without user notification
-- "Non-confidential" badge only fires when `confidential: false`; undefined means no badge for most providers
+**All US-W3 criteria pass (8/8).** US-W1 5/7, US-W2 5/7.
+
+**Key gaps:** `_getCards()` in `keyboard-shortcuts.js:65–69` returns cards only for `rewrite` or `spell` tabs — Experiences, Skills, Achievements tabs have no keyboard card navigation; single-level bulk undo only (`_bulkUndoSnapshot` stores one state); session switching always opens full 980px modal; compact mode is Rewrites-only.
 
 ---
 
-### Graphical Designer (US-G*)
+### Recruiter/Ops Persona (US-O1–US-O3)
 
-**Score: 6 Pass / 6 Partial (unchanged from cycle 28)**
+**Overall:** File naming, metadata capture, and archive flow are solid. Discoverability of the Finalise step and terminology are the main issues.
 
-GAP-133 advance: `:root {}` block with 8 tokens is a real improvement but status/semantic colors (`#10b981`, `#ef4444`, etc.) remain hardcoded; GAP-133 remains PARTIAL.
-
-GAP-DESIGN-06 resolved: `cv-style.css` now uses `'Inter'` font and `#2980b9` brand color matching `cv-template.html`.
-
-**Still-open gaps:**
-- Emoji-dominant icon language; Font Awesome underused (GAP-DESIGN-01)
-- Inline-style proliferation in JS-rendered HTML (GAP-DESIGN-02)
-- Missing `--cv-success`, `--cv-danger`, `--cv-warning` tokens (GAP-133 PARTIAL)
-- Duplicate `@keyframes spin` at `styles.css:930` and `1494`; redundant `@keyframes llm-spin` at line 574 (new)
-- No responsive breakpoint below 900px for two-panel layout (GAP-DESIGN-05)
-- CV header `text-align: center` inconsistent with left-aligned body grid (GAP-DESIGN-07)
+**Key gaps:** Finalise tab is `style="display:none"` and absent from `STAGE_TABS`; reached only via mislabeled "Package Application Files" button; readiness checklist visible only inside Finalise tab with no pre-entry signal; status values "queued" and "parked" are pipeline jargon; final HTML files lack "not for direct submission" advisory.
 
 ---
 
-## New Gaps — Cycle 29
+### Master CV Curator Persona (US-M1–US-M4)
 
-| GAP | Severity | Persona(s) | Description |
-|-----|----------|------------|-------------|
-| GAP-271 | High | Accessibility, UX Expert | `styles.css:1651` removes `outline` on `.intake-field-row input:focus` with no visual replacement — WCAG 2.1 AA violation |
-| GAP-272 | High | Accessibility | Spell-check action buttons ("Apply", "Ignore", "Add to Dictionary") use `title` only, no `aria-label` — screen-reader inaccessible |
-| GAP-273 | High | Accessibility | `openAtsReportModal()` and `openJobAnalysisModal()` call `trapFocus` without pushing to `_focusStack`; `restoreFocus()` returns focus to wrong element |
-| GAP-274 | High | UX Expert, Applicant | Clicking a completed workflow step navigates silently — no destructive-action confirmation fired (only the ↻ button shows a confirm dialog) |
-| GAP-275 | Medium | UX Expert, Accessibility | Accepted/rejected rewrite cards communicate state via color and border only — no persistent text label "Accepted" / "Rejected" for color-blind users |
-| GAP-276 | High | Recruiter Ops | Post-archive notes not editable in sessions modal — `PATCH /api/sessions/metadata` accepts `notes` but `session-switcher-ui.js` has no notes input field |
-| GAP-277 | High | HR/ATS | ATS validation failures do not block file download — story US-H6 requires any fail blocks download; enforcement absent in finalise flow |
-| GAP-278 | Medium | HR/ATS | `skill_type` (hard/soft) classification not written back to `Master_CV_Data.json` via harvest — classification is ephemeral (recomputed each run) |
-| GAP-279 | Medium | Trust/Compliance | Cold-restore of prior rewrite decisions fires without any user notification — session restores prior accept/reject without informing the user |
-| GAP-280 | Low | Graphical Designer | Duplicate `@keyframes spin` at `styles.css:930` and `:1494`; redundant `@keyframes llm-spin` at line 574 — dead CSS waste |
-| GAP-281 | Medium | Persuasion Expert | No runtime narrative-thread counter — story US-P1 requires a warning when >2 equally-weighted narrative threads exist; no such check implemented |
-| GAP-282 | Medium | Persuasion Expert, Resume Expert | Publication omission rationale not surfaced to user — low-ranked publications disappear silently with no per-item score or reason |
-| GAP-283 | Medium | Persuasion Expert | Cover letter word count 300–400w standard; story US-P3 specifies ≤300w — 33% overshoot in production target |
-| GAP-284 | Low | Applicant | "queued" application status not in the lifecycle — six status options exist (draft/ready/sent/interview/rejected/accepted) but "queued" is absent |
-| GAP-285 | Low | Master CV Curator | Stale label: `web/master-cv.js:~285` refers to "Finalise tab" — should be "Harvest tab" |
-| GAP-286 | Medium | Trust/Compliance | "Non-confidential" badge only fires when provider has `confidential: false`; undefined leaves provider data-handling opaque for most providers |
-| GAP-287 | Low | Graphical Designer | `cv-template.html` CV header uses `text-align: center` but the body uses a left-aligned grid — visual inconsistency in generated output |
-| GAP-288 | Low | UX Expert, First-Time User | Paste-text input shows character count but no minimum-length hint (e.g. "minimum ~200 characters") — count exists, guidance does not |
-| GAP-289 | Medium | UX Expert | LLM busy overlay shows elapsed time but not named generation steps ("Step 1 of 3: Generating HTML…") — users cannot tell which phase is running |
-| GAP-290 | Low | UX Expert | No skeleton placeholders or dimensioned containers for async content — CLS (Cumulative Layout Shift) occurs when LLM responses arrive |
-| GAP-291 | Low | UX Expert, First-Time User | Two-button "Confirm Layout" → "Generate Final Files" proceed path has no inline explanation; new users cannot determine when/why to press each |
-| GAP-292 | Low | HR/ATS | Candidate name casing not validated — all-uppercase or all-lowercase names pass through to ATS DOCX without warning |
-| GAP-293 | Low | Applicant | Total session processing time absent from finalise confirmation summary — US-A9 requires this for applicant audit trail |
-| GAP-294 | Medium | Applicant, Power User | Keyboard shortcut for workflow re-run not implemented in `keyboard-shortcuts.js` — re-run requires mouse click on ↻ button |
-| GAP-295 | Medium | Applicant | Layout-refine has no clarification loop for ambiguous instructions — ambiguous instructions flow as backend chat responses with no structured follow-up |
+**Overall:** Session/master boundary clearly communicated. Harvest review and publications bibliography management fully implemented. US-M3 (finalise vs. harvest boundary) is partial.
+
+**US-M1 ✅ 3/3, US-M2 ✅ 4/4, US-M4 ✅ 9/9. US-M3 ⚠️ partial.**
+
+**Key gaps:** Experience bullets count shown but not editable in Master CV tab (`master-cv.js:904`); backup restore requires manual tab reload (`master-cv.js:2529`); phase lock banner exposes raw enum "refinement" (`master-cv.js:88`); **Bug (❌):** Duplicate `id` attributes on publication modal heading (`master-cv.js:316`) — `aria-labelledby` points to non-existent id.
 
 ---
 
-## Resolved This Cycle
+### Trust & Compliance Persona (US-C1–US-C3)
 
-| GAP | Status | Evidence |
-|-----|--------|----------|
-| GAP-23 | RESOLVED | Intake confirmation card fully implemented — Applicant persona source-verified |
-| GAP-132 | RESOLVED | Fallback HTML now uses Jinja2 template matching primary path |
-| GAP-DESIGN-06 | RESOLVED | `cv-style.css` now uses Inter font + `#2980b9` brand color |
+**Overall:** Rewrite workflow transparency is strong. Two clear failures: no anti-fabrication instruction, no quantity-inflation check.
 
----
+**Failures (❌):** LLM system prompt (`conversation_manager.py:424–495`) contains no explicit anti-fabrication instruction; no check for proposed rewrites introducing new quantified claims.
 
-## Priority Queue for Next Batch
-
-### High Priority (accessibility / blocking)
-1. GAP-271 — Focus outline removed (WCAG violation)
-2. GAP-272 — Spell-check aria-label missing
-3. GAP-273 — ATS modal focus stack bug
-4. GAP-274 — Silent back-navigation on completed steps
-5. GAP-276 — Post-archive notes not wired to sessions modal
-
-### Medium Priority (user trust / quality)
-6. GAP-277 — ATS fail doesn't block download
-7. GAP-279 — Cold-restore silent
-8. GAP-286 — Non-confidential badge absent for implicit providers
-9. GAP-281 — No narrative-thread counter
-10. GAP-289 — No named generation step progress
+**Key gaps:** AI-assistance disclosure defaults off with no contextual reminder at download time; `ai_attribution` resets per session, not persisted to `config.yaml`; "Candidate to confirm" (Rewrites tab) vs. "Weak evidence" (Skills tab) — same concept, two labels; harvest bullets for `improved_bullet` type carry no provenance badge.
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py, scripts/utils/llm_client.py
+### Graphical Designer Persona (US-G1–US-G3)
+
+**Overall:** Color token system complete (95 CSS custom properties). Typography, status semantics, and card/diff readability are strong. Inline style proliferation, icon inconsistency, and one undefined variable remain.
+
+**Passing:** Heading scale distinctiveness, dense review card readability, status color semantic system across all surfaces, standard interaction patterns with a11y media queries, layout preview framing, download item card styling.
+
+**Key gaps:** `--cv-card-bg` undefined at `styles.css:1600` — position-style picker transparent background; four of six modal close buttons use raw inline styles; main two-panel layout has no responsive breakpoint below ~900px; design system is color-only (no `--cv-font-*` or `--cv-space-*` tokens); `summary-text` uses `text-align: justify`; Font Awesome loaded but underused (emoji-dominant); locale inconsistency within single workflow stage.
+
+---
+
+## Cross-Cutting Themes
+
+### 1. Terminology Inconsistency (12+ persona reviews)
+
+All 15 personas flagged terminology issues. Key clusters:
+- **"ATS"** unexplained at first use — 8 personas
+- **"Harvest"** opaque metaphor — 9 personas
+- **"LLM"** developer jargon in user-facing header — 5 personas
+- **UK/US spelling mix** ("Customise" step vs "Recommend Customizations" button) — 4 personas
+- **"Persuasion checks/warnings"** jargon — 3 personas
+
+### 2. Accessibility Failures in Generated Output (4 personas)
+
+Three direct failures in generated HTML CV and ATS template: Font Awesome icons missing `aria-hidden`, ATS HTML template missing `lang="en"`, and review sub-tab buttons missing tab ARIA semantics. Cross-cutting because the generated materials are the tool's primary deliverable.
+
+### 3. Mismatch/Gap Analysis UI Absent (applicant + ux-expert + resume-expert)
+
+Three personas independently confirmed that gap analysis is present in the LLM prompt (`conversation_manager.py:466`) but has no structured UI section. Analysis output is free-form text in the conversation panel only. This is the highest-value analysis surface for a job application tool.
+
+### 4. Cover Letter Specification Drift (hiring-manager + persuasion-expert)
+
+Both personas independently identified: backend word count 250–300w (`master_data_routes.py:122`) vs. story spec 300–400w; hardcoded `startup/tech` tone default (`cover-letter.js:246`); no tone auto-suggestion from `job_analysis.domain`.
+
+### 5. Anti-Fabrication Gap (trust-compliance + resume-expert + persuasion-expert)
+
+Three personas confirmed no safeguard against LLM-invented content: no anti-fabrication instruction in system prompt; `skill_add` evidence citation required in prompt but not runtime-enforced; no diff-level analysis of numeric additions in proposed rewrites.
+
+### 6. Cognitive Overload at Customise Stage (first-time-user + ux-expert + heuristic)
+
+Three independent sources rated the Customise stage as high cognitive load: 9–10 simultaneous tabs with no progress indicator, no required-vs-optional labeling, and an invisible gate counter. Heuristic review rated this 🟠 Major.
+
+### 7. Focus Management Edge Cases (accessibility + heuristic)
+
+Alert modal focus stack isolation, model table keyboard access, and review sub-tab ARIA semantics flagged by multiple passes. The `_focusTrapStack`/`_focusStack` divergence in `showAlertModal()` (`ui-helpers.js:34–49`) is a subtle bug that could cause focus loss in nested modal scenarios.
+
+---
+
+*Report generated 2026-07-06 by Phase 3 assembly agent for cycle 82.*
