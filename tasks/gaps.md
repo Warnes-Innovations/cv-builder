@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 77)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 78)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,17 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact).
+
+## 2026-07-06 (Cycle 78) Reconciliation Notes
+
+US-U6 Criterion 1 fully resolved: step progress checklist during CV generation.
+
+- **`web/layout-instruction.js`** — Updated `#processing-indicator` HTML (injected by JS, not index.html) to include `<ol id="cv-gen-step-list">` with three `<li class="cv-gen-step">` items. Added `_showGenStepProgress(activeIdx)` helper that shows the step list and marks steps is-pending / is-active / is-complete. Updated `showProcessing()` to hide the step list and show the label on normal calls. Updated `generateFinalOutputs()` to call `_showGenStepProgress(0)` at start and advance through steps via `setInterval` at 2500ms intervals instead of cycling label text. Exported `_showGenStepProgress`.
+- **`web/styles.css`** — Added `.cv-gen-step-list`, `.cv-gen-step`, `.cv-gen-step.is-active`, `.cv-gen-step.is-complete`, `.cv-gen-step.is-pending` CSS rules.
+- **`web/bundle.js`** — Rebuilt.
+- **`tests/js/layout-instruction.test.js`** — Updated `buildDom()` to include step list elements; added import for `_showGenStepProgress`; added 7 new tests: 1 for `showProcessing` (step list hidden), 6 for `_showGenStepProgress`. Test count: 1198 (was 1191).
+- **`tasks/review-status/ux-expert.md`** — US-U6 C1 updated to ✅; GAP-UX-06 note updated. Date updated.
+- **Python tests:** 1436 pass (unchanged). **JS tests:** 1198 pass (7 new).
 
 ## 2026-07-06 (Cycle 77) Reconciliation Notes
 

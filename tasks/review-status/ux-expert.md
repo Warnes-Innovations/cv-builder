@@ -5,7 +5,7 @@
 
 # UX Expert Review
 
-**Date:** 2026-07-06 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75; GAP-UX-01 resolved cycle 76; GAP-UX-05 resolved cycle 77)
+**Date:** 2026-07-06 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75; GAP-UX-01 resolved cycle 76; GAP-UX-05 resolved cycle 77; US-U6 C1 fully resolved cycle 78)
 **Reviewer:** ux-expert persona
 **Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
 
@@ -116,7 +116,7 @@
 ### US-U6: Generation and Output State Feedback
 
 **Criterion 1 — Generation progress feedback**
-⚠️ Partial — Cycle 68: `generateFinalOutputs()` (`layout-instruction.js:1343+`) now shows cycling step labels in `#processing-indicator`: "Step 1 of 3: Rendering HTML…" → "Step 2 of 3: Generating PDF…" → "Step 3 of 3: Building DOCX files…" at 1800ms intervals via `setInterval`. Labels advance automatically while the single `POST /api/cv/generate-final` call is in-flight and are cleared in `finally`. No dedicated step-labelled progress bar with checkmarks (only the existing `#processing-indicator` spinner panel is updated). A true multi-step progress bar with explicit checkmarks remains unimplemented.
+✅ RESOLVED (cycle 78) — `generateFinalOutputs()` (`layout-instruction.js`) now shows a persistent three-step checklist inside `#processing-indicator` via `_showGenStepProgress(activeIdx)`. Each step transitions: ○ pending → ⏳ active → ✅ complete as generation progresses (advancing every 2500ms). The `<ol id="cv-gen-step-list">` is rendered by `layout-instruction.js` (not `index.html`) so it was editable. The label (`<p id="processing-indicator-label">`) is hidden while the step list is visible; `showProcessing()` restores it for the "Applying instruction…" path. CSS classes `.cv-gen-step.is-active`, `.is-complete`, `.is-pending` control display.
 
 **Criterion 2 — Output preview**
 ✅ Pass — Layout review (`layout-instruction.js:296`) renders an `<iframe id="layout-preview">` that shows the CV HTML inline. The download tab provides file links with in-browser access.
@@ -238,7 +238,7 @@ Source-verified: `handleStepClick()` (`workflow-steps.js:1111–1123`) already s
 Confidence badges now carry `title` tooltip attributes with qualitative descriptions (e.g. "Strong alignment with the job requirements"). The Confidence column header in all three review tables (experience, skills, achievements) now reads "Confidence ⓘ" with a `title` listing all five levels. Implemented via `CONFIDENCE_COLUMN_LEGEND` constant in `recommendation-helpers.js` and tooltip propagation through `_parseConfidence`. US-U4 Criterion 6 ✅.
 
 **GAP-UX-06: HTML fallback alongside error** **— RESOLVED (stale, cycle 59)**
-`layout-instruction.js` adds "View HTML preview" link beside PDF failure. Remaining gap (cycle 68 partial): named step-sequence labels now cycle in `#processing-indicator` during generation, but no dedicated progress bar with explicit checkmarks exists (US-U6 Criterion 1 ⚠️ Partial).
+`layout-instruction.js` adds "View HTML preview" link beside PDF failure. US-U6 Criterion 1 (step progress bar with checkmarks) fully RESOLVED cycle 78 via `_showGenStepProgress()` and `.cv-gen-step-list` in `#processing-indicator`. Both gaps now closed.
 
 **GAP-UX-07: Colour-only rewrite card state** **— RESOLVED (stale)**
 `rewrite-review.js:508–512` shows persistent "✓ Accepted" / "✗ Rejected" text badge. US-U7 Criterion 5 ✅.
@@ -266,7 +266,7 @@ Confidence badges now carry `title` tooltip attributes with qualitative descript
 | US-U3 Analysis readability | ✅ | styles.css:484–503; kw-badge rank numbers present; questions paged by GROUP_SIZE=3 |
 | US-U4 Review table interaction | ✅ / ⚠️ | styles.css:1199–1226; rewrite-review.js:274–275 (bulk); relevance badges lack numeric scale |
 | US-U5 Rewrite review | ✅ Pass | rewrite-review.js:370–371 (diff); keyboard-shortcuts.js (A/R/Up/Down); rationale via `<details>` |
-| US-U6 Generation feedback | ✅ / ⚠️ | CV filenames pass; HTML fallback alongside error fixed (cycle 59); step labels cycle in #processing-indicator during generation (cycle 68); full step progress bar with checkmarks absent |
+| US-U6 Generation feedback | ✅ | CV filenames pass; HTML fallback alongside error fixed (cycle 59); step checklist with ○/⏳/✅ states in #processing-indicator (cycle 78 `_showGenStepProgress`) |
 | US-U7 Accessibility | ✅ | Focus trap in ui-core.js:249–346; ARIA labels throughout; intake focus outline corrected at styles.css:1791 |
 | US-U9 Layout review UX | ✅ | Scope label present; undo stack implemented; `#layout-two-step-hint` resolved (cycle 31); clarification panel resolved (GAP-295, cycle 32) |
 | US-U8 Responsive/performance | ⚠️ Partial | 12-step nav overflows at narrow widths (cycle 66 partial); min-height placeholders present (cycle 31); CDN blocking not assessed |

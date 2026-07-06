@@ -383,7 +383,12 @@ async function initiateLayoutInstructions() {
 
           <div id="processing-indicator" class="processing-indicator" style="display: none;">
             <div class="spinner"></div>
-            <p>Applying instruction...</p>
+            <p id="processing-indicator-label">Applying instruction...</p>
+            <ol class="cv-gen-step-list" id="cv-gen-step-list" aria-label="Generation progress" style="display:none;">
+              <li class="cv-gen-step is-pending" data-step="0">Rendering HTML</li>
+              <li class="cv-gen-step is-pending" data-step="1">Generating PDF</li>
+              <li class="cv-gen-step is-pending" data-step="2">Building DOCX files</li>
+            </ol>
           </div>
 
           <div id="confirmation-message" class="confirmation-message" style="display: none;"></div>
@@ -1166,13 +1171,37 @@ function showProcessing(show, label) {
   const indicator = document.getElementById('processing-indicator');
   if (!indicator) return;
   indicator.style.display = show ? 'block' : 'none';
+  const labelEl  = document.getElementById('processing-indicator-label');
+  const stepList = document.getElementById('cv-gen-step-list');
+  // Ensure step list is hidden and label is visible for non-generation calls
+  if (stepList) stepList.style.display = 'none';
+  if (labelEl)  labelEl.style.display  = '';
   if (show && label) {
-    const p = indicator.querySelector('p');
-    if (p) p.textContent = label;
+    if (labelEl) labelEl.textContent = label;
   } else if (!show) {
-    const p = indicator.querySelector('p');
-    if (p) p.textContent = 'Applying instruction...';
+    if (labelEl) labelEl.textContent = 'Applying instruction...';
   }
+}
+
+/**
+ * Show generation step checklist inside #processing-indicator.
+ * @param {number} activeIdx - 0-based index of the currently active step;
+ *   pass -1 or >= 3 to mark all steps complete.
+ */
+function _showGenStepProgress(activeIdx) {
+  const indicator = document.getElementById('processing-indicator');
+  const stepList  = document.getElementById('cv-gen-step-list');
+  const labelEl   = document.getElementById('processing-indicator-label');
+  if (!indicator || !stepList) return;
+  indicator.style.display = 'block';
+  if (labelEl) labelEl.style.display = 'none';
+  stepList.style.display = 'block';
+  stepList.querySelectorAll('.cv-gen-step').forEach((step, i) => {
+    step.className = 'cv-gen-step';
+    if (i < activeIdx || activeIdx < 0)  step.classList.add('is-complete');
+    else if (i === activeIdx)            step.classList.add('is-active');
+    else                                 step.classList.add('is-pending');
+  });
 }
 
 /**
@@ -1340,19 +1369,15 @@ async function generateFinalOutputs() {
    *   - ui:workflow.refinement
    *   notes: Generates the final human-readable outputs from the confirmed preview and advances the UI into file review/finalise with the new artifact set.
    */
-  const _STEP_LABELS = [
-    'Step 1 of 3: Rendering HTML…',
-    'Step 2 of 3: Generating PDF…',
-    'Step 3 of 3: Building DOCX files…',
-  ];
   let _stepTimer = null;
+  let _genStepIdx = 0;
   try {
-    showProcessing(true, _STEP_LABELS[0]);
-    let _stepIdx = 0;
+    _showGenStepProgress(0);   // step 0 active, steps 1-2 pending
     _stepTimer = setInterval(() => {
-      _stepIdx = Math.min(_stepIdx + 1, _STEP_LABELS.length - 1);
-      showProcessing(true, _STEP_LABELS[_stepIdx]);
-    }, 1800);
+      _genStepIdx++;
+      if (_genStepIdx < 3) _showGenStepProgress(_genStepIdx);
+      else clearInterval(_stepTimer);
+    }, 2500);
 
     const freshness = stateManager.getLayoutFreshness();
     const generationState = stateManager.getGenerationState();
@@ -1561,6 +1586,7 @@ export {
   submitSmartInstruction,
   // helpers exported for unit tests
   showProcessing,
+  _showGenStepProgress,
   showConfirmationMessage,
   renderInstructionHistory,
   addToInstructionHistory,

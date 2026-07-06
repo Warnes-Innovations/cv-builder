@@ -1644,6 +1644,15 @@ details.rewrite-rationale summary { cursor: pointer; color: var(--cv-gray-700); 
 .layout-action-btn { width: 100%; padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
 .processing-indicator { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--cv-bg-light); border-radius: 6px; font-size: 13px; color: var(--cv-text-muted); }
 .processing-indicator .spinner { width: 16px; height: 16px; border: 2px solid var(--cv-slate-300); border-top-color: var(--cv-accent); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+/* CV generation step checklist (GAP-UX-06) */
+.cv-gen-step-list { list-style: none; margin: 0; padding: 4px 0 0; display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.cv-gen-step { display: flex; align-items: center; gap: 8px; }
+.cv-gen-step::before { content: '○'; width: 20px; text-align: center; flex-shrink: 0; color: var(--cv-slate-400); }
+.cv-gen-step.is-active { color: var(--cv-accent); font-weight: 600; }
+.cv-gen-step.is-active::before { content: '⏳'; color: inherit; }
+.cv-gen-step.is-complete { color: var(--cv-success-text); }
+.cv-gen-step.is-complete::before { content: '✅'; }
+.cv-gen-step.is-pending { color: var(--cv-text-secondary); }
 .confirmation-message { padding: 10px 14px; background: var(--cv-success-bg); border: 1px solid var(--cv-success-bg-lt); border-radius: 6px; color: var(--cv-success-text); font-size: 13px; }
 .layout-history-section h4 { font-size: 13px; font-weight: 600; color: var(--cv-gray-700); margin-bottom: 6px; cursor: pointer; user-select: none; }
 .layout-history-section h4:hover { color: var(--cv-info-dark); }

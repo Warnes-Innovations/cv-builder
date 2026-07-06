@@ -12,6 +12,7 @@
  */
 import {
   showProcessing,
+  _showGenStepProgress,
   showConfirmationMessage,
   renderInstructionHistory,
   renderPreviewOutputStatus,
@@ -57,7 +58,15 @@ vi.mock('../../web/state-manager.js', () => ({
 
 function buildDom() {
   document.body.innerHTML = `
-    <div id="processing-indicator" style="display:none"></div>
+    <div id="processing-indicator" style="display:none">
+      <div class="spinner"></div>
+      <p id="processing-indicator-label">Applying instruction...</p>
+      <ol class="cv-gen-step-list" id="cv-gen-step-list" style="display:none">
+        <li class="cv-gen-step is-pending" data-step="0">Rendering HTML</li>
+        <li class="cv-gen-step is-pending" data-step="1">Generating PDF</li>
+        <li class="cv-gen-step is-pending" data-step="2">Building DOCX files</li>
+      </ol>
+    </div>
     <div id="confirmation-message" style="display:none"></div>
     <div id="layout-stale-callout" style="display:none"></div>
     <div id="layout-preview-status" style="display:none"></div>
@@ -169,9 +178,57 @@ describe('showProcessing', () => {
     expect(document.getElementById('processing-indicator').style.display).toBe('none')
   })
 
+  it('hides the step list and shows the label when called normally', () => {
+    showProcessing(true)
+    expect(document.getElementById('cv-gen-step-list').style.display).toBe('none')
+    expect(document.getElementById('processing-indicator-label').style.display).toBe('')
+  })
+
   it('does not throw when element is absent', () => {
     document.body.innerHTML = ''
     expect(() => showProcessing(true)).not.toThrow()
+  })
+})
+
+// ── _showGenStepProgress ──────────────────────────────────────────────────
+
+describe('_showGenStepProgress', () => {
+  it('shows the indicator and the step list', () => {
+    _showGenStepProgress(0)
+    expect(document.getElementById('processing-indicator').style.display).toBe('block')
+    expect(document.getElementById('cv-gen-step-list').style.display).toBe('block')
+  })
+
+  it('hides the label when showing step list', () => {
+    _showGenStepProgress(0)
+    expect(document.getElementById('processing-indicator-label').style.display).toBe('none')
+  })
+
+  it('marks step 0 active and steps 1-2 pending when activeIdx=0', () => {
+    _showGenStepProgress(0)
+    const steps = [...document.querySelectorAll('.cv-gen-step')]
+    expect(steps[0].classList.contains('is-active')).toBe(true)
+    expect(steps[1].classList.contains('is-pending')).toBe(true)
+    expect(steps[2].classList.contains('is-pending')).toBe(true)
+  })
+
+  it('marks step 0 complete and step 1 active when activeIdx=1', () => {
+    _showGenStepProgress(1)
+    const steps = [...document.querySelectorAll('.cv-gen-step')]
+    expect(steps[0].classList.contains('is-complete')).toBe(true)
+    expect(steps[1].classList.contains('is-active')).toBe(true)
+    expect(steps[2].classList.contains('is-pending')).toBe(true)
+  })
+
+  it('marks all steps complete when activeIdx < 0', () => {
+    _showGenStepProgress(-1)
+    const steps = [...document.querySelectorAll('.cv-gen-step')]
+    steps.forEach(s => expect(s.classList.contains('is-complete')).toBe(true))
+  })
+
+  it('does not throw when elements are absent', () => {
+    document.body.innerHTML = ''
+    expect(() => _showGenStepProgress(0)).not.toThrow()
   })
 })
 
