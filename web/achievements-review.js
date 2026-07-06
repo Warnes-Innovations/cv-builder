@@ -44,6 +44,7 @@
 
 import { stateManager } from './state-manager.js';
 import { eyeSlashIcon } from './review-icons.js';
+import { CONFIDENCE_COLUMN_LEGEND } from './recommendation-helpers.js';
 
 // Module-level state
 let _rewriteSuggestionHistory = [];
@@ -230,7 +231,7 @@ function _renderAchievementsReviewTable(container) {
         <tr>
           <th>Achievement</th>
           <th>Recommendation</th>
-          <th>Confidence</th>
+          <th title="${CONFIDENCE_COLUMN_LEGEND}">Confidence ⓘ</th>
           <th>Reasoning</th>
           <th>Selection</th>
         </tr>
@@ -246,7 +247,7 @@ function _renderAchievementsReviewTable(container) {
     const confidence     = getAchievementConfidence(id, data, ach.importance);
     const reasoning      = getAchievementReasoning(id, data, ach);
     const defaultAction  = window.achievementDecisions[id] || 'include';
-    const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}" title="${confidence.title || ''}">${confidence.text}</span>`;
     const rerunNewBadge = _newRecommendedAchs.has(id)
       ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
       : '';
@@ -291,6 +292,7 @@ function _renderAchievementsReviewTable(container) {
     const confRaw     = (sugg.confidence || 'Medium').toLowerCase();
     const confLevel   = confRaw.includes('high') ? 'high' : confRaw.includes('low') ? 'low' : 'medium';
     const confText    = sugg.confidence || 'Medium';
+    const confTitles  = { high: 'Strong alignment with the job requirements', medium: 'Moderate alignment — review this recommendation carefully', low: 'Weak alignment — include only if it strengthens your application' };
     const defaultAction = window.achievementDecisions[suggId] || 'include';
     const isFirst     = rowIdx === 0;
     const isLast      = rowIdx === suggestedAchs.length - 1;
@@ -313,7 +315,7 @@ function _renderAchievementsReviewTable(container) {
           ${sugg.experience_id ? `<small style="color:#9ca3af;">Experience: ${escapeHtml(sugg.experience_id)}</small>` : ''}
         </td>
         <td><strong>Add New</strong></td>
-        <td><span class="confidence-badge confidence-${confLevel}">${escapeHtml(confText)}</span></td>
+        <td><span class="confidence-badge confidence-${confLevel}" title="${confTitles[confLevel] || ''}">${escapeHtml(confText)}</span></td>
         <td style="max-width:200px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
           <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;">➕</button>

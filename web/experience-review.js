@@ -23,6 +23,7 @@ const log = getLogger('experience-review');
 
 import { stateManager } from './state-manager.js';
 import { eyeSlashIcon } from './review-icons.js';
+import { CONFIDENCE_COLUMN_LEGEND } from './recommendation-helpers.js';
 
 function _findExperienceRecommendationRecord(expId, data) {
   if (!data || !Array.isArray(data.experience_recommendations)) return null;
@@ -197,7 +198,7 @@ function _renderExperienceTable(container, recommendedSet, data, newRecommendedE
           <th>Experience</th>
           <th>Dates</th>
           <th>Recommendation</th>
-          <th>Confidence</th>
+          <th title="${CONFIDENCE_COLUMN_LEGEND}">Confidence ⓘ</th>
           <th>Reasoning</th>
           <th>Your Selection</th>
         </tr>
@@ -219,7 +220,7 @@ function _renderExperienceTable(container, recommendedSet, data, newRecommendedE
     const duration          = startDate ? `${startDate} - ${endDate}` : (details?.duration || '');
     const defaultAction     = userSelections.experiences[expId] || 'include';
     const recommendationText = recommendation || 'Include';
-    const confidenceBadge   = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const confidenceBadge   = `<span class="confidence-badge confidence-${confidence.level}" title="${confidence.title || ''}">${confidence.text}</span>`;
     const reasoningSegments = [reasoning || 'This experience was selected based on its relevance to the position requirements.'];
     if (bulletOrderSummary) reasoningSegments.push(`Suggested bullet order: ${bulletOrderSummary}.`);
     if (bulletOrder?.reasoning) reasoningSegments.push(String(bulletOrder.reasoning));

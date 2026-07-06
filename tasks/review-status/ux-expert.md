@@ -5,7 +5,7 @@
 
 # UX Expert Review
 
-**Date:** 2026-07-06 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75; GAP-UX-01 resolved cycle 76)
+**Date:** 2026-07-06 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75; GAP-UX-01 resolved cycle 76; GAP-UX-05 resolved cycle 77)
 **Reviewer:** ux-expert persona
 **Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
 
@@ -234,8 +234,8 @@ Source-verified: `handleStepClick()` (`workflow-steps.js:1111–1123`) already s
 **GAP-UX-04: Questions presented all at once** **— RESOLVED (stale)**
 `questions-panel.js:326` sets `GROUP_SIZE = 3` and pages questions in groups. US-U3 Criterion 4 ✅.
 
-**GAP-UX-05: Relevance/confidence scores lack explicit scale labels**
-Review tables show High/Medium/Low confidence badges but no explicit legend (e.g. "High = >80%", "Low = <40%") or numeric equivalents. Users must infer the scale (US-U4 Criterion 6).
+**GAP-UX-05: Relevance/confidence scores lack explicit scale labels — RESOLVED (cycle 77)**
+Confidence badges now carry `title` tooltip attributes with qualitative descriptions (e.g. "Strong alignment with the job requirements"). The Confidence column header in all three review tables (experience, skills, achievements) now reads "Confidence ⓘ" with a `title` listing all five levels. Implemented via `CONFIDENCE_COLUMN_LEGEND` constant in `recommendation-helpers.js` and tooltip propagation through `_parseConfidence`. US-U4 Criterion 6 ✅.
 
 **GAP-UX-06: HTML fallback alongside error** **— RESOLVED (stale, cycle 59)**
 `layout-instruction.js` adds "View HTML preview" link beside PDF failure. Remaining gap (cycle 68 partial): named step-sequence labels now cycle in `#processing-indicator` during generation, but no dedicated progress bar with explicit checkmarks exists (US-U6 Criterion 1 ⚠️ Partial).

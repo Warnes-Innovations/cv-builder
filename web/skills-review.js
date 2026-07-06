@@ -23,6 +23,7 @@ const log = getLogger('skills-review');
 
 import { stateManager } from './state-manager.js';
 import { eyeSlashIcon } from './review-icons.js';
+import { CONFIDENCE_COLUMN_LEGEND } from './recommendation-helpers.js';
 
 // ── Years-from-experience helpers ─────────────────────────────────────────
 
@@ -666,7 +667,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
           <th>Sub-skills</th>
           <th>Parenthetical</th>
           <th>Recommendation</th>
-          <th>Confidence</th>
+          <th title="${CONFIDENCE_COLUMN_LEGEND}">Confidence ⓘ</th>
           <th>Reasoning</th>
           <th>Matched Experiences</th>
           <th>Your Selection</th>
@@ -756,7 +757,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
     const _badgeLabel     = _effectiveType ? (_effectiveType === 'hard' ? 'Hard' : 'Soft') : '+ Type';
     const skillTypeBadge  = `<button type="button" class="skill-type-toggle" data-skill="${skillNameEsc}" data-toggle-to="${_toggleTarget || ''}" title="${_badgeTitle}" style="${_badgeStyle}" aria-label="Skill type: ${_effectiveType || 'unclassified'}, click to toggle">${_badgeLabel}</button>`;
     const recommendationText = recommendation || (skill._isUserCreated ? 'Include (session-added)' : (isNew ? 'Include (AI suggested)' : 'Omit'));
-    const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}" title="${confidence.title || ''}">${confidence.text}</span>`;
     const reasoningText      = reasoning || (skill._isUserCreated
       ? 'You added this skill for the current CV session only.'
       : (isNew
