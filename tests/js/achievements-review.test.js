@@ -192,6 +192,27 @@ describe('undoBulkAchievementAction', () => {
     const undoBtn = document.getElementById('ach-bulk-toolbar').querySelector('.bulk-undo-btn')
     expect(undoBtn.style.display).toBe('')
   })
+
+  it('clears bulk-applied state for rows that had no prior decision', () => {
+    // ach-3 has no entry in achievementDecisions before the bulk action
+    window.achievementDecisions = { 'ach-1': 'include', 'ach-2': 'emphasize' }
+    const tbody = document.querySelector('#achievements-review-table tbody')
+    const row3 = document.createElement('tr')
+    row3.dataset.achId = 'ach-3'
+    const excBtn = document.createElement('button')
+    excBtn.className = 'icon-btn'
+    excBtn.dataset.action = 'exclude'
+    row3.appendChild(excBtn)
+    tbody.appendChild(row3)
+
+    bulkAchievementAction('exclude')
+    expect(window.achievementDecisions['ach-3']).toBe('exclude')
+
+    undoBulkAchievementAction()
+    // ach-3 should be cleared (not in pre-bulk snapshot)
+    expect(window.achievementDecisions['ach-3']).toBeUndefined()
+    expect(excBtn.classList.contains('active')).toBe(false)
+  })
 })
 
 // ── submitAchievementDecisions ────────────────────────────────────────────

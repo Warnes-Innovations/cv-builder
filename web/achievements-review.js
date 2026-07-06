@@ -389,9 +389,16 @@ function undoBulkAchievementAction() {
   if (!_achBulkUndoSnapshot) return;
   const snap = _achBulkUndoSnapshot;
   _achBulkUndoSnapshot = null;
-  for (const [achId, action] of Object.entries(snap)) {
-    handleAchievementAction(achId, action);
-  }
+  window.achievementDecisions = { ...snap };
+  document.querySelectorAll('#achievements-review-table tbody tr[data-ach-id]').forEach(row => {
+    const achId = row.dataset.achId;
+    const restoredAction = snap[achId];
+    row.querySelectorAll('.icon-btn').forEach(btn => btn.classList.remove('active'));
+    if (restoredAction) {
+      const target = row.querySelector(`[data-action="${restoredAction}"]`);
+      if (target) target.classList.add('active');
+    }
+  });
   const undoBtn = document.getElementById('ach-bulk-toolbar')?.querySelector('.bulk-undo-btn');
   if (undoBtn) undoBtn.style.display = 'none';
 }

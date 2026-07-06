@@ -669,4 +669,46 @@ describe('bulkAction snapshot and undoBulkAction', () => {
     const restored = row1.querySelector('[data-action="include"]')
     expect(restored?.classList.contains('active')).toBe(true)
   })
+
+  it('skill bulkAction hides the experience undo button (cross-tab clobber fix)', () => {
+    // Wire up a skill toolbar so _setBulkUndoVisible can find it
+    const skillToolbar = document.createElement('div')
+    skillToolbar.id = 'skill-bulk-toolbar'
+    const skillUndoBtn = document.createElement('button')
+    skillUndoBtn.className = 'bulk-undo-btn'
+    skillUndoBtn.style.display = 'none'
+    skillToolbar.appendChild(skillUndoBtn)
+    document.body.appendChild(skillToolbar)
+
+    // Experience bulk action shows exp undo button
+    bulkAction('exclude', 'experience')
+    const expUndoBtn = document.getElementById('exp-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(expUndoBtn.style.display).toBe('')
+
+    // Skill bulk action should hide exp undo button
+    bulkAction('exclude', 'skill')
+    expect(expUndoBtn.style.display).toBe('none')
+  })
+
+  it('undoBulkAction clears bulk-applied state for rows that had no prior selection', () => {
+    // e1 and e2 have prior selections; e3 has none
+    userSelections.experiences = { e1: 'include', e2: 'emphasize' }
+    const tbody = document.querySelector('#experience-review-table tbody')
+    const row3 = document.createElement('tr')
+    row3.dataset.expId = 'e3'
+    const excBtn = document.createElement('button')
+    excBtn.className = 'icon-btn'
+    excBtn.dataset.action = 'exclude'
+    row3.appendChild(excBtn)
+    tbody.appendChild(row3)
+
+    // Bulk exclude applies to e3 (no prior selection)
+    bulkAction('exclude', 'experience')
+    expect(userSelections.experiences.e3).toBe('exclude')
+
+    // Undo: e3 should be cleared (no prior selection)
+    undoBulkAction('experience')
+    expect(userSelections.experiences.e3).toBeUndefined()
+    expect(excBtn.classList.contains('active')).toBe(false)
+  })
 })

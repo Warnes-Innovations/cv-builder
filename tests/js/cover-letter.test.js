@@ -212,6 +212,18 @@ describe('_validateCoverLetter — paragraph 1 role context', () => {
     expect(html).toContain('warn')
     delete window.pendingRecommendations
   })
+
+  it('fails when company/role only appear past the 100-word opening (single-newline letter)', () => {
+    // 110 filler words before the company name, separated by single \n (no double-newline breaks)
+    const filler = Array.from({ length: 110 }, (_, i) => `word${i}`).join(' ')
+    const letter = `Dear Dr. Smith,\n${filler}\nAcme Corp and Senior Engineer appear only here.`
+    _validateCoverLetter(letter)
+    const html = document.getElementById('cl-checks-container').innerHTML
+    expect(html).toContain('Paragraph 1 role context')
+    // Both company and role appear past the 100-word window — should fail or warn
+    expect(html).toMatch(/fail|warn/)
+    expect(html).toContain('"Acme Corp"')
+  })
 })
 
 // ── _renderConsistencyReport ──────────────────────────────────────────────────

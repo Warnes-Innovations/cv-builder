@@ -4628,7 +4628,7 @@ Include one entry per candidate. Do not omit any candidate."""
             doc.add_paragraph(heading_text, style='Heading 1')
             for pub in publications:
                 citation = pub.get('formatted_citation', '').strip()
-                if pub.get('venue_warning'):
+                if citation and pub.get('venue_warning'):
                     citation += ' [venue unavailable]'
                 if citation:
                     doc.add_paragraph(citation)

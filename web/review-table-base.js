@@ -845,9 +845,11 @@ function handleActionClick(itemId, action, type) {
  * type:   'experience' | 'skill'
  */
 function bulkAction(action, type) {
-  const selType  = type === 'experience' ? 'experiences' : 'skills';
-  const tableId  = type === 'experience' ? '#experience-review-table' : '#skills-review-table';
+  const selType   = type === 'experience' ? 'experiences' : 'skills';
+  const tableId   = type === 'experience' ? '#experience-review-table' : '#skills-review-table';
+  const otherType = type === 'experience' ? 'skill' : 'experience';
   _bulkUndoSnapshot = { type, snapshot: { ...userSelections[selType] } };
+  _setBulkUndoVisible(otherType, false);
   const data     = window.pendingRecommendations || {};
   const dt       = $.fn.DataTable.isDataTable(tableId) ? $(tableId).DataTable() : null;
 
@@ -917,15 +919,16 @@ function undoBulkAction(type) {
     const itemId  = expId || skillId;
     if (!itemId) return;
     const restoredAction = snapshot[itemId];
-    if (!restoredAction) return;
     row.querySelectorAll('.icon-btn').forEach(btn => {
       btn.classList.remove('active');
       if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
     });
-    const target = row.querySelector(`[data-action="${restoredAction}"]`);
-    if (target) {
-      target.classList.add('active');
-      if (target.hasAttribute('aria-pressed')) target.setAttribute('aria-pressed', 'true');
+    if (restoredAction) {
+      const target = row.querySelector(`[data-action="${restoredAction}"]`);
+      if (target) {
+        target.classList.add('active');
+        if (target.hasAttribute('aria-pressed')) target.setAttribute('aria-pressed', 'true');
+      }
     }
   });
 

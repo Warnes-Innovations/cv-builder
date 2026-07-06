@@ -583,7 +583,9 @@ function _validateCoverLetter(text) {
   // ── Rule 2b: Paragraph 1 contains company name and role title ──
   const _allParas   = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const _firstBody  = _allParas.find(p => !/^dear\s|^to whom/i.test(p)) || _allParas[0] || '';
-  const _p1Lc       = _firstBody.toLowerCase();
+  // Limit to first 100 words so a single-newline letter with no double-breaks doesn't
+  // match company/role in paragraph 5 and report a false pass.
+  const _p1Lc       = _firstBody.split(/\s+/).slice(0, 100).join(' ').toLowerCase();
   let para1Check;
   if (!companyName && !_jobTitle) {
     para1Check = { warn: true, label: 'Paragraph 1 role context', detail: 'Company name and role title not detected — verify paragraph 1 establishes the specific role and company.' };
