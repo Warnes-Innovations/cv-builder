@@ -913,8 +913,36 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
 
         self._set_phase(Phase.CUSTOMIZATION)
 
+        # Build the base message text.
+        n_exp = len(recommendations.get('recommended_experiences', []))
+        n_sk  = len(recommendations.get('recommended_skills', []))
+        msg   = f"✓ Customization recommendations generated ({n_exp} experiences, {n_sk} skills)."
+
+        # Proactively surface top publications shortlist when publications exist (GAP-319).
+        pubs = getattr(self.orchestrator, 'publications', None)
+        include_pubs = self.state.get('customizations', {}).get('include_publications', True)
+        if pubs and include_pubs:
+            job_analysis = self.state.get('job_analysis') or {}
+            try:
+                ranked = self.orchestrator._select_publications(job_analysis, max_count=5)
+                if ranked:
+                    lines = ["\n\n**Top recommended publications for this role:**"]
+                    for i, p in enumerate(ranked, 1):
+                        title   = p.get('title', 'Untitled')[:80]
+                        score   = p.get('relevance_score', 0)
+                        why     = p.get('rationale', '')
+                        year    = p.get('year', '')
+                        year_s  = f" ({year})" if year else ''
+                        score_s = f" — {score:.0f}% relevance" if score else ''
+                        why_s   = f": {why}" if why else ''
+                        lines.append(f"{i}. {title}{year_s}{score_s}{why_s}")
+                    lines.append("\nReview and adjust selections in the **Publications** sub-tab.")
+                    msg += "\n".join(lines)
+            except Exception:
+                pass  # Non-fatal — publications shortlist is advisory
+
         return {
-            'text': f"✓ Customization recommendations generated ({len(recommendations.get('recommended_experiences', []))} experiences, {len(recommendations.get('recommended_skills', []))} skills).",
+            'text': msg,
             'context_data': {'customizations': recommendations},
         }
 

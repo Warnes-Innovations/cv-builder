@@ -106,39 +106,66 @@ function _renderValidationSummary(checks, summary, pageCount, atsError) {
   }
 
   const keywordFail = checks.some((check) => check.name === 'ats_keyword_presence' && check.status === 'fail');
-  const statusColour = summary.fail > 0 ? '#dc2626' : summary.warn > 0 ? '#d97706' : '#166534';
-  const statusIcon = summary.fail > 0 ? '❌' : summary.warn > 0 ? '⚠' : '✅';
+  // Separate checks that block download from those that are advisory-only (GAP-308).
+  const blockingFails  = checks.filter(c => c.status === 'fail' && !_NON_BLOCKING_CHECKS.has(c.name));
+  const advisoryFails  = checks.filter(c => c.status === 'fail' &&  _NON_BLOCKING_CHECKS.has(c.name));
+  const hasBlockingFail = blockingFails.length > 0;
+  const hasAdvisory     = advisoryFails.length > 0 || summary.warn > 0;
+
+  const statusColour = hasBlockingFail ? '#dc2626' : hasAdvisory ? '#d97706' : '#166534';
+  const statusIcon   = hasBlockingFail ? '❌'       : hasAdvisory ? '⚠'       : '✅';
+
+  // Build summary line: advisory-fails shown as "advisory" not "fail".
+  const failParts = [];
+  if (summary.pass) failParts.push(`${summary.pass} pass`);
+  if (summary.warn) failParts.push(`${summary.warn} warn`);
+  if (advisoryFails.length) failParts.push(`${advisoryFails.length} advisory`);
+  if (blockingFails.length) failParts.push(`${blockingFails.length} fail`);
+  const summaryLine = failParts.join(', ');
 
   html += `
     <details open style="margin-bottom:20px;">
       <summary style="cursor:pointer;font-weight:700;font-size:1em;padding:8px 0;color:${statusColour};">
-        ${statusIcon} ATS Report — ${summary.pass} pass, ${summary.warn} warn, ${summary.fail} fail
+        ${statusIcon} ATS Report — ${summaryLine}
       </summary>
       <table class="review-table" style="margin-top:10px;font-size:0.87em;">
         <thead><tr><th>Check</th><th>Format</th><th>Status</th><th>Detail</th></tr></thead>
         <tbody>`;
 
   for (const check of checks) {
-    const background = check.status === 'pass' ? '#f0fdf4' : check.status === 'warn' ? '#fef9c3' : '#fee2e2';
-    const icon = check.status === 'pass' ? '✅' : check.status === 'warn' ? '⚠' : '❌';
+    const isAdvisoryFail = check.status === 'fail' && _NON_BLOCKING_CHECKS.has(check.name);
+    // Advisory-only failures render amber (like warn) so users understand they are not blocking (GAP-308).
+    const background = check.status === 'pass' ? '#f0fdf4'
+                     : (check.status === 'warn' || isAdvisoryFail) ? '#fef9c3'
+                     : '#fee2e2';
+    const icon = check.status === 'pass' ? '✅'
+               : (check.status === 'warn' || isAdvisoryFail) ? '⚠'
+               : '❌';
+    const statusLabel = isAdvisoryFail
+      ? '<span style="font-size:0.75em;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 4px;margin-left:3px;">advisory</span>'
+      : '';
     const formatBadge = `<span style="font-size:11px;background:#e0e7ff;color:#3730a3;border-radius:6px;padding:1px 5px;">${escapeHtml(check.format)}</span>`;
 
     html += `<tr style="background:${background};">
       <td style="font-weight:600;">${escapeHtml(check.label)}</td>
       <td>${formatBadge}</td>
-      <td style="text-align:center;">${icon}</td>
+      <td style="text-align:center;">${icon}${statusLabel}</td>
       <td><small>${escapeHtml(check.detail)}</small></td>
     </tr>`;
   }
 
   html += '</tbody></table></details>';
 
-  if (summary.fail > 0) {
+  if (hasBlockingFail) {
     html += `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px;margin-bottom:20px;">
       <strong>❌ Fix required:</strong> Some checks failed. Blocked formats are greyed out below.
       ${keywordFail
         ? '<br><strong>ATS keyword failure blocks all downloads</strong> — re-run customisations to improve keyword coverage.'
         : ''}
+    </div>`;
+  } else if (hasAdvisory) {
+    html += `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px 16px;margin-bottom:20px;">
+      <strong>⚠ Advisory notices:</strong> Some checks produced advisory recommendations. Downloads are not blocked — review the items above and consider addressing them before submitting.
     </div>`;
   }
 

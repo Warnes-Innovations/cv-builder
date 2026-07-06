@@ -492,6 +492,37 @@ describe('openModelModal', () => {
     expect(document.getElementById('model-wizard-step-label').textContent).toContain('Step 4 of 4: Complete')
     expect(document.getElementById('model-success-summary').textContent).toContain('123ms')
   })
+
+  it('model table rows have tabindex=0 and role=row for keyboard access (GAP-304)', async () => {
+    buildModelFixture()
+
+    apiCall.mockImplementation(async (_method, url) => {
+      if (url === '/api/model') {
+        return {
+          provider: 'github',
+          model: 'gpt-5.4',
+          providers: ['github'],
+          all_models: [
+            { provider: 'github', model: 'gpt-5.4', source: 'list_models' },
+            { provider: 'github', model: 'gpt-4o', source: 'list_models' },
+          ],
+          list_models_capable: ['github'],
+        }
+      }
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+
+    await mod.openModelModal()
+    await mod.nextWizardStep()  // step 1 → 2 (auth)
+    await mod.nextWizardStep()  // step 2 → 3 (models)
+
+    const rows = document.querySelectorAll('#model-table-body tr[data-model]')
+    expect(rows.length).toBeGreaterThan(0)
+    rows.forEach(tr => {
+      expect(tr.getAttribute('tabindex')).toBe('0')
+      expect(tr.getAttribute('role')).toBe('row')
+    })
+  })
 })
 
 describe('settings modal', () => {

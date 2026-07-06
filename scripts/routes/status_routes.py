@@ -765,7 +765,7 @@ def create_blueprint(deps):
             job_url=conversation.state.get("job_url"),
             generation_goals=conversation.state.get("generation_goals") or None,
             skill_qualifier_overrides=conversation.state.get("skill_qualifier_overrides") or {},
-            ai_attribution=bool(conversation.state.get("ai_attribution", False)),
+            ai_attribution=bool(conversation.state.get("ai_attribution", get_config().ai_attribution_default)),
             highest_phase=conversation.state.get("highest_phase") or None,
             session_last_modified=entry.last_modified.isoformat() if entry.last_modified else None,
         )))
@@ -869,16 +869,35 @@ def create_blueprint(deps):
                 conversation.state["skills_section_title"] = raw
                 customizations["skills_section_title"] = raw
             if "ai_attribution" in data:
-                conversation.state["ai_attribution"] = bool(data["ai_attribution"])
-                customizations["ai_attribution"] = bool(data["ai_attribution"])
+                attr_val = bool(data["ai_attribution"])
+                conversation.state["ai_attribution"] = attr_val
+                customizations["ai_attribution"] = attr_val
+                # Persist as global default so new sessions inherit the preference (GAP-321).
+                config_path = _resolve_config_yaml_path()
+                try:
+                    with _SETTINGS_WRITE_LOCK:
+                        config_doc: dict = {}
+                        if config_path.exists():
+                            try:
+                                config_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+                            except Exception:
+                                pass
+                        _deep_set(config_doc, 'generation.ai_attribution_default', attr_val)
+                        tmp = config_path.with_suffix('.yaml.tmp')
+                        tmp.write_text(yaml.safe_dump(config_doc, sort_keys=False, default_flow_style=False), encoding='utf-8')
+                        tmp.replace(config_path)
+                    get_config(reload=True)
+                except Exception:
+                    logger.warning("Failed to persist ai_attribution_default to config.yaml", exc_info=True)
             conversation._save_session()
         session_registry.touch(sid)
-        cfg_default = get_config().get("generation.max_skills", 20)
+        cfg = get_config()
+        cfg_default = cfg.get("generation.max_skills", 20)
         return jsonify({
             "ok": True,
             "max_skills": int(conversation.state.get("max_skills") or cfg_default),
             "skills_section_title": conversation.state.get("skills_section_title") or "Skills",
-            "ai_attribution": bool(conversation.state.get("ai_attribution", False)),
+            "ai_attribution": bool(conversation.state.get("ai_attribution", cfg.ai_attribution_default)),
         })
 
     @bp.post("/api/post-analysis-responses")

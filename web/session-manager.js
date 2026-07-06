@@ -465,6 +465,18 @@ function _resolveRestoredPhase(statusData) {
 async function ensureSessionContext() {
   const urlSessionId = getSessionIdFromURL();
   if (!urlSessionId) {
+    // Auto-resume when exactly one active session exists — skip the modal (GAP-323).
+    try {
+      const activeRes = await fetch('/api/sessions/active');
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        const activeSessions = activeData.sessions || [];
+        if (activeSessions.length === 1 && activeSessions[0].path) {
+          const loaded = await loadSessionFile(activeSessions[0].path);
+          if (loaded) return true;
+        }
+      }
+    } catch (_) { /* fall through to modal */ }
     showSessionsLandingPanel();
     openSessionsModal({ required: true });
     return false;

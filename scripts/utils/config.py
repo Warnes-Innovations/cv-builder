@@ -303,6 +303,11 @@ class Config:
             'human_docx': True
         })
 
+    @property
+    def ai_attribution_default(self) -> bool:
+        """Global default for AI-assistance disclosure across sessions (GAP-321)."""
+        return bool(self.get('generation.ai_attribution_default', False))
+
     # Position style presets (issue #126)
     @property
     def position_styles(self) -> Dict[str, Any]:

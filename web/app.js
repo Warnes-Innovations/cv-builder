@@ -152,7 +152,13 @@ function setupEventListeners() {
   document.getElementById('generate-proceed-btn').addEventListener('click', () => switchTab('layout'));
   document.getElementById('layout-btn').addEventListener('click', handleLayoutPrimaryAction);
   document.getElementById('final-generate-proceed-btn').addEventListener('click', finalGenerationComplete);
-  document.getElementById('finalise-action-btn').addEventListener('click', () => switchTab('finalise'));
+  const finaliseBtn = document.getElementById('finalise-action-btn');
+  if (finaliseBtn) {
+    // Rename from "📦 Package Application Files" → clearer label (GAP-325).
+    finaliseBtn.innerHTML = '<span aria-hidden="true">📦</span> Archive Application';
+    finaliseBtn.title = 'Run the completeness checklist and archive this application package';
+    finaliseBtn.addEventListener('click', () => switchTab('finalise'));
+  }
 
   if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
 }

@@ -1579,6 +1579,8 @@ function _buildModelTable() {
     const tr = document.createElement('tr');
     tr.setAttribute('data-provider', provider);
     tr.setAttribute('data-model', m);
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('role', 'row');
     _applyModelRowVisualState(tr, isSelected);
     tr.addEventListener('mouseover', () => {
       if (!tr.classList.contains('model-row-active')) tr.style.background = '#f8fafc';
@@ -1599,10 +1601,8 @@ function _buildModelTable() {
     tbody.appendChild(tr);
   });
 
-  // Rebind row click using delegation so sorting/filter redraws still work.
-  tbody.onclick = async (event) => {
-    const tr = event.target.closest('tr');
-    if (!tr) return;
+  // Shared row-selection handler for both click and keyboard (GAP-304).
+  const _activateModelRow = async (tr) => {
     const provider = tr.getAttribute('data-provider');
     const model = tr.getAttribute('data-model');
     if (!model) return;
@@ -1623,6 +1623,21 @@ function _buildModelTable() {
     }
 
     await setModel(model, provider);
+  };
+
+  // Rebind row click using delegation so sorting/filter redraws still work.
+  tbody.onclick = (event) => {
+    const tr = event.target.closest('tr');
+    if (tr) _activateModelRow(tr);
+  };
+
+  // Keyboard activation: Enter/Space selects the focused row (GAP-304).
+  tbody.onkeydown = (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const tr = event.target.closest('tr');
+    if (!tr) return;
+    event.preventDefault();
+    _activateModelRow(tr);
   };
 
   // Enhance with DataTables for sorting/searching; keep paging disabled.

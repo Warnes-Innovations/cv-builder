@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 82)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 86)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,10 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325.
+
+## 2026-07-06 (Cycle 86) Implementation Notes
+
+Cycle 86 addressed 5 gaps: GAP-308 (ATS advisory vs blocking distinction), GAP-304 (model table keyboard nav), GAP-321 (ai_attribution config persistence), GAP-325 (Finalise button relabeled), GAP-323 (single-session auto-resume).
 
 ## 2026-07-06 (Cycle 85) Implementation Notes
 
@@ -3652,7 +3656,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-304: Model Catalog Table Rows Not Keyboard-Accessible
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 86) — Added `tabindex="0"` and `role="row"` to each `<tr>` in `_buildModelTable()`. Extracted shared `_activateModelRow()` handler called by both `tbody.onclick` and new `tbody.onkeydown` (Enter/Space) delegation in `web/ui-core.js`.
 **Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
 **Description:** The LLM model selection table in the model wizard (`#model-table`, `ui-core.js:1570–1626`) uses `tbody.onclick` delegation but adds no `tabindex`, `role`, or `keydown` handlers to `<tr>` elements. Keyboard users cannot Tab into rows or use Enter/Space to select a model from the full catalog table. The quick-model button list in Step 1 is keyboard-accessible but the full catalog table in Step 3 is mouse-only.
 **Affected stories:** US-X5 (proposed), US-X3
@@ -3696,7 +3700,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-308: Six Structural ATS Validation Checks Are Non-Blocking, Contradicting Story Spec
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 86) — Implemented option (b): advisory-only failed checks now render amber (⚠ Advisory badge) instead of red (❌) in the ATS report table. Summary line shows separate "advisory" and "fail" counts. "Fix required" banner only fires for blocking failures; advisory-only failures get a distinct amber advisory notice. Changes in `web/download-tab.js:_renderValidationSummary()`.
 **Discovered:** 2026-07-06 (cycle 82) by hr-ats.
 **Description:** `download-tab.js:151–161` defines `_NON_BLOCKING_CHECKS` which exempts the following checks from blocking file downloads even on `fail` status: `docx_zero_shapes`, `docx_standard_headings`, `docx_heading1_present`, `docx_date_format_consistent`, `html_jsonld_valid_person`, `html_jsonld_knows_about`. US-H6 acceptance criterion states "Any fail blocks download with a clear explanation." The current implementation allows downloads when structural failures occur — a hiring manager or ATS system receiving a non-conformant DOCX with creative heading names or invalid JSON-LD will get a degraded document without warning at download time.
 **Affected stories:** US-H6
@@ -3817,7 +3821,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-319: Ranked Publication Shortlist Not Presented Proactively
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 86) — `_generate_recommendations()` in `scripts/utils/conversation_manager.py` now calls `self.orchestrator._select_publications()` after generating recommendations and appends a "Top recommended publications for this role" list (up to 5, with relevance score and rationale) to the confirmation message. Only fires when the user has publications and has opted to include them.
 **Discovered:** 2026-07-06 (cycle 82) by resume-expert.
 **Description:** The publications review tab exposes `relevance_score` and `rationale` per publication (`publications-review.js:149–153`), and the scoring algorithm ranks publications by recency, entry type, keyword-title match, and domain bonus. However, the ranked shortlist is not presented to the user before they navigate to the Publications sub-tab. There is no proactive assistant message after customization recommendations saying "Your top recommended publications for this role are: X, Y, Z." The US-R2 acceptance criterion states the ranked shortlist should be "presented" (not merely available). This mirrors the pattern used for experiences and skills which are summarized in the assistant recommendation message.
 **Affected stories:** US-R2, US-R-NEW-5
@@ -3839,7 +3843,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-321: `ai_attribution` Resets Per Session — Not Persisted to config.yaml
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 86) — Added `ai_attribution_default` property to `Config` (`scripts/utils/config.py`). When user sets `ai_attribution` via `/api/generation-settings`, it is now also persisted to `config.yaml` under `generation.ai_attribution_default`. New sessions seed from `get_config().ai_attribution_default` instead of hardcoded `False` (`scripts/routes/status_routes.py`).
 **Discovered:** 2026-07-06 (cycle 82) by trust-compliance.
 **Description:** The AI-assistance disclosure checkbox (`index.html:647–649`) seeds from `generation.ai_attribution` in per-session status (`ui-core.js:188`). `ui-core.js:211–213` reads `ai_attribution` from per-session state, not from `config.yaml`. Enabling the disclosure in session A does not carry it over to session B. Users who need to routinely disclose AI assistance (e.g., for legal or ethical contexts) must re-enable the setting on every new session — a compliance friction point.
 **Affected stories:** US-C5 (proposed), US-C3
@@ -3861,7 +3865,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-323: Single Active Session Requires Full Modal to Resume at Root URL
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 86) — `ensureSessionContext()` in `web/session-manager.js` now fetches `/api/sessions/active` first; if exactly one active session exists, auto-loads it via `loadSessionFile()` without showing the modal. Falls through to existing modal flow on error or when ≥2 active sessions exist.
 **Discovered:** 2026-07-06 (cycle 82) by returning-user.
 **Description:** When a returning user navigates to the root URL without a `?session=` parameter, `ensureSessionContext()` (`session-manager.js:457–467`) calls `openSessionsModal({ required: true })` and blocks on session selection. There is no "resume most recent session" shortcut. The recents strip in the sessions modal (`session-switcher-ui.js:442–480`) exists but does not auto-navigate. Users with a single active session must open the full 980px modal, find their session, and click Load before any context appears.
 **Affected stories:** US-S4 (proposed), US-S1
@@ -3883,7 +3887,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-325: Finalise Tab Hidden — Only Reachable Via Mislabeled "Package Application Files" Button
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-06 (cycle 86) — Relabeled the action button to "📦 Archive Application" with a clarifying `title` tooltip at startup via `web/app.js:setupEventListeners()` (index.html is off-limits until GAP-01 lands). The Finalise tab nav visibility deferral remains; that requires index.html changes blocked by GAP-01.
 **Discovered:** 2026-07-06 (cycle 82) by recruiter-ops.
 **Description:** The Finalise tab (`index.html:227`) has `style="display:none"` and is absent from `STAGE_TABS` (`ui-core.js:353–366`). The archive flow is reachable only via the `finalise-action-btn` labeled "📦 Package Application Files" (`index.html:198`) — a label that sounds like a file-zipping operation, not an archival checkpoint. Recruiters and applicants reviewing the workflow nav see no "Finalise" or "Archive" step pill; the action button alone signals that archiving is available, and only after the user has visited the File Review tab. The readiness checklist (`finalise.js:163–214`) and the archive confirmation are fully implemented but inaccessible without knowing to click this button.
 **Affected stories:** US-O4 (proposed), US-O1, US-A9
