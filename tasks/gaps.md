@@ -10,6 +10,10 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325.
 
+## 2026-07-06 (Cycle 84) Implementation Notes
+
+Cycle 84 addressed 6 gaps from cycle 82 review: GAP-300 (anti-fabrication instruction), GAP-314 (welcome modal active session), GAP-316 (cover letter word count), GAP-317 (zero-bullet guard), GAP-318 (first-author publication bonus), GAP-320 (summary density check).
+
 ## 2026-07-06 (Cycle 83) Implementation Notes
 
 Cycle 83 addressed 5 highest-priority gaps from cycle 82 review: GAP-301 (ATS HTML lang), GAP-302 (FA aria-hidden), GAP-306 (--cv-card-bg), GAP-307 (result-clause severity), GAP-322 (Weak evidence label). Also added `.toggle-chat:focus-visible` focus ring (unpinned accessibility improvement).
@@ -3600,7 +3604,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-300: No Anti-Fabrication Instruction in LLM System Prompt
 
 **Priority:** CRITICAL
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-06 (cycle 84) — Added explicit anti-fabrication instruction to `_build_system_prompt()` in `conversation_manager.py`. Part (b) of the fix (numeric-token diff persuasion check) deferred to a future cycle.
 **Discovered:** 2026-07-06 (cycle 82) by trust-compliance, persuasion-expert, resume-expert.
 **Description:** The LLM system prompt (`conversation_manager.py:424–495`) defines recommendation structure and confidence levels but contains no explicit instruction to restrict rewrites to facts present in master data, avoid inventing metrics, or flag hallucinated claims. The persuasion check pipeline (`run_persuasion_checks()`, lines 1349–1428) covers writing style (verb strength, passive voice, word count) only. A rewrite changing "improved efficiency" to "improved efficiency by 40%" passes all checks without a flag — the fabricated metric is never flagged. `apply_rewrite_constraints()` preserves numbers already in the original but does not detect numbers invented in the proposed text. There is no diff-level check comparing quantified claims between `r.original` and `r.proposed`.
 **Affected stories:** US-C1, US-C3, US-R3, US-P2
@@ -3754,7 +3758,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-314: Welcome Modal Fires for Active-Session Returning Users
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 84) — Added active-session check to `maybeShowWelcomeModal()` in `session-manager.js`: fetches `/api/status` and skips the modal when `phase !== 'init'`.
 **Discovered:** 2026-07-06 (cycle 82) by returning-user.
 **Description:** `maybeShowWelcomeModal()` (`session-manager.js:175–201`) checks only `localStorage.getItem('cv-builder-welcome-dismissed')`. If the user has never checked the "Don't show automatically on startup" checkbox (`index.html:391–393`), the welcome modal fires on every `init()` call (`app.js:57`) — including when a live session with work in progress is being restored. The modal body is oriented at new users (3-phase workflow overview, prerequisites) and provides no value to a returning user mid-application. The "Don't show automatically" checkbox is easy to miss because it sits left-aligned in the modal footer while the primary CTA ("Get Started") is right-aligned.
 **Affected stories:** US-S7 (proposed), US-F1, US-S1
@@ -3776,7 +3780,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-316: Cover Letter Word Count Target Mismatch — Backend 250–300w vs Story 300–400w
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 84) — Aligned backend (`scripts/routes/master_data_routes.py:122`) to 300–400w (standard) / 350–450w (exec) / 400–500w (academic). Frontend (`web/cover-letter.js:614-616`) updated to matching ranges.
 **Discovered:** 2026-07-06 (cycle 82) by hiring-manager, persuasion-expert.
 **Description:** `_cover_letter_word_count_instruction()` in `master_data_routes.py:118–122` returns "250–300 words" for standard roles. The client-side `_validateCoverLetter()` in `cover-letter.js:607–631` uses a green-zone target of ≤300w for standard roles. The user story specifies 300–400 words as the standard range. Letters generated to the backend's 250–300w target will consistently fall below what hiring managers expect for substantive roles. Confirmed independently by two personas (hiring-manager and persuasion-expert).
 **Affected stories:** US-M6, US-P5
@@ -3787,7 +3791,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-317: Zero-Bullet Job Entries Not Guarded — Renders Bare Job Title
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 84) — Added `bullet_count == 0` case with `severity: 'warn'` in `cv_orchestrator.py:4470`. Changed existing `bullet_count == 1` branch to `elif`.
 **Discovered:** 2026-07-06 (cycle 82) by hiring-manager.
 **Description:** `cv_orchestrator.py:4465–4483` fires an advisory when `bullet_count == 1` ("Only 1 bullet remaining — consider adding more"). However, when a user excludes all bullets for a job entry (`bullet_count == 0`), no advisory fires and the job entry renders as a bare title + company + dates with no content — a credibility failure on the generated CV. The condition `if bullet_count == 1` at line 4470 does not handle the `0` case.
 **Affected stories:** US-M2
@@ -3798,7 +3802,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-318: First-Author Status Contributes 0 Points to Publication Scoring
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 84) — Added `+10` first-author bonus in `_select_publications()` scoring loop in `cv_orchestrator.py:3801` (after domain-specific bonus).
 **Discovered:** 2026-07-06 (cycle 82) by resume-expert.
 **Description:** `is_first_author` is detected (`cv_orchestrator.py:892–895`) and displayed in the publications review table as a ★ star indicator (`publications-review.js:148`), and the US-R2 acceptance criterion explicitly lists "first-author status" as a scoring factor. However, `_select_publications()` at `cv_orchestrator.py:3764–3806` does not include first-author status in its scoring function — the field is detected but contributes 0 points. Publications by first authors are not ranked higher than those by middle authors with equivalent recency/keyword match.
 **Affected stories:** US-R2
@@ -3820,7 +3824,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-320: Summary Line-Count Not Validated — Dense Paragraphs Pass
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 84) — Added Check 3 to `_validate_summary()` in `cv_orchestrator.py`: warns when summary >80 words has no line breaks and >5 sentences.
 **Discovered:** 2026-07-06 (cycle 82) by resume-expert.
 **Description:** `_validate_summary()` in `cv_orchestrator.py:3606–3646` validates word count (40–250 words) but not line count. The US-R4 acceptance criterion requires 4–6 lines for the professional summary. A 250-word single dense paragraph block passes the word-count gate but violates the line-count criterion — hiring managers expect a scannable summary, not a prose block.
 **Affected stories:** US-R4

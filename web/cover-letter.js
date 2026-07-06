@@ -611,12 +611,12 @@ function _validateCoverLetter(text) {
   const _roleDomain = (_roleAnalysis.domain || '').toLowerCase();
   const isExec      = /exec|vp|c-suite|chief|director|president|partner/.test(_roleLevel);
   const isAcademic  = /academic|research|faculty|professor|postdoc/.test(_roleDomain + ' ' + _roleLevel);
-  const wcTarget    = isAcademic ? { lo: 500, hi: 600, warnLo: 400, warnHi: 650 }
-                    : isExec     ? { lo: 400, hi: 500, warnLo: 300, warnHi: 550 }
-                                 : { lo: 250, hi: 300, warnLo: 200, warnHi: 400 };
+  const wcTarget    = isAcademic ? { lo: 400, hi: 500, warnLo: 350, warnHi: 550 }
+                    : isExec     ? { lo: 350, hi: 450, warnLo: 300, warnHi: 500 }
+                                 : { lo: 300, hi: 400, warnLo: 250, warnHi: 450 };
   const wcLabel     = isAcademic ? `${wcTarget.lo}–${wcTarget.hi} (academic/research)`
                     : isExec     ? `${wcTarget.lo}–${wcTarget.hi} (executive)`
-                                 : `≤${wcTarget.hi} (standard)`;
+                                 : `${wcTarget.lo}–${wcTarget.hi} (standard)`;
 
   const words    = text.trim().split(/\s+/).filter(Boolean).length;
   const wcPct    = Math.min(100, (words / wcTarget.hi) * 100);

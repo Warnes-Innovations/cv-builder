@@ -176,6 +176,14 @@ async function maybeShowWelcomeModal() {
   try {
     if (localStorage.getItem(_WELCOME_DISMISSED_KEY)) return;
   } catch (_) {}
+  // Skip for returning users who already have an active session (GAP-314).
+  try {
+    const statusRes = await fetch('/api/status');
+    if (statusRes.ok) {
+      const statusData = await statusRes.json().catch(() => ({}));
+      if (statusData?.phase && statusData.phase !== 'init') return;
+    }
+  } catch (_) {}
   let section = 'present';
   try {
     const res = await fetch('/api/setup/master-cv-status');

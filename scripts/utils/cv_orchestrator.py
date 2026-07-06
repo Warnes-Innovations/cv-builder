@@ -3629,7 +3629,17 @@ Include one entry per candidate. Do not omit any candidate."""
                 f'Summary is long ({word_count} words) — aim for 40–250 words to keep recruiter attention.'
             )
 
-        # Check 3: top-3 required skills from job analysis should appear in summary
+        # Check 3: detect dense single-paragraph summaries (GAP-320)
+        if word_count > 80:
+            newline_count = text.count('\n')
+            sentence_count = len([s for s in text.replace('\n', ' ').split('.') if s.strip()])
+            if newline_count == 0 and sentence_count > 5:
+                warnings.append(
+                    f'Summary is a single dense paragraph ({sentence_count} sentences, no line breaks). '
+                    'Consider breaking into 2–3 shorter paragraphs for recruiter readability.'
+                )
+
+        # Check 4: top-3 required skills from job analysis should appear in summary
         required_skills: List[str] = [
             s.lower() for s in (job_analysis or {}).get('required_skills', []) if s
         ]
@@ -3799,7 +3809,12 @@ Include one entry per candidate. Do not omit any candidate."""
                 score += 15
                 reasons.append('domain match')
 
-            # Normalise to 0–10 scale (raw max ≈ 70)
+            # First-author bonus (GAP-318)
+            if pub.get('is_first_author'):
+                score += 10
+                reasons.append('first author')
+
+            # Normalise to 0–10 scale (raw max ≈ 80)
             normalized = min(10.0, round(score / 7, 1))
             rationale = ('Heuristic: ' + ', '.join(reasons)) if reasons else 'Heuristic: no strong match'
 
@@ -4467,7 +4482,20 @@ Include one entry per candidate. Do not omit any candidate."""
                 1 for ach in achievements
                 if (ach.get('text', '') if isinstance(ach, dict) else str(ach)).strip()
             )
-            if bullet_count == 1:
+            if bullet_count == 0:
+                role = exp.get('title') or exp.get('position') or 'this role'
+                org  = exp.get('organization') or exp.get('company') or ''
+                label = f'"{role}" at {org}' if org else f'"{role}"'
+                sparse_experience_advisories.append({
+                    'type':     'sparse_experience',
+                    'severity': 'warn',
+                    'exp_id':   exp_id,
+                    'detail': (
+                        f'{label} has no bullets — it will render as bare title and dates only. '
+                        'Include at least one achievement bullet so hiring managers have context.'
+                    ),
+                })
+            elif bullet_count == 1:
                 role = exp.get('title') or exp.get('position') or 'this role'
                 org  = exp.get('organization') or exp.get('company') or ''
                 label = f'"{role}" at {org}' if org else f'"{role}"'

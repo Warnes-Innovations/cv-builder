@@ -487,6 +487,9 @@ Example:
   requirement. No contradicting evidence. Very high confidence due to multiple strong matches 
   with zero misalignments.
 
+CRITICAL — Data Integrity:
+Only include facts, metrics, titles, dates, and achievements that are explicitly present in the candidate's provided master data. Do not invent, extrapolate, or embellish specific numbers, percentages, dates, or claims not already stated in the source material. If a quantified claim cannot be verified from the provided information, omit the specific number rather than fabricate it.
+
 You can request actions by including JSON in your response:
 {{"action": "analyze_job", "job_text": "..."}}
 {{"action": "recommend_customizations"}}

@@ -128,9 +128,9 @@ describe('_validateCoverLetter — word count', () => {
     expect(container.innerHTML).toContain('too short')
   })
 
-  it('passes letter within 250-400 words', () => {
-    // build ~300-word letter (4 words/phrase × 65 copies = 260 body words + header/footer ≈ 269 total)
-    const para = Array(65).fill('Experienced professional delivering results.').join(' ')
+  it('passes letter within 300-400 words (standard range)', () => {
+    // build ~320-word letter (4 words/phrase × 78 copies = 312 body words + header/footer ≈ 321 total)
+    const para = Array(78).fill('Experienced professional delivering results.').join(' ')
     const letter = `Dear Dr. Smith,\n\n${para}\n\nI look forward to an interview.`
     _validateCoverLetter(letter)
     const container = document.getElementById('cl-checks-container')

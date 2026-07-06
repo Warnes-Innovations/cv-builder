@@ -116,10 +116,10 @@ def _cover_letter_word_count_instruction(job_analysis: dict) -> str:
     is_exec    = bool(_re.search(r'vp|vice.?president|c-level|ceo|cto|cfo|coo|chief|svp|evp|director|partner|principal', role_level))
     is_academic = bool(_re.search(r'academi|research|professor|faculty|postdoc|phd|scientist', domain + ' ' + role_level))
     if is_exec:
-        return '300–400 words'
+        return '350–450 words'
     if is_academic:
         return '400–500 words'
-    return '250–300 words'
+    return '300–400 words'
 
 
 # Text similarity helper (used in screening search)
