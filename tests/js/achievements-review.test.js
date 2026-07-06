@@ -16,6 +16,7 @@ import {
   buildAchievementsReviewTable,
   handleAchievementAction,
   bulkAchievementAction,
+  undoBulkAchievementAction,
   submitAchievementDecisions,
   saveTopLevelAchievementField,
   deleteTopLevelAchievement,
@@ -144,6 +145,52 @@ describe('bulkAchievementAction', () => {
     bulkAchievementAction('exclude')
     // ach-3 is display:none — should not be changed
     expect(window.achievementDecisions['ach-3']).toBe('include')
+  })
+})
+
+// ── undoBulkAchievementAction ─────────────────────────────────────────────
+
+describe('undoBulkAchievementAction', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="ach-bulk-toolbar">
+        <button class="bulk-undo-btn" style="display:none"></button>
+      </div>
+      <table id="achievements-review-table">
+        <tbody>
+          <tr data-ach-id="ach-1"><td><button class="icon-btn active" data-action="include">✓</button><button class="icon-btn" data-action="exclude">✗</button></td></tr>
+          <tr data-ach-id="ach-2"><td><button class="icon-btn active" data-action="emphasize">★</button><button class="icon-btn" data-action="exclude">✗</button></td></tr>
+        </tbody>
+      </table>`
+    window.pendingRecommendations = {}
+    window.achievementDecisions = { 'ach-1': 'include', 'ach-2': 'emphasize' }
+  })
+
+  it('restores decisions to pre-bulk state', () => {
+    bulkAchievementAction('exclude')
+    expect(window.achievementDecisions['ach-1']).toBe('exclude')
+    undoBulkAchievementAction()
+    expect(window.achievementDecisions['ach-1']).toBe('include')
+    expect(window.achievementDecisions['ach-2']).toBe('emphasize')
+  })
+
+  it('hides the undo button after undo', () => {
+    bulkAchievementAction('exclude')
+    undoBulkAchievementAction()
+    const undoBtn = document.getElementById('ach-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('none')
+  })
+
+  it('is a no-op when no snapshot exists', () => {
+    window.achievementDecisions = { 'ach-1': 'exclude' }
+    undoBulkAchievementAction()
+    expect(window.achievementDecisions['ach-1']).toBe('exclude')
+  })
+
+  it('shows the undo button after a bulk action', () => {
+    bulkAchievementAction('exclude')
+    const undoBtn = document.getElementById('ach-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('')
   })
 })
 

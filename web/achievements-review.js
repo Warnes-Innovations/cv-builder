@@ -82,6 +82,7 @@ function _achievementEntryHidden(entry) {
 
 window.achievementDecisions = {};
 window._achievementsOrdered = null;
+let _achBulkUndoSnapshot = null; // single-level undo for bulkAchievementAction
 
 // Small fetch helper with timeout to avoid leaving loaders visible on hanging requests
 async function fetchJsonWithTimeout(url, opts = {}, timeout = 7000) {
@@ -337,12 +338,14 @@ function _renderAchievementsReviewTable(container) {
   // Bulk toolbar above the filter row
   const achToolbar = document.createElement('div');
   achToolbar.className = 'bulk-toolbar';
+  achToolbar.id = 'ach-bulk-toolbar';
   achToolbar.innerHTML = `
     <span>Bulk:</span>
     <button class="bulk-btn bulk-recommended" onclick="bulkAchievementAction('recommended')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAchievementAction('emphasize')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAchievementAction('include')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAchievementAction('exclude')">${eyeSlashIcon()} Exclude All</button>
+    <button class="bulk-btn bulk-undo-btn" style="display:none" onclick="undoBulkAchievementAction()" title="Undo the last bulk action">↩ Undo</button>
   `;
   container.insertBefore(achToolbar, container.firstChild);
 
@@ -358,6 +361,7 @@ function _renderAchievementsReviewTable(container) {
 }
 
 function bulkAchievementAction(action) {
+  _achBulkUndoSnapshot = { ...window.achievementDecisions };
   const data = window.pendingRecommendations || {};
   document.querySelectorAll('#achievements-review-table tbody tr[data-ach-id]').forEach(row => {
     if (row.style.display === 'none') return;   // respect filter
@@ -377,6 +381,19 @@ function bulkAchievementAction(action) {
     }
     handleAchievementAction(achId, resolvedAction);
   });
+  const undoBtn = document.getElementById('ach-bulk-toolbar')?.querySelector('.bulk-undo-btn');
+  if (undoBtn) undoBtn.style.display = '';
+}
+
+function undoBulkAchievementAction() {
+  if (!_achBulkUndoSnapshot) return;
+  const snap = _achBulkUndoSnapshot;
+  _achBulkUndoSnapshot = null;
+  for (const [achId, action] of Object.entries(snap)) {
+    handleAchievementAction(achId, action);
+  }
+  const undoBtn = document.getElementById('ach-bulk-toolbar')?.querySelector('.bulk-undo-btn');
+  if (undoBtn) undoBtn.style.display = 'none';
 }
 
 function handleAchievementAction(achId, action) {
@@ -1020,6 +1037,7 @@ export {
   buildAchievementsReviewTable,
   _renderAchievementsReviewTable,
   bulkAchievementAction,
+  undoBulkAchievementAction,
   handleAchievementAction,
   submitAchievementDecisions,
   moveAchievementRow,

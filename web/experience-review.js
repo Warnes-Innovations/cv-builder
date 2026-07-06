@@ -286,12 +286,14 @@ function _renderExperienceTable(container, recommendedSet, data, newRecommendedE
   // Bulk toolbar
   const expToolbar = document.createElement('div');
   expToolbar.className = 'bulk-toolbar';
+  expToolbar.id = 'exp-bulk-toolbar';
   expToolbar.innerHTML = `
     <span>Bulk:</span>
     <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','experience')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','experience')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','experience')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','experience')">${eyeSlashIcon()} Exclude All</button>
+    <button class="bulk-btn bulk-undo-btn" style="display:none" onclick="undoBulkAction('experience')" title="Undo the last bulk action">↩ Undo</button>
   `;
   container.insertBefore(expToolbar, container.firstChild);
 

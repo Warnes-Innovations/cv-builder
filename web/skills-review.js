@@ -1049,12 +1049,14 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
   const skillToolbar = document.createElement('div');
   skillToolbar.className = 'bulk-toolbar';
+  skillToolbar.id = 'skill-bulk-toolbar';
   skillToolbar.innerHTML = `
     <span>Bulk:</span>
     <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','skill')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','skill')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','skill')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','skill')">${eyeSlashIcon()} Exclude All</button>
+    <button class="bulk-btn bulk-undo-btn" style="display:none" onclick="undoBulkAction('skill')" title="Undo the last bulk action">↩ Undo</button>
   `;
   container.insertBefore(skillToolbar, container.firstChild);
 

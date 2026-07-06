@@ -23,6 +23,8 @@ import {
   switchReviewSubtab,
   _loadReviewPane,
   _updatePageEstimate,
+  bulkAction,
+  undoBulkAction,
 } from '../../web/review-table-base.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
 
@@ -552,5 +554,119 @@ describe('_updatePageEstimate', () => {
         }),
       )
     })
+  })
+})
+
+// ── bulkAction + undoBulkAction ───────────────────────────────────────────
+
+function _makeExpTable(entries) {
+  const tbody = document.createElement('tbody')
+  entries.forEach(({ id, action }) => {
+    const tr = document.createElement('tr')
+    tr.dataset.expId = id
+    const btn = document.createElement('button')
+    btn.className = 'icon-btn active'
+    btn.dataset.action = action
+    btn.setAttribute('aria-pressed', 'true')
+    tr.appendChild(btn)
+    tbody.appendChild(tr)
+  })
+  const table = document.createElement('table')
+  table.id = 'experience-review-table'
+  table.appendChild(tbody)
+  return table
+}
+
+describe('bulkAction snapshot and undoBulkAction', () => {
+  function _resetDOM() {
+    document.body.innerHTML = ''
+    const table = _makeExpTable([
+      { id: 'e1', action: 'include' },
+      { id: 'e2', action: 'emphasize' },
+    ])
+    const toolbar = document.createElement('div')
+    toolbar.id = 'exp-bulk-toolbar'
+    const undoBtn = document.createElement('button')
+    undoBtn.className = 'bulk-undo-btn'
+    undoBtn.style.display = 'none'
+    toolbar.appendChild(undoBtn)
+    document.body.appendChild(toolbar)
+    document.body.appendChild(table)
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    userSelections.experiences = { e1: 'include', e2: 'emphasize' }
+    userSelections.skills = {}
+    window.pendingRecommendations = {}
+    vi.stubGlobal('$', () => ({ DataTable: () => null }))
+    Object.assign($, { fn: { DataTable: { isDataTable: () => false } } })
+    _resetDOM()
+  })
+
+  afterEach(() => {
+    // Clear any lingering snapshot so module state doesn't leak between tests
+    undoBulkAction('experience')
+    undoBulkAction('skill')
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('bulkAction snapshots selections before applying changes', () => {
+    bulkAction('exclude', 'experience')
+    // After bulk: both should be exclude
+    expect(userSelections.experiences.e1).toBe('exclude')
+    expect(userSelections.experiences.e2).toBe('exclude')
+  })
+
+  it('bulkAction shows the undo button', () => {
+    bulkAction('exclude', 'experience')
+    const undoBtn = document.getElementById('exp-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('')
+  })
+
+  it('undoBulkAction restores previous selections', () => {
+    bulkAction('exclude', 'experience')
+    undoBulkAction('experience')
+    expect(userSelections.experiences.e1).toBe('include')
+    expect(userSelections.experiences.e2).toBe('emphasize')
+  })
+
+  it('undoBulkAction hides the undo button', () => {
+    bulkAction('exclude', 'experience')
+    undoBulkAction('experience')
+    const undoBtn = document.getElementById('exp-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('none')
+  })
+
+  it('undoBulkAction is a no-op when called with wrong type', () => {
+    bulkAction('exclude', 'experience')
+    const before = { ...userSelections.experiences }
+    undoBulkAction('skill')
+    expect(userSelections.experiences).toEqual(before)
+  })
+
+  it('undoBulkAction is a no-op when no snapshot exists', () => {
+    userSelections.experiences = { e1: 'exclude' }
+    undoBulkAction('experience')
+    expect(userSelections.experiences.e1).toBe('exclude')
+  })
+
+  it('undoBulkAction re-applies button active state for restored rows', () => {
+    const rows = document.querySelectorAll('#experience-review-table tbody tr')
+    // Simulate: after bulk exclude, both buttons show 'exclude'
+    rows.forEach(row => {
+      row.querySelectorAll('.icon-btn').forEach(b => b.classList.remove('active'))
+      const excBtn = document.createElement('button')
+      excBtn.className = 'icon-btn active'
+      excBtn.dataset.action = 'exclude'
+      row.appendChild(excBtn)
+    })
+    bulkAction('exclude', 'experience')
+    undoBulkAction('experience')
+    // Each row should now have original action button re-activated
+    const row1 = document.querySelector('tr[data-exp-id="e1"]')
+    const restored = row1.querySelector('[data-action="include"]')
+    expect(restored?.classList.contains('active')).toBe(true)
   })
 })

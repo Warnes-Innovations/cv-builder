@@ -8,11 +8,11 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-07-05 (Gap D RESOLVED cycle 75 — experience/skill show-only-changed filter; Gap C RESOLVED cycle 70 — session search)
+**Last Updated:** 2026-07-06 (Gap E RESOLVED cycle 79 — single-level bulk-action undo for experience/skill/achievement tables)
 **Branch:** feature/multi-user-deployment
 **Reviewer role:** Power User (US-W1, US-W2, US-W3)
 
-**Executive Summary:** All three stories fully pass all acceptance criteria. Gap A (keyboard shortcut) was resolved by `keyboard-shortcuts.js`; Gap C (session text-search) resolved in cycle 70; Gap D (show-only-changed filter) fully resolved in cycles 69+75 for both rewrite and customizations tabs. Only Gap E (bulk-decision undo) remains open — a complex enhancement with low urgency.
+**Executive Summary:** All three stories fully pass all acceptance criteria. Gap A (keyboard shortcut) resolved by `keyboard-shortcuts.js`; Gap C (session text-search) resolved in cycle 70; Gap D (show-only-changed filter) fully resolved in cycles 69+75; Gap E (bulk-decision undo) resolved in cycle 79 — single-level undo with inline ↩ Undo button for experience, skills, and achievement bulk toolbars. Rewrite bulk-action undo is not implemented (out of scope — rewrites only act on undecided items and their card state is more complex).
 
 ---
 
@@ -111,11 +111,15 @@ Cycle 75: Experience and skills table filters implemented. `_injectCustomization
 
 ---
 
-### Gap E — No undo for bulk review-table decisions (W1.2, W3.3)
+### Gap E — Bulk-action undo — RESOLVED (cycle 79)
 
-Layout instructions have an undo stack (`layout-instruction.js`), but experience/skill/achievement/rewrite decisions cannot be undone individually or in bulk after applying. A misclick on "Exclude All" requires re-running the phase to reset.
+`bulkAction()` in `review-table-base.js` now snapshots `userSelections[selType]` before applying changes. `undoBulkAction(type)` restores the snapshot and re-applies button active states. An `↩ Undo` button (`.bulk-undo-btn`) is hidden by default and shown after any bulk action; it hides again after undo. The toolbar divs now have stable IDs (`exp-bulk-toolbar`, `skill-bulk-toolbar`).
 
-**Proposed:** Single-level undo for the last bulk action on a review table — store a pre-bulk state snapshot in `localStorage` and restore it on `Ctrl+Z` or an Undo button.
+`bulkAchievementAction()` in `achievements-review.js` has the equivalent snapshot/restore mechanism via `undoBulkAchievementAction()` with toolbar ID `ach-bulk-toolbar`.
+
+Rewrite bulk-action undo was not implemented — `acceptAllRewrites()` only acts on undecided cards and card state is text+class compound state, making a simple snapshot inappropriate. Re-running the rewrite phase resets all decisions.
+
+11 new unit tests: 7 in `review-table-base.test.js`, 4 in `achievements-review.test.js`.
 
 ---
 

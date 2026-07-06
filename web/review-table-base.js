@@ -35,6 +35,7 @@ let userSelections = {
   experiences: {},  // exp_id -> 'emphasize'|'include'|'de-emphasize'|'exclude'
   skills: {}        // skill_name -> 'emphasize'|'include'|'de-emphasize'|'exclude'
 };
+let _bulkUndoSnapshot = null; // { type, snapshot } — single-level undo for bulkAction
 let pageEstimateTimer = null;
 let pageEstimateRequestId = 0;
 
@@ -844,7 +845,9 @@ function handleActionClick(itemId, action, type) {
  * type:   'experience' | 'skill'
  */
 function bulkAction(action, type) {
+  const selType  = type === 'experience' ? 'experiences' : 'skills';
   const tableId  = type === 'experience' ? '#experience-review-table' : '#skills-review-table';
+  _bulkUndoSnapshot = { type, snapshot: { ...userSelections[selType] } };
   const data     = window.pendingRecommendations || {};
   const dt       = $.fn.DataTable.isDataTable(tableId) ? $(tableId).DataTable() : null;
 
@@ -884,6 +887,49 @@ function bulkAction(action, type) {
       userSelections.skills[itemId] = resolvedAction;
     }
   });
+  _updatePageEstimate();
+  _setBulkUndoVisible(type, true);
+}
+
+function _setBulkUndoVisible(type, show) {
+  const id  = type === 'experience' ? 'exp-bulk-toolbar' : 'skill-bulk-toolbar';
+  const btn = document.getElementById(id)?.querySelector('.bulk-undo-btn');
+  if (btn) btn.style.display = show ? '' : 'none';
+}
+
+function undoBulkAction(type) {
+  if (!_bulkUndoSnapshot || _bulkUndoSnapshot.type !== type) return;
+  const selType  = type === 'experience' ? 'experiences' : 'skills';
+  const tableId  = type === 'experience' ? '#experience-review-table' : '#skills-review-table';
+  const snapshot = _bulkUndoSnapshot.snapshot;
+  _bulkUndoSnapshot = null;
+
+  userSelections[selType] = { ...snapshot };
+
+  const dt = $.fn.DataTable.isDataTable(tableId) ? $(tableId).DataTable() : null;
+  const rows = dt
+    ? dt.rows({ search: 'applied' }).nodes().toArray()
+    : Array.from(document.querySelectorAll(`${tableId} tbody tr`));
+
+  rows.forEach(row => {
+    const expId   = row.dataset.expId;
+    const skillId = row.dataset.skill;
+    const itemId  = expId || skillId;
+    if (!itemId) return;
+    const restoredAction = snapshot[itemId];
+    if (!restoredAction) return;
+    row.querySelectorAll('.icon-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+    });
+    const target = row.querySelector(`[data-action="${restoredAction}"]`);
+    if (target) {
+      target.classList.add('active');
+      if (target.hasAttribute('aria-pressed')) target.setAttribute('aria-pressed', 'true');
+    }
+  });
+
+  _setBulkUndoVisible(type, false);
   _updatePageEstimate();
 }
 
@@ -934,6 +980,7 @@ export {
   _updatePageEstimate,
   handleActionClick,
   bulkAction,
+  undoBulkAction,
   _resolvedExpAction,
   _resolvedSkillAction,
 };
