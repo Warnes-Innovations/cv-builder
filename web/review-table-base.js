@@ -28,6 +28,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('review-table-base');
 
 import { stateManager } from './state-manager.js';
+import { _STEP_DISPLAY } from './workflow-steps.js';
 
 // ── Module-level state ────────────────────────────────────────────────────
 
@@ -184,17 +185,22 @@ function switchTab(tab) {
   _saveDraftInputsForTab(stateManager.getCurrentTab());
 
   // Sync second-bar visibility to this tab's stage
+  let _switchTabStage = null;
   if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
-    const tabStage = getStageForTab(tab);
-    if (tabStage) {
-      updateTabBarForStage(tabStage);
-      updateActionButtons(tabStage);
+    _switchTabStage = getStageForTab(tab);
+    if (_switchTabStage) {
+      updateTabBarForStage(_switchTabStage);
+      updateActionButtons(_switchTabStage);
     }
   }
   // Always update workflow clickable state using current phase
   if (typeof stateManager?.getPhase === 'function' && typeof updateWorkflowStepsClickable === 'function') {
     updateWorkflowStepsClickable(stateManager.getPhase());
   }
+
+  // GAP-16 Part B: show/hide and (re)render the early CV preview panel for
+  // this tab. toggleEarlyPreviewPanel's own in-scope check decides visibility.
+  if (typeof toggleEarlyPreviewPanel === 'function') toggleEarlyPreviewPanel(tab);
 
   // Update active tab, ARIA state, and roving tabindex (WCAG 2.1 tablist pattern)
   document.querySelectorAll('.tab').forEach(t => {
@@ -218,11 +224,17 @@ function switchTab(tab) {
     _updateVisitedTabIndicators();
   }
 
-  // Announce the tab change to screen readers (GAP-73)
+  // Announce the tab change to screen readers (GAP-73). Combined with the
+  // stage name (GAP-16 Part A) into a single message from this one call site
+  // — #tab-stage-label is a visible-only label, not a second live region, to
+  // avoid a double-announce of the same navigation event.
   const announcer = document.getElementById('workflow-stage-announcer');
   if (announcer && activeTab) {
+    const stageLabel = _switchTabStage ? _STEP_DISPLAY[_switchTabStage] : null;
+    const tabLabel = activeTab.textContent.trim();
+    const message = stageLabel ? `Now viewing: ${stageLabel} — ${tabLabel}` : `Now viewing: ${tabLabel}`;
     announcer.textContent = '';
-    setTimeout(() => { announcer.textContent = `Now viewing: ${activeTab.textContent.trim()}`; }, 50);
+    setTimeout(() => { announcer.textContent = message; }, 50);
   }
 
   // Sync view-cursor ring to the newly visible tab

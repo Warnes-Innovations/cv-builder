@@ -113,6 +113,44 @@ describe('toggleChat', () => {
 // loadTabContent lives in web/review-table-base.js — see tests/js/review-table-base.test.js
 // (ui-core.js's copy was dead/superseded; see its header comment.)
 
+describe('updateTabBarForStage — tab-stage-label (GAP-16 Part A)', () => {
+  function buildTabBarFixture() {
+    document.body.innerHTML = `
+      <div class="tab-bar-wrapper">
+        <div class="tab-stage-label" id="tab-stage-label"></div>
+        <button class="tab-scroll-btn tab-scroll-left" id="tab-scroll-left" style="display:none"></button>
+        <div class="tabs" id="tab-bar">
+          <div class="tab" data-tab="goals"></div>
+          <div class="tab" data-tab="job"></div>
+        </div>
+        <button class="tab-scroll-btn tab-scroll-right" id="tab-scroll-right" style="display:none"></button>
+      </div>`
+  }
+
+  it('sets the label text from _STEP_DISPLAY for the given stage', () => {
+    buildTabBarFixture()
+    mod.updateTabBarForStage('customizations')
+    expect(document.getElementById('tab-stage-label').textContent).toBe('Now viewing: Customise')
+  })
+
+  it('updates the label again on a subsequent call with a different stage', () => {
+    buildTabBarFixture()
+    mod.updateTabBarForStage('customizations')
+    mod.updateTabBarForStage('job')
+    expect(document.getElementById('tab-stage-label').textContent).toBe('Now viewing: Job Input')
+  })
+
+  it('does not throw when #tab-stage-label is absent from the DOM', () => {
+    document.body.innerHTML = `
+      <div class="tab-bar-wrapper">
+        <button class="tab-scroll-btn tab-scroll-left" id="tab-scroll-left" style="display:none"></button>
+        <div class="tabs" id="tab-bar"></div>
+        <button class="tab-scroll-btn tab-scroll-right" id="tab-scroll-right" style="display:none"></button>
+      </div>`
+    expect(() => mod.updateTabBarForStage('customizations')).not.toThrow()
+  })
+})
+
 describe('openModelModal', () => {
   function buildModelFixture() {
     document.body.innerHTML = `

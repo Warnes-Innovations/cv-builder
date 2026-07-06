@@ -155,6 +155,7 @@ function setupEventListeners() {
   document.getElementById('finalise-action-btn').addEventListener('click', () => switchTab('finalise'));
 
   if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
+  if (typeof initEarlyPreviewPanel === 'function') initEarlyPreviewPanel();
 }
 
 // Tests now import helper functions from their canonical ES modules directly.
