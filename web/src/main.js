@@ -80,6 +80,7 @@ import * as Finalise           from '../finalise.js';
 import * as InterviewPrep      from '../interview-prep.js';
 import * as ThankYou           from '../thank-you.js';
 import * as Harvest            from '../harvest.js';
+import * as EarlyPreviewPanel  from '../early-preview-panel.js';
 
 // ── Tier 7 ────────────────────────────────────────────────────────────────────
 import * as SessionSwitcherUi  from '../session-switcher-ui.js';
@@ -102,7 +103,7 @@ Object.assign(globalThis,
   ReviewTableBase,
   ExperienceReview, SkillsReview, AchievementsReview, TaglineReview, SummaryReview, PublicationsReview, ReviewIcons,
   RewriteReview, SpellCheck, DownloadTab, FinalGenerate, WorkflowSteps, MasterDataAiUpdate, MasterCv,
-  CoverLetter, ScreeningQuestions, Finalise, InterviewPrep, ThankYou, Harvest,
+  CoverLetter, ScreeningQuestions, Finalise, InterviewPrep, ThankYou, Harvest, EarlyPreviewPanel,
   SessionSwitcherUi, KeyboardShortcuts,
   App,
 );

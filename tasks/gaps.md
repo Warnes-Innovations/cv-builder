@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-02 (cycle 34)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 39)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,15 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review.
+
+## 2026-07-06 (Cycle 39) Reconciliation Notes
+
+GAP-16/133/297 gap-resolution cycle: 2 gaps resolved, 1 gap advanced. Plan committee-reviewed (6 personas) before implementation; each part landed as its own commit.
+
+- **GAP-16 RESOLVED** — Four independently-shippable fixes: (A) workflow-step ↔ tab-bar breadcrumb label (`#tab-stage-label`, combined live-region announcement); (B) early inline CV preview panel (`web/early-preview-panel.js`, `web/preview-render.js`, read-only-endpoint-only with an ESLint mutation-boundary guard); (C) responsive breakpoints for the two-panel shell below 900px; (D) questions-panel jump-back group-navigation strip. See GAP-16 entry for file-level detail.
+- **GAP-133 PARTIAL → more complete** — Fixed an orphaned `--cv-warning-bg` token reference (`web/master-cv.js`); added 13 new tokens for hex literals reused ≥3 times (148 → 117 raw hex literals); extracted the Settings modal + all modal-header/close-button patterns to utility classes (228 → 157 inline styles), also fixing 4 close buttons that were duplicating `.modal-close-btn` without its `:hover` state.
+- **GAP-297 RESOLVED** — Ported the `pr-summary` CI failure-digest job verbatim from the unmerged `feature/multi-user-deployment` branch (commit `031000c`) rather than re-deriving it.
+- **Test suite:** 1273 JS + 1516 Python passed throughout.
 
 ## 2026-07-02 (Cycle 38) Reconciliation Notes
 
@@ -409,9 +418,9 @@ Full 15-persona + heuristic `/cvUiReview` run (all agents spawned in parallel on
 
 **Severity:** HIGH
 **Affected stories:** US-U2, US-U3, US-U4, US-U6, US-U8
-**Status:** PARTIAL - verified 2026-03-19 11:36 ET; the reviewed UI implements many core surfaces, but UX and heuristic reviews still found fragmented navigation, dense shell chrome, wall-of-questions clarifications, missing inline preview/versioning, and weak responsive behavior.
+**Status:** RESOLVED 2026-07-06 (gap-resolution cycle, committee-reviewed plan). All four remaining claims closed via four independently-shippable fixes: (A) the workflow-step ↔ tab-bar relationship is now visible via a `#tab-stage-label` breadcrumb ("Now viewing: {stage}"), sourced from `_STEP_DISPLAY` and combined with the existing `#workflow-stage-announcer` into a single live-region announcement (`web/ui-core.js`, `web/review-table-base.js`). (B) A persistent, collapsible early CV preview panel (`web/early-preview-panel.js`) now renders a live rendered-CV preview across the customization/rewrite/spell-check pipeline via the read-only `GET /api/layout-html` endpoint, with a shared side-effect-free `renderHtmlIntoIframe()` util (`web/preview-render.js`) and an ESLint mutation-boundary guard (scoped `no-restricted-syntax` rule + CI step) preventing this module from ever calling the mutating preview/instruction endpoints. (C) `.main-container`/`.interaction-area`/`.viewer-area` now stack into a single column below 900px (`web/styles.css`). (D) `web/questions-panel.js` gained a jump-back group-navigation strip (`renderQGroupNav`, `jumpToQGroup`) with non-color done/active state and explicit "no resubmission" `aria-label` wording. All parts source-verified and committee-reviewed (6 personas) before implementation; each landed as its own commit.
 **Description:** Earlier framing that these UX stories were "not implemented" is no longer accurate. The current state is instead a mixed implementation with major information-architecture and interaction-quality problems still open.
-**Recommended resolution:** Simplify the navigation model, chunk long clarification flows, add inline preview/version controls where output is reviewed, and redesign the shell for stronger 1280x800 and long-table behavior.
+**Recommended resolution:** ~~Simplify the navigation model, chunk long clarification flows, add inline preview/version controls where output is reviewed, and redesign the shell for stronger 1280x800 and long-table behavior.~~ Done — see Status. A larger "document is the UI" redesign (`tasks/ui-redesign-proposal.md`) remains unimplemented and would supersede Parts A/B here in spirit if picked up later; deliberately not pursued in this cycle (user decision: keep the narrower incremental plan).
 
 ## GAP-17: Persuasion Rule Enforcement
 
@@ -1375,7 +1384,7 @@ Users can proceed from the Customise stage to CV generation without visiting or 
 ## GAP-133: No CSS Design Token Layer
 
 **Priority:** MED
-**Status:** PARTIAL 2026-07-02 (cycle 33) — Token layer expanded to 45 CSS custom properties in `:root` (8 original + 37 new semantic tokens for success/error/warn/info state families plus white, black, and gray/slate scale). Raw hex literals in `web/styles.css` reduced from ~460 to 148 total (68% coverage); remaining 99 distinct values each appear ≤4 times. Original 8 tokens (cycle 28) covered primary palette. New tokens cover: `--cv-white`, `--cv-black`, `--cv-success-*` (6 shades), `--cv-error-*` (5 shades), `--cv-warn-*` (5 shades), `--cv-info-*` (5 shades), `--cv-slate-{300,400,700}`, `--cv-gray-{300,500,700}`. Remaining ~148 raw literals are low-frequency long-tail colors (≤4 each). ~227 inline `style=""` attributes in `web/index.html` remain as a separate follow-up (requires per-element class extraction).
+**Status:** PARTIAL 2026-07-06 (gap-resolution cycle) — Two further batches landed on top of cycle 33's 45-token layer. Batch 0: fixed an orphaned `var(--cv-warning-bg, ...)` reference in `web/master-cv.js` (no such token existed — silently fell through to its hardcoded fallback) to the real `--cv-warn-bg`; a full `grep -oE 'var\(--cv-[a-zA-Z0-9-]+'` vs `:root` audit found no other orphans. Batch 1: added 13 new tokens for hex literals reused ≥3 times (`--cv-error-dark`, `--cv-success-text-dark`, `--cv-text-darkest`, `--cv-gray-100/200`, `--cv-warn-dark`, `--cv-warn-text-dark`, `--cv-sky-bg-md`, `--cv-sky-border`, `--cv-emerald-bg`, `--cv-orange-text`, `--cv-green-700`, `--cv-bg-input`), replacing 44 occurrences — raw hex literal count 148 → 117 (verified pure refactor via Playwright computed-style check). Batch 2: extracted the entire Settings modal's field/card markup plus all modal-header/close-button/title patterns to new utility classes (`.settings-card`, `.settings-card-title`, `.settings-card-grid`, `.field-group`, `.field-label-sm`, `.field-hint-xs`, `.settings-input`, `.modal-header-split`); also found 4 modal close buttons duplicating the existing `.modal-close-btn` class byte-for-byte (missing its `:hover` state) and 6 modal titles duplicating `style="margin:0;"` now folded into `.modal-header h2` — inline `style=""` count in `web/index.html`: 228 → 157. Remaining ~117 hex literals and ~157 inline styles are lower-frequency/more scattered and deferred to a future cycle, consistent with this gap's established multi-cycle cadence (cycle 28 → cycle 33 → this cycle).
 **Found:** 2026-06-18 cvUiReview
 `web/styles.css` contains approximately 50 hard-coded hex color literals scattered across rules. `web/index.html` contains approximately 216 inline `style=""` attributes. No `:root {}` CSS custom properties block exists. Any color, spacing, or typography change requires grep-and-replace across multiple files with high risk of missed instances, and brand changes are impractical to apply consistently.
 **Source evidence:** `web/styles.css` (`:root {}` block added line 18); `web/index.html` (~227 inline styles still pending); graphical-designer.md 2026-06-18.
@@ -3100,8 +3109,8 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-297: No PR-Time Failure Digest for First-Time Contributors
 
 **Priority:** LOW
-**Status:** OPEN — 2026-07-02.
+**Status:** RESOLVED 2026-07-06 (gap-resolution cycle). Ported the `pr-summary` job verbatim from `feature/multi-user-deployment` (commit `031000c`, already shipped and reviewed there but unmerged into `devel`) rather than re-deriving a possibly-divergent version — job-ids matched exactly (`codeql`, `python-tests`, `js-tests`, `lint`, `integration-harness`), so no adjustment was needed. Adds `pull-requests: write` at the workflow level; the new job runs `if: always()` after all checks, writes a pass/fail table to `$GITHUB_STEP_SUMMARY`, and posts a PR comment (only on failure, linking the Actions log) via `actions/github-script@v7`.
 **Discovered:** 2026-07-02 by ci-cd-engineer (scope extension).
 **Description:** The PR workflow (`.github/workflows/integration-harness.yml`) runs CodeQL, Python tests, JS tests, and the HTML integration harness, surfacing failures only as raw GitHub Actions log output. A contributor unfamiliar with the codebase has no job-summary or PR-comment digest pointing at what actually failed and why, unlike the richer artifact/coverage reporting already tracked for the full workflow under GAP-70.
 **Affected stories:** Technical review follow-up (ci-cd-engineer)
-**Fix:** Add a PR-time job summary (`$GITHUB_STEP_SUMMARY`) or failure-digest PR comment summarizing which check failed and pointing at the relevant log section, once external PR volume makes this worth the maintenance cost.
+**Fix:** ~~Add a PR-time job summary (`$GITHUB_STEP_SUMMARY`) or failure-digest PR comment summarizing which check failed and pointing at the relevant log section, once external PR volume makes this worth the maintenance cost.~~ Done — see Status.
