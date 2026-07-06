@@ -4628,10 +4628,12 @@ Include one entry per candidate. Do not omit any candidate."""
             doc.add_paragraph(heading_text, style='Heading 1')
             for pub in publications:
                 citation = pub.get('formatted_citation', '').strip()
+                if pub.get('venue_warning'):
+                    citation += ' [venue unavailable]'
                 if citation:
                     doc.add_paragraph(citation)
             doc.add_paragraph()
-    
+
     def _validate_ats_compatibility(self, content: Dict, job_analysis: Dict) -> int:
         """Validate CV for ATS compatibility and return score out of 100."""
         score = 0
@@ -4950,6 +4952,7 @@ Include one entry per candidate. Do not omit any candidate."""
             _heading(heading_text)
             for idx, pub in enumerate(publications, 1):
                 citation = pub.get('formatted_citation', '')
+                venue_warn = pub.get('venue_warning', '')
                 if citation:
                     p = doc.add_paragraph(style='List Number')
                     p.paragraph_format.space_after  = Pt(2)
@@ -4960,6 +4963,11 @@ Include one entry per candidate. Do not omit any candidate."""
                     else:
                         run = p.add_run(citation)
                         run.font.size = Pt(10)
+                    if venue_warn:
+                        vr = p.add_run(' [venue unavailable]')
+                        vr.font.size  = Pt(9)
+                        vr.font.color.rgb = RGBColor(0xB4, 0x53, 0x09)
+                        vr.font.italic    = True
 
         # ── Footer: generation timestamp (+ optional AI attribution) ─────────
         _attr_text = '  ·  Generated with AI assistance' if content.get('ai_attribution') else ''

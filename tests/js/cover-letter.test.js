@@ -168,6 +168,52 @@ describe('_validateCoverLetter — does nothing on empty text', () => {
   })
 })
 
+// ── _validateCoverLetter — paragraph 1 role context ────────────────────────────
+
+describe('_validateCoverLetter — paragraph 1 role context', () => {
+  beforeEach(() => {
+    setupValidationDom()
+    window._lastAnalysisData = { title: 'Senior Engineer', company_name: 'Acme Corp' }
+  })
+  afterEach(() => { delete window._lastAnalysisData })
+
+  it('passes when company and role title both appear in paragraph 1', () => {
+    const letter = 'Dear Dr. Smith,\n\nI am applying for the Senior Engineer role at Acme Corp because of your innovation.\n\nI look forward to an interview.'
+    _validateCoverLetter(letter)
+    const html = document.getElementById('cl-checks-container').innerHTML
+    expect(html).toContain('Paragraph 1 role context')
+    expect(html).toContain('pass')
+    expect(html).toContain('good')
+  })
+
+  it('warns when company name missing from paragraph 1', () => {
+    const letter = 'Dear Dr. Smith,\n\nI am applying for the Senior Engineer role at a leading company.\n\nI look forward to an interview.'
+    _validateCoverLetter(letter)
+    const html = document.getElementById('cl-checks-container').innerHTML
+    expect(html).toContain('Paragraph 1 role context')
+    expect(html).toContain('"Acme Corp"')
+  })
+
+  it('warns when role title missing from paragraph 1', () => {
+    const letter = 'Dear Dr. Smith,\n\nI am excited to join Acme Corp and contribute to your mission.\n\nI look forward to an interview.'
+    _validateCoverLetter(letter)
+    const html = document.getElementById('cl-checks-container').innerHTML
+    expect(html).toContain('Paragraph 1 role context')
+    expect(html).toContain('"Senior Engineer"')
+  })
+
+  it('shows warn status when no analysis data available', () => {
+    delete window._lastAnalysisData
+    window.pendingRecommendations = null
+    const letter = 'Dear Dr. Smith,\n\nI am excited to join your company.\n\nI look forward to an interview.'
+    _validateCoverLetter(letter)
+    const html = document.getElementById('cl-checks-container').innerHTML
+    expect(html).toContain('Paragraph 1 role context')
+    expect(html).toContain('warn')
+    delete window.pendingRecommendations
+  })
+})
+
 // ── _renderConsistencyReport ──────────────────────────────────────────────────
 
 describe('_renderConsistencyReport', () => {

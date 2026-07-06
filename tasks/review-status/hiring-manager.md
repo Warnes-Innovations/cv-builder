@@ -9,7 +9,7 @@
 # Hiring Manager Persona Review
 
 **Persona:** US-M* — Hiring Manager / Department Head  
-**Cycle:** Source-first review, 2026-07-01; stale AC2.2/AC2.3 corrected 2026-07-04 (cycle 71)  
+**Cycle:** Source-first review, 2026-07-01; stale AC2.2/AC2.3 corrected 2026-07-04 (cycle 71); GAP-NEW-HM-07 and GAP-NEW-HM-08 resolved 2026-07-06 (cycle 80)  
 **Branch:** `feature/multi-user-deployment`
 
 ---
@@ -136,7 +136,7 @@
 
 **AC6.1** Company name and role title appear in paragraph 1.
 
-⚠️ **Partial** — `master_data_routes.py:1608–1631` constructs the cover letter prompt with company name and role in the "TARGET ROLE" block. The prompt instructs the LLM to write "3–4 paragraphs" and to close with a specific interview request. However, there is no post-generation validation that the company name and role title appear specifically in paragraph 1. The client-side validator (`cover-letter.js:524–540`) checks that the company name appears at least once, but does not verify it is in paragraph 1.
+✅ **Pass** (cycle 80) — `_validateCoverLetter` in `cover-letter.js` now includes a "Paragraph 1 role context" rule (Rule 2b). It extracts the first body paragraph (splitting on `\n\n+`, skipping the salutation), then checks whether the company name (from `_lastAnalysisData.company_name`) and the role title (from `_lastAnalysisData.title`) appear in it. Renders pass/warn/fail with a detail message identifying the missing term(s). 4 new unit tests in `cover-letter.test.js`.
 
 **AC6.2** At least one company-specific reference if extractable from the job posting.
 
@@ -186,7 +186,7 @@
 
 **AC7.6** No entry appears without a venue — entries missing a venue are flagged during Customisation.
 
-⚠️ **Partial** — `cv_orchestrator.py:894–896` sets `entry['venue_warning']` to a non-empty string when no venue is found. This flag propagates to the publications-review tab: `publications-review.js:138` renders a `⚠` icon (with tooltip) in the UI when `pub.venue_warning` is truthy. However, the flag is informational only — it does not block the user from accepting a venue-less publication, and the HTML/DOCX template does not visually distinguish venue-less entries for the hiring manager reading the output. The criterion "flagged to the user during Customisation rather than silently rendered without venue" is met for the UI, but silently rendered without warning in the generated PDF/DOCX.
+✅ **Pass** (cycle 80) — `cv_orchestrator.py:899` sets `entry['venue_warning']` to a non-empty string when no venue is found; the UI already shows a `⚠` icon. Now the generated output also marks venue-less entries: (1) `templates/cv-template.html` renders `<span class="pub-venue-warning">[venue unavailable]</span>` (styled amber italic, with tooltip) after each publication citation when `pub.venue_warning` is truthy; (2) `cv_orchestrator.py` — `_generate_ats_docx` appends `' [venue unavailable]'` to the citation string; `_generate_human_docx` adds an italic amber-coloured run after the citation. Both DOCX paths include the marker.
 
 ---
 
@@ -218,7 +218,7 @@
 | US-M5 | No content clipped at margins | ⚠️ Partial |
 | US-M5 | Font Awesome icons rendered | ⚠️ Partial |
 | US-M5 | PDF visual QC against reference | 🔲 Not Implemented |
-| US-M6 | Company name + role title in paragraph 1 | ⚠️ Partial |
+| US-M6 | Company name + role title in paragraph 1 | ✅ Pass |
 | US-M6 | Company-specific reference in letter | ✅ Pass |
 | US-M6 | Body cites specific named achievements | ⚠️ Partial |
 | US-M6 | Closing ends with direct interview request | ✅ Pass |
@@ -229,7 +229,7 @@
 | US-M7 | Each entry: authors, title, venue, year | ✅ Pass |
 | US-M7 | Count matches applicant confirmation | ✅ Pass |
 | US-M7 | Publications always final section | ✅ Pass |
-| US-M7 | Venue-less entries flagged during Customisation | ⚠️ Partial |
+| US-M7 | Venue-less entries flagged during Customisation | ✅ Pass |
 
 ---
 
@@ -247,6 +247,6 @@
 
 **GAP-NEW-HM-06** — `⚠️` Publications not automatically suppressed for non-research roles (US-M4 AC4.4): The system selects and scores publications by relevance, but always includes them if present. An explicit role-type gate (suppressing publications for pure business/leadership/industry roles) is not implemented.
 
-**GAP-NEW-HM-07** — `⚠️` Cover letter paragraph-1 company/role verification not enforced (US-M6 AC6.1): The backend prompt instructs the LLM but no post-generation check confirms that company name and role title appear in the first paragraph. Add a validation step in `_validateCoverLetter` to locate these terms in the first non-empty paragraph.
+**GAP-NEW-HM-07** — `✅ RESOLVED (cycle 80)` Cover letter paragraph-1 company/role verification: `_validateCoverLetter` in `cover-letter.js` now extracts the first body paragraph and checks that both company name (`_lastAnalysisData.company_name`) and role title (`_lastAnalysisData.title`) appear in it. Renders pass/warn/fail with a detail message identifying any missing term. 4 new unit tests.
 
-**GAP-NEW-HM-08** — `⚠️` Venue-less publications render without warning in generated PDF/DOCX (US-M7 AC7.6): The `venue_warning` flag surfaces in the Publications review UI but does not produce a visible marker in the generated output. Consider blocking acceptance of venue-less entries or rendering a visible `[venue unavailable]` placeholder in the DOCX.
+**GAP-NEW-HM-08** — `✅ RESOLVED (cycle 80)` Venue-less publications now render `[venue unavailable]` in both the HTML output (`templates/cv-template.html`, `.pub-venue-warning` class, amber italic) and both DOCX generators in `cv_orchestrator.py` (`_generate_ats_docx` appends the string; `_generate_human_docx` adds an italic amber-coloured run).

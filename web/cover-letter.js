@@ -561,6 +561,8 @@ function _validateCoverLetter(text) {
 
   // ── Rule 2: Company-specific reference ────────────────────────
   const companyName = _getCompanyNameForCL();
+  const _clAnalysis = window._lastAnalysisData || (window.pendingRecommendations && window.pendingRecommendations.job_analysis) || {};
+  const _jobTitle   = (_clAnalysis.title || '').trim();
   let companyCheck;
   if (!companyName) {
     companyCheck = { warn: true, label: 'Company reference', detail: 'Company name not detected from job description — verify manually.' };
@@ -575,6 +577,28 @@ function _validateCoverLetter(text) {
         : mentions === 1
           ? `"${escapeHtml(companyName)}" mentioned once — a second specific reference strengthens the letter.`
           : `"${escapeHtml(companyName)}" mentioned ${mentions} times — good specificity.`,
+    };
+  }
+
+  // ── Rule 2b: Paragraph 1 contains company name and role title ──
+  const _allParas   = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const _firstBody  = _allParas.find(p => !/^dear\s|^to whom/i.test(p)) || _allParas[0] || '';
+  const _p1Lc       = _firstBody.toLowerCase();
+  let para1Check;
+  if (!companyName && !_jobTitle) {
+    para1Check = { warn: true, label: 'Paragraph 1 role context', detail: 'Company name and role title not detected — verify paragraph 1 establishes the specific role and company.' };
+  } else {
+    const _missing = [];
+    if (companyName && !_p1Lc.includes(companyName.toLowerCase())) _missing.push(`"${escapeHtml(companyName)}"`);
+    if (_jobTitle   && !_p1Lc.includes(_jobTitle.toLowerCase()))   _missing.push(`"${escapeHtml(_jobTitle)}"`);
+    para1Check = {
+      pass: _missing.length === 0,
+      warn: _missing.length === 1,
+      fail: _missing.length >= 2,
+      label: 'Paragraph 1 role context',
+      detail: _missing.length === 0
+        ? 'Company name and role title appear in paragraph 1 — good.'
+        : `Paragraph 1 missing: ${_missing.join(' and ')} — establish the specific role and company in the opening paragraph.`,
     };
   }
 
@@ -680,7 +704,7 @@ function _validateCoverLetter(text) {
   };
 
   // ── Render ─────────────────────────────────────────────────────
-  const checks = [openingCheck, iFirstCheck, companyCheck, wordCountCheck, ctaCheck, achievementCheck, fillerCheck];
+  const checks = [openingCheck, iFirstCheck, companyCheck, para1Check, wordCountCheck, ctaCheck, achievementCheck, fillerCheck];
   container.innerHTML = checks.map(c => {
     const state = c.pass ? 'pass' : c.warn ? 'warn' : 'fail';
     return `<div class="cl-check ${state}">
