@@ -56,7 +56,7 @@
           <span id="llm-status-icon">&#x26A0;</span>
           <span id="llm-status-label">Not ready</span>
         </span>
-        <span id="llm-non-confidential-badge" style="display:none; font-size:0.72em; padding:1px 6px; border-radius:999px; background:#fff7ed; border:1px solid #fed7aa; color:#c2410c; font-weight:600;" title="Data may be reviewed or retained by this provider — see provider settings for details">⚠ Non-confidential</span>
+        <span id="llm-non-confidential-badge" style="display:none; font-size:0.72em; padding:1px 6px; border-radius:999px; background:var(--cv-orange-bg); border:1px solid #fed7aa; color:#c2410c; font-weight:600;" title="Data may be reviewed or retained by this provider — see provider settings for details">⚠ Non-confidential</span>
         <span id="model-test-badge" title="Connection test result" style="display:none; font-size:0.85em;"></span>
         <span class="pill-chevron">&#9660;</span>
       </button>
@@ -659,12 +659,12 @@
             <label><input id="settings-format-human-docx" type="checkbox"> Human DOCX</label>
           </div>
           <div style="margin-top:10px;">
-            <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.88em; color:#475569; cursor:pointer;">
+            <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.88em; color:var(--cv-text-muted); cursor:pointer;">
               <input id="settings-gen-ai-attribution" type="checkbox" style="margin-top:2px;">
-              <span>Add AI-assistance disclosure to generated documents<br><span style="font-size:0.85em;color:#94a3b8;">Embeds "Generated with AI assistance" in document properties and footer (for contexts requiring disclosure)</span></span>
+              <span>Add AI-assistance disclosure to generated documents<br><span style="font-size:0.85em;color:var(--cv-slate-400);">Embeds "Generated with AI assistance" in document properties and footer (for contexts requiring disclosure)</span></span>
             </label>
           </div>
-          <div style="display:flex; gap:16px; margin-top:4px; color:#64748b; font-size:0.78em; flex-wrap:wrap;">
+          <div style="display:flex; gap:16px; margin-top:4px; color:var(--cv-text-secondary); font-size:0.78em; flex-wrap:wrap;">
             <span id="source-generation.formats.ats_docx"></span>
             <span id="source-generation.formats.human_pdf"></span>
             <span id="source-generation.formats.human_docx"></span>
@@ -693,7 +693,7 @@
               <span class="field-label-sm">Automatic Backoff Retry</span>
               <label style="display:flex; align-items:center; gap:8px;">
                 <input id="settings-retry-auto" type="checkbox">
-                <span style="font-size:0.9em; color:#334155;">Enable exponential auto-retry</span>
+                <span style="font-size:0.9em; color:var(--cv-slate-700);">Enable exponential auto-retry</span>
               </label>
               <span class="field-hint-xs">Source: browser preference</span>
             </label>
