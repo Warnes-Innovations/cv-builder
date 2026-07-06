@@ -1196,7 +1196,7 @@ class CVOrchestrator:
         
         html_parts = [
             '<!DOCTYPE html>',
-            '<html><head>',
+            '<html lang="en"><head>',
             '<meta charset="UTF-8">',
             '<link rel="stylesheet" href="cv-style.css">',
             '<title>CV</title>',

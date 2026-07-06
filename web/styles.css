@@ -25,6 +25,7 @@
   --cv-text-muted:      #475569;   /* slate-600  — muted / placeholder text      */
   --cv-accent-hover:    #1d4ed8;   /* blue-700   — accent hover / active state   */
   --cv-white:                  #fff;   /* white */
+  --cv-card-bg:                #fff;   /* card/option background (GAP-DESIGN-08) */
   --cv-success-bg:             #f0fdf4;   /* green-50   — light success background */
   --cv-success-bg-md:          #dcfce7;   /* green-100  — medium success background */
   --cv-success-border:         #86efac;   /* green-300  — success border */
@@ -484,6 +485,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .toggle-chat:hover {
   background: var(--cv-info);
   transform: scale(1.05);
+}
+.toggle-chat:focus-visible {
+  outline: 2px solid var(--cv-accent);
+  outline-offset: 2px;
 }
 
 /* ===== VIEWER AREA ===== */

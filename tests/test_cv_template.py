@@ -311,11 +311,11 @@ class TestExperiencePageFlow(unittest.TestCase):
             experiences=self._make_experiences(1),
         )
         achievements_heading = (
-            '<h2 class="section-title"><i class="fas fa-trophy"></i> '
+            '<h2 class="section-title"><i class="fas fa-trophy" aria-hidden="true"></i> '
             'Selected Achievements</h2>'
         )
         experience_heading = (
-            '<h2 class="section-title"><i class="fas fa-briefcase"></i> '
+            '<h2 class="section-title"><i class="fas fa-briefcase" aria-hidden="true"></i> '
             'Experience</h2>'
         )
         ach_pos = html.find(achievements_heading)

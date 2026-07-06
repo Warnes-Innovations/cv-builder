@@ -10,6 +10,10 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325.
 
+## 2026-07-06 (Cycle 83) Implementation Notes
+
+Cycle 83 addressed 5 highest-priority gaps from cycle 82 review: GAP-301 (ATS HTML lang), GAP-302 (FA aria-hidden), GAP-306 (--cv-card-bg), GAP-307 (result-clause severity), GAP-322 (Weak evidence label). Also added `.toggle-chat:focus-visible` focus ring (unpinned accessibility improvement).
+
 ## 2026-07-06 (Cycle 82) Reconciliation Notes
 
 Full 15-persona + heuristic review cycle. No code fixes in this cycle — discovery only. Added GAP-300 through GAP-325 from new findings across all persona reviews.
@@ -3607,7 +3611,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-301: ATS HTML Template Missing `lang="en"` on Root `<html>` Element
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 83) — Changed `'<html><head>'` to `'<html lang="en"><head>'` in `scripts/utils/cv_orchestrator.py:1199`.
 **Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
 **Description:** `cv_orchestrator.py:1199` generates the ATS DOCX intermediate HTML as `'<html><head>'` without a `lang` attribute on the root element. Screen readers use the `lang` attribute to determine the correct pronunciation engine. Without it, AT may default to the OS language or produce incorrect pronunciation. The human-facing HTML CV template correctly has `<html lang="en">` (confirmed in generated output), but the ATS-format HTML does not.
 **Affected stories:** US-X7 (proposed), US-H1
@@ -3618,7 +3622,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-302: Font Awesome Icons in Generated HTML CV Missing `aria-hidden="true"`
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 83) — Added `aria-hidden="true"` to all 9 Font Awesome `<i>` elements in `templates/cv-template.html`.
 **Discovered:** 2026-07-06 (cycle 82) by accessibility-specialist.
 **Description:** Section heading icons (`<i class="fas fa-user-circle">`, `<i class="fas fa-trophy">`, etc.) and sidebar contact icons (`<i class="fas fa-envelope">`, `<i class="fab fa-linkedin">`) in generated HTML CV output lack `aria-hidden="true"`. Screen readers will read aloud the Font Awesome Unicode character glyph names or the icon CSS class names depending on the AT and browser, producing noise like "fas fa-envelope" read before the email address. Evidence: `CV_Genentech_SeniorRPackageDevelo_2026-03-26.html:702–714` (contact icons), `:772–847` (section heading icons). The icons are decorative — the text adjacent to them is the meaningful content.
 **Affected stories:** US-X6 (proposed)
@@ -3662,7 +3666,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-306: `--cv-card-bg` CSS Variable Undefined — Position-Style Picker Transparent
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 83) — Added `--cv-card-bg: #fff;` to `:root` block in `web/styles.css` (after `--cv-white`).
 **Discovered:** 2026-07-06 (cycle 82) by graphical-designer.
 **Description:** `var(--cv-card-bg)` is used at `styles.css:1600` in the `.position-style-option` selector but is not defined anywhere in `:root`. CSS variable resolution silently falls back to `transparent`, causing the position-style picker buttons to render with invisible background. The `:root` block defines 95 CSS custom properties (`styles.css:18–126`) but `--cv-card-bg` is absent. This is a design system integrity issue and a rendering defect.
 **Affected stories:** US-G1.4, US-G2.3
@@ -3673,7 +3677,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-307: `check_has_result_clause()` Severity `'info'` Prevents Amber Badge
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 83) — Changed `'severity': 'info'` to `'severity': 'warn'` in `check_has_result_clause()` at `scripts/utils/llm_client.py:~1260`.
 **Discovered:** 2026-07-06 (cycle 82) by persuasion-expert.
 **Description:** `check_has_result_clause()` at `llm_client.py:1259` fires with `severity: 'info'` when a bullet lacks any metric or outcome word. The rewrite review panel only surfaces amber persuasion badges for checks with `severity: 'warn'` or higher. Because `'info'` is below the badge threshold, result-clause findings are never visually surfaced to users reviewing rewrite cards — the advisory is silently produced but invisible. US-P4 acceptance criterion "Missing result clause flagged" is nominally met at the code level but fails in the UI because of the severity mismatch.
 **Affected stories:** US-P4, US-C1
@@ -3838,7 +3842,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-322: "Candidate to Confirm" (Rewrites Tab) vs "Weak Evidence" (Skills Tab) — Inconsistent Labels
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 83) — Changed label in `web/rewrite-review.js:398` from `"⚠ Candidate to confirm"` to `"⚠ Weak evidence"` and added tooltip matching the Skills tab pattern.
 **Discovered:** 2026-07-06 (cycle 82) by trust-compliance, applicant.
 **Description:** The same concept (a skill addition backed by weak or unverified evidence) is labeled differently in two tabs: "⚠ Candidate to confirm" in the Rewrites tab (`rewrite-review.js:397–398`) and "⚠ Weak evidence" / "⚠ Verify evidence" in the Skills tab (`skills-review.js:730–731`). "Candidate to confirm" is ambiguous (reads as "the job applicant is a candidate") and lacks a tooltip. "Weak evidence" is clearer and already has an evidence tooltip. The inconsistency was flagged independently by trust-compliance and applicant personas.
 **Affected stories:** US-C9 (proposed), US-C1, US-A4

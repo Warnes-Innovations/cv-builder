@@ -955,11 +955,11 @@ class TestPersuasionChecks(unittest.TestCase):
         self.assertTrue(result['pass'])
 
     def test_has_no_result_clause(self):
-        """Bullet without quantifiable result flags warning (info severity)."""
+        """Bullet without quantifiable result flags warning (warn severity — GAP-307)."""
         text = 'Worked on various projects and helped the team.'
         result = LLMClient.check_has_result_clause(text)
         self.assertFalse(result['pass'])
-        self.assertEqual(result['severity'], 'info')
+        self.assertEqual(result['severity'], 'warn')
 
     def test_has_result_empty_text(self):
         """Empty text passes."""

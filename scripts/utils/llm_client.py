@@ -1257,7 +1257,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         return {
             'pass': False,
             'flag_type': 'has_result',
-            'severity': 'info',
+            'severity': 'warn',
             'details': f"No quantified result or outcome detected. Add metrics or impact (e.g., 'improved by 40%', 'enabled 3M users')."
         }
 

@@ -395,7 +395,7 @@ function renderDiffHtml(tokens) {
 function renderRewriteCard(r, cardWarnings = [], changeStatus = null) {
   const isWeakSkillAdd = r.type === 'skill_add' && r.evidence_strength === 'weak';
   const weakBadge     = isWeakSkillAdd
-    ? `<span class="weak-badge">⚠ Candidate to confirm</span>`
+    ? `<span class="weak-badge" title="Skill suggested by AI but not in your Master CV — verify before including">⚠ Weak evidence</span>`
     : '';
   const changeBadge   = changeStatus === 'new'
     ? `<span class="rw-change-badge rw-change-new" aria-label="New suggestion not in previous run">🆕 New</span>`

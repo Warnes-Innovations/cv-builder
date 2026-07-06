@@ -529,19 +529,19 @@
                     <div class="sidebar-title">Contact</div>
                     {% if personal_info.contact.email | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fas fa-envelope"></i>
+                        <i class="fas fa-envelope" aria-hidden="true"></i>
                         <a href="mailto:{{ personal_info.contact.email }}">{{ personal_info.contact.email }}</a>
                     </div>
                     {% endif %}
                     {% if personal_info.contact.phone | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fas fa-phone"></i>
+                        <i class="fas fa-phone" aria-hidden="true"></i>
                         <span>{{ personal_info.contact.phone }}</span>
                     </div>
                     {% endif %}
                     {% if personal_info.contact.linkedin | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fab fa-linkedin"></i>
+                        <i class="fab fa-linkedin" aria-hidden="true"></i>
                         {% set linkedin_href = personal_info.contact.linkedin_href | default('') | safe_url %}
                         {% if linkedin_href %}
                         <a href="{{ linkedin_href }}">{{ personal_info.contact.linkedin | replace('https://','') }}</a>
@@ -552,7 +552,7 @@
                     {% endif %}
                     {% if personal_info.contact.website | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fas fa-globe"></i>
+                        <i class="fas fa-globe" aria-hidden="true"></i>
                         {% set website_href = personal_info.contact.website_href | default('') | safe_url %}
                         {% if website_href %}
                         <a href="{{ website_href }}">{{ personal_info.contact.website | replace('https://','') }}</a>
@@ -620,7 +620,7 @@
                               writes:
                               - artifact:cv_body.skills_heading
                               notes: Skills section flows continuously after sidebar contact/edu/awards in the unified left column. #}
-                    <h2 class="section-title"><i class="fas fa-code"></i> {{ human_skills_title | default('Technical Skills') }}</h2>
+                    <h2 class="section-title"><i class="fas fa-code" aria-hidden="true"></i> {{ human_skills_title | default('Technical Skills') }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category %}
                         <div class="skill-group">
@@ -646,7 +646,7 @@
                 </header>
 
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-user-circle"></i> Summary</h2>
+                    <h2 class="section-title"><i class="fas fa-user-circle" aria-hidden="true"></i> Summary</h2>
                     <p class="summary-text">
                         {{ professional_summary }}
                     </p>
@@ -654,7 +654,7 @@
 
                 {% if achievements %}
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-trophy"></i> Selected Achievements</h2>
+                    <h2 class="section-title"><i class="fas fa-trophy" aria-hidden="true"></i> Selected Achievements</h2>
                     <ul class="achievement-list">
                         {% for ach in achievements %}
                         <li>{{ (ach.text or ach.description or ach.summary or ach.title or ach.name) if ach is mapping else ach }}</li>
@@ -665,7 +665,7 @@
 
                 {% if experiences %}
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-briefcase"></i> Experience</h2>
+                    <h2 class="section-title"><i class="fas fa-briefcase" aria-hidden="true"></i> Experience</h2>
                     {% for exp in experiences %}
                     <div class="job-entry">
                         <div class="job-header">
@@ -688,7 +688,7 @@
 
                 {% if publications %}
                 <section class="section pub-section{% if template_metadata.publications_start_new_page %} pub-start-new-page{% endif %}">
-                    <h2 class="section-title"><i class="fas fa-file-alt"></i>
+                    <h2 class="section-title"><i class="fas fa-file-alt" aria-hidden="true"></i>
                         {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
                         Selected Publications
                         {% else %}
