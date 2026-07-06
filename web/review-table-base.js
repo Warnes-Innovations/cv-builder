@@ -198,6 +198,10 @@ function switchTab(tab) {
     updateWorkflowStepsClickable(stateManager.getPhase());
   }
 
+  // GAP-16 Part B: show/hide and (re)render the early CV preview panel for
+  // this tab. toggleEarlyPreviewPanel's own in-scope check decides visibility.
+  if (typeof toggleEarlyPreviewPanel === 'function') toggleEarlyPreviewPanel(tab);
+
   // Update active tab, ARIA state, and roving tabindex (WCAG 2.1 tablist pattern)
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.remove('active');

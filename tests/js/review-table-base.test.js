@@ -203,6 +203,14 @@ describe('switchTab', () => {
     vi.useRealTimers()
   })
 
+  it('notifies the early preview panel of the target tab (GAP-16 Part B)', () => {
+    vi.stubGlobal('toggleEarlyPreviewPanel', vi.fn())
+
+    switchTab('analysis')
+
+    expect(globalThis.toggleEarlyPreviewPanel).toHaveBeenCalledWith('analysis')
+  })
+
   it('adds full-width class for non-generate tabs', () => {
     switchTab('analysis')
     expect(document.getElementById('document-content').classList.contains('full-width')).toBe(true)

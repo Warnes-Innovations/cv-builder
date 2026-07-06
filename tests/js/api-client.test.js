@@ -54,8 +54,11 @@ describe('StorageKeys', () => {
   it('defines LLM_DISCLOSURE_SHOWN', () => {
     expect(apiClient.StorageKeys.LLM_DISCLOSURE_SHOWN).toBe('cv-builder-llm-disclosure-shown')
   })
-  it('has exactly 6 keys', () => {
-    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(6)
+  it('defines EARLY_PREVIEW_COLLAPSED', () => {
+    expect(apiClient.StorageKeys.EARLY_PREVIEW_COLLAPSED).toBe('cv-builder-early-preview-collapsed')
+  })
+  it('has exactly 7 keys', () => {
+    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(7)
   })
   it('all values are strings', () => {
     Object.values(apiClient.StorageKeys).forEach(v => expect(typeof v).toBe('string'))
