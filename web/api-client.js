@@ -18,12 +18,13 @@ const log = getLogger('api-client');
  * Centralized localStorage key management to avoid duplication
  */
 const StorageKeys = {
-  SESSION_ID:           'cv-builder-session-id',
-  SESSION_PATH:         'cv-builder-session-path',
-  TAB_DATA:             'cv-builder-tab-data',
-  CURRENT_TAB:          'cv-builder-current-tab',
-  CHAT_COLLAPSED:       'cv-builder-chat-collapsed',
-  LLM_DISCLOSURE_SHOWN: 'cv-builder-llm-disclosure-shown',
+  SESSION_ID:              'cv-builder-session-id',
+  SESSION_PATH:            'cv-builder-session-path',
+  TAB_DATA:                'cv-builder-tab-data',
+  CURRENT_TAB:             'cv-builder-current-tab',
+  CHAT_COLLAPSED:          'cv-builder-chat-collapsed',
+  LLM_DISCLOSURE_SHOWN:    'cv-builder-llm-disclosure-shown',
+  EARLY_PREVIEW_COLLAPSED: 'cv-builder-early-preview-collapsed',
 };
 
 const OWNER_TOKEN_KEY = 'cv-builder-owner-token';

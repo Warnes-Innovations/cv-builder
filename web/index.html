@@ -236,7 +236,20 @@
         </div>
         <button class="tab-scroll-btn tab-scroll-right" id="tab-scroll-right" aria-label="Scroll tabs right" style="display:none">&#8250;</button>
       </div>
-      
+
+      <!-- GAP-16 Part B: persistent early CV preview, shown only for
+           customizations/rewrite/spell-stage tabs; survives tab switches
+           because it lives outside #document-content. Read-only — see
+           web/early-preview-panel.js's module-header safety boundary. -->
+      <div id="early-preview-panel" class="early-preview-panel" style="display:none;">
+        <div class="early-preview-header">
+          <span class="early-preview-title">📄 CV Preview</span>
+          <span id="early-preview-status-note" class="early-preview-status-note" role="status"></span>
+          <button type="button" id="early-preview-toggle-btn" aria-label="Toggle CV preview" aria-expanded="true">Hide</button>
+        </div>
+        <div id="early-preview-body" class="early-preview-body"></div>
+      </div>
+
       <div class="document-viewer">
         <div class="document-content" id="document-content" role="tabpanel" aria-labelledby="tab-job">
           <div class="empty-state">

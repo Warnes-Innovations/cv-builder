@@ -65,7 +65,12 @@ afterEach(() => {
 // app.js IS imported (`import * as App from '../app.js'`, main.js:89, the
 // Phase 3 modularisation entry point), so it belongs in the expected set,
 // not excluded from it.
-const STANDALONE_WEB_MODULES = new Set(['bundle.js'])
+//
+// preview-render.js (GAP-16 Part B) is a shared, side-effect-free DOM util
+// with no globalThis-registered exports of its own — it's imported directly
+// by layout-instruction.js and early-preview-panel.js instead, so it never
+// needs a top-level `from '../preview-render.js'` import in main.js.
+const STANDALONE_WEB_MODULES = new Set(['bundle.js', 'preview-render.js'])
 
 // ── Helper: check all exports in a namespace are non-null ─────────────────────
 
