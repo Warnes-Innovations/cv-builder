@@ -1483,6 +1483,11 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 generic_result = LLMClient.check_summary_generic_phrases(proposed)
                 checks_to_run.append(generic_result)
 
+            # New numeric claims vs. original — detect potential fabricated metrics (GAP-300b)
+            if original and proposed:
+                numeric_result = LLMClient.check_new_numeric_claims(original, proposed)
+                checks_to_run.append(numeric_result)
+
             # ── Collect failures (pass=False) as warnings ────────────────────
 
             for check_result in checks_to_run:

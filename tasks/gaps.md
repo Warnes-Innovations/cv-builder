@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 86)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 87)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,10 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325.
+
+## 2026-07-06 (Cycle 87) Implementation Notes
+
+Cycle 87 addressed 2 gaps: GAP-324 (keyboard card navigation extended to DataTable review rows for Experiences, Skills, Achievements sub-tabs), GAP-300b (new numeric claims persuasion check added to llm_client.py and wired into conversation_manager.py).
 
 ## 2026-07-06 (Cycle 86) Implementation Notes
 
@@ -3612,7 +3616,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-300: No Anti-Fabrication Instruction in LLM System Prompt
 
 **Priority:** CRITICAL
-**Status:** PARTIAL 2026-07-06 (cycle 84) — Added explicit anti-fabrication instruction to `_build_system_prompt()` in `conversation_manager.py`. Part (b) of the fix (numeric-token diff persuasion check) deferred to a future cycle.
+**Status:** RESOLVED 2026-07-06 (cycle 87) — (a) Anti-fabrication system prompt added in cycle 84. (b) `check_new_numeric_claims(original, proposed)` static method added to `LLMClient` (`scripts/utils/llm_client.py`); called after all other persuasion checks in `conversation_manager.py:1486`. Returns `warn`-severity flag with sample numeric values when the proposed rewrite contains numeric tokens absent in the original.
 **Discovered:** 2026-07-06 (cycle 82) by trust-compliance, persuasion-expert, resume-expert.
 **Description:** The LLM system prompt (`conversation_manager.py:424–495`) defines recommendation structure and confidence levels but contains no explicit instruction to restrict rewrites to facts present in master data, avoid inventing metrics, or flag hallucinated claims. The persuasion check pipeline (`run_persuasion_checks()`, lines 1349–1428) covers writing style (verb strength, passive voice, word count) only. A rewrite changing "improved efficiency" to "improved efficiency by 40%" passes all checks without a flag — the fabricated metric is never flagged. `apply_rewrite_constraints()` preserves numbers already in the original but does not detect numbers invented in the proposed text. There is no diff-level check comparing quantified claims between `r.original` and `r.proposed`.
 **Affected stories:** US-C1, US-C3, US-R3, US-P2
@@ -3876,7 +3880,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-324: Keyboard Card Navigation Absent for Experiences/Skills/Achievements DataTable Tabs
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 87) — Extended `_getCards()` in `web/keyboard-shortcuts.js` to return DataTable rows (`tr[data-exp-id]`, `tr[data-skill]`, `tr[data-ach-id]`) for the active review sub-tab when main tab is `customizations`. Extended `_acceptFocusedCard()` (A = include) and `_rejectFocusedCard()` (R = exclude) to call `handleActionClick()` for experience/skill rows and click the action button for achievement rows.
 **Discovered:** 2026-07-06 (cycle 82) by power-user, accessibility-specialist.
 **Description:** `_getCards()` in `keyboard-shortcuts.js:65–69` returns review cards only when `tab === 'rewrite'` or `tab === 'spell'`. On Experiences, Skills, and Achievements review tabs, `_getCards()` returns an empty array and the ↑/↓/A/R keyboard shortcuts are silently non-functional. These tabs use DataTable rows (`<tr>` elements), not `.rewrite-card`/`.spell-card` DOM elements. Power users reviewing 30+ experience entries must use the mouse for each row — the keyboard review efficiency that makes the Rewrites tab fast is unavailable on the largest review surfaces.
 **Affected stories:** US-W4 (proposed), US-W1, US-X3

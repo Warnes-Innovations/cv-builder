@@ -61,12 +61,27 @@ function _triggerPrimaryAction() {
 
 // ── Card navigation helpers ───────────────────────────────────────────────────
 
-/** Return visible review cards for the current tab. */
+/** Return visible review cards for the current tab (GAP-324: extended to DataTable review rows). */
 function _getCards() {
   const tab = typeof stateManager !== 'undefined' ? stateManager.getCurrentTab() : null;
   if (tab === 'rewrite') return [...document.querySelectorAll('.rewrite-card')];
   if (tab === 'spell')   return [...document.querySelectorAll('.spell-card')];
+  // DataTable review sub-tabs (Experiences, Skills, Achievements) — use visible rows.
+  if (tab === 'customizations') {
+    const pane = window._activeReviewPane;
+    if (pane === 'experience')   return [...document.querySelectorAll('#experience-review-table tbody tr[data-exp-id]')].filter(r => r.style.display !== 'none');
+    if (pane === 'skills')       return [...document.querySelectorAll('#skills-review-table tbody tr[data-skill]')].filter(r => r.style.display !== 'none');
+    if (pane === 'achievements') return [...document.querySelectorAll('#achievements-review-table tbody tr[data-ach-id]')].filter(r => r.style.display !== 'none');
+  }
   return [];
+}
+
+/** Return the row type for the current active review pane. */
+function _getReviewPaneType() {
+  const pane = window._activeReviewPane;
+  if (pane === 'experience')   return 'experience';
+  if (pane === 'skills')       return 'skill';
+  return null;
 }
 
 /** Visually highlight a card as keyboard-focused. */
@@ -104,6 +119,23 @@ function _acceptFocusedCard() {
     // spell cards: find the accept button within the focused card
     const btn = cards[_focusedCardIndex].querySelector('[data-action="keep"], .spell-keep-btn');
     if (btn) btn.click();
+  } else if (tab === 'customizations') {
+    // DataTable review rows: A = include (GAP-324)
+    const cards = _getCards();
+    if (_focusedCardIndex < 0 || _focusedCardIndex >= cards.length) return;
+    const row = cards[_focusedCardIndex];
+    const rowType = _getReviewPaneType();
+    if (rowType === 'experience') {
+      const id = row.dataset.expId;
+      if (id && typeof handleActionClick === 'function') handleActionClick(id, 'include', 'experience');
+    } else if (rowType === 'skill') {
+      const id = row.dataset.skill;
+      if (id && typeof handleActionClick === 'function') handleActionClick(id, 'include', 'skill');
+    } else {
+      // Achievements: click the include/accept button if present
+      const btn = row.querySelector('[data-action="include"], .ach-include-btn');
+      if (btn) btn.click();
+    }
   }
 }
 
@@ -121,6 +153,23 @@ function _rejectFocusedCard() {
     if (_focusedCardIndex < 0 || _focusedCardIndex >= cards.length) return;
     const btn = cards[_focusedCardIndex].querySelector('[data-action="apply"], .spell-apply-btn');
     if (btn) btn.click();
+  } else if (tab === 'customizations') {
+    // DataTable review rows: R = exclude (GAP-324)
+    const cards = _getCards();
+    if (_focusedCardIndex < 0 || _focusedCardIndex >= cards.length) return;
+    const row = cards[_focusedCardIndex];
+    const rowType = _getReviewPaneType();
+    if (rowType === 'experience') {
+      const id = row.dataset.expId;
+      if (id && typeof handleActionClick === 'function') handleActionClick(id, 'exclude', 'experience');
+    } else if (rowType === 'skill') {
+      const id = row.dataset.skill;
+      if (id && typeof handleActionClick === 'function') handleActionClick(id, 'exclude', 'skill');
+    } else {
+      // Achievements: click the exclude button if present
+      const btn = row.querySelector('[data-action="exclude"], .ach-exclude-btn');
+      if (btn) btn.click();
+    }
   }
 }
 

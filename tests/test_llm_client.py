@@ -1126,5 +1126,46 @@ class TestPersuasionChecks(unittest.TestCase):
         self.assertTrue(result['pass'])
 
 
+class TestCheckNewNumericClaims(unittest.TestCase):
+    """Tests for LLMClient.check_new_numeric_claims (GAP-300b)."""
+
+    def test_no_new_numbers_passes(self):
+        """Proposed with same numbers as original passes."""
+        result = LLMClient.check_new_numeric_claims(
+            'Improved efficiency by 30%',
+            'Delivered a 30% efficiency gain',
+        )
+        self.assertTrue(result['pass'])
+
+    def test_new_percent_flagged(self):
+        """Proposed introducing a new percentage is flagged as warn."""
+        result = LLMClient.check_new_numeric_claims(
+            'Improved team efficiency significantly',
+            'Improved team efficiency by 40%',
+        )
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'warn')
+        self.assertIn('40', result['details'])
+
+    def test_new_dollar_amount_flagged(self):
+        """Proposed introducing a new dollar amount is flagged."""
+        result = LLMClient.check_new_numeric_claims(
+            'Reduced operational costs substantially',
+            'Reduced operational costs by $2M annually',
+        )
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['flag_type'], 'new_numeric_claim')
+
+    def test_original_empty_passes(self):
+        """Empty original cannot determine newness — passes rather than false-positive."""
+        result = LLMClient.check_new_numeric_claims('', 'Added 50% improvement')
+        self.assertTrue(result['pass'])
+
+    def test_both_empty_passes(self):
+        """Both empty passes cleanly."""
+        result = LLMClient.check_new_numeric_claims('', '')
+        self.assertTrue(result['pass'])
+
+
 if __name__ == '__main__':
     unittest.main()

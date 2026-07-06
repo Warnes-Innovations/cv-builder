@@ -1500,6 +1500,44 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             }
         return {'pass': True, 'flag_type': 'negative_metric_framing', 'severity': 'info', 'details': ''}
 
+    @staticmethod
+    def check_new_numeric_claims(original: str, proposed: str) -> Dict[str, Any]:
+        """Flag when the proposed rewrite introduces numeric tokens not in the original (GAP-300b).
+
+        New specific numbers, percentages, or dollar amounts that were not in the
+        original text may represent fabricated metrics.  Flags as a warning so the
+        writer can verify any new quantified claims before including them.
+        """
+        import re
+        _NUM_PATTERN = re.compile(
+            r'\b\d[\d,]*(?:\.\d+)?'           # plain integers / decimals
+            r'(?:\s*%|\s*x\b|\s*×)?'          # optionally a percent or multiplier
+            r'|\$\s*\d[\d,]*(?:\.\d+)?'       # dollar amounts
+            r'|\b\d+\s*(?:million|billion|thousand|k)\b',  # magnitude words
+            re.IGNORECASE
+        )
+        if not original or not proposed:
+            return {'pass': True, 'flag_type': 'new_numeric_claim', 'severity': 'warn', 'details': ''}
+
+        def _normalise_tokens(text: str) -> set:
+            return {re.sub(r'[\s,]', '', m.lower()) for m in _NUM_PATTERN.findall(text)}
+
+        orig_nums = _normalise_tokens(original)
+        prop_nums = _normalise_tokens(proposed)
+        new_nums = prop_nums - orig_nums
+        if new_nums:
+            sample = ', '.join(sorted(new_nums)[:3])
+            return {
+                'pass': False,
+                'flag_type': 'new_numeric_claim',
+                'severity': 'warn',
+                'details': (
+                    f'Rewrite introduces new numeric claim(s) not in the original: {sample}. '
+                    'Verify these figures are accurate before including them.'
+                ),
+            }
+        return {'pass': True, 'flag_type': 'new_numeric_claim', 'severity': 'warn', 'details': ''}
+
     def _validate_with_repair(
         self,
         data: Any,
