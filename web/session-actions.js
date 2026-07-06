@@ -124,6 +124,23 @@ async function saveSession() {
   }
 }
 
+/** Return "Last edited Xm/Xh/Xd ago" for a session's last_modified ISO string.
+ *  Returns '' when the session is actively in use (< 5 min) or very old (> 14 days). */
+function _formatSessionAge(isoStr) {
+  if (!isoStr) return '';
+  const then = new Date(isoStr);
+  if (isNaN(then)) return '';
+  const diffMins = Math.floor((Date.now() - then.getTime()) / 60_000);
+  if (diffMins < 5)    return '';   // actively in use — don't clutter the bar
+  if (diffMins < 60)   return `Last edited ${diffMins}m ago`;
+  const diffH = Math.floor(diffMins / 60);
+  if (diffH < 24)      return `Last edited ${diffH}h ago`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD === 1)     return 'Last edited yesterday';
+  if (diffD < 14)      return `Last edited ${diffD}d ago`;
+  return '';   // older sessions show no indicator
+}
+
 function _formatBarDate(value) {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -185,7 +202,21 @@ function updatePositionTitle(status = {}) {
   if (typeof _updateSessionSwitcherHeader === 'function') {
     _updateSessionSwitcherHeader({ position_name: label, phase: status.phase || null });
   }
+
+  // Session age indicator — "Last edited Xh ago" when returning to a session
+  let ageEl = document.getElementById('position-session-age');
+  if (!ageEl && positionCompanyEl?.parentElement) {
+    ageEl = document.createElement('div');
+    ageEl.id = 'position-session-age';
+    ageEl.className = 'position-subtitle position-session-age';
+    positionCompanyEl.parentElement.appendChild(ageEl);
+  }
+  if (ageEl) {
+    const ageText = _formatSessionAge(status.session_last_modified);
+    ageEl.textContent = ageText;
+    ageEl.style.display = ageText ? '' : 'none';
+  }
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────
-export { sendAction, saveSession, updatePositionTitle, _ACTION_LABELS };
+export { sendAction, saveSession, updatePositionTitle, _formatSessionAge, _ACTION_LABELS };

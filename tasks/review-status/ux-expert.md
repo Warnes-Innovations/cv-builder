@@ -5,7 +5,7 @@
 
 # UX Expert Review
 
-**Date:** 2026-07-05 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75)
+**Date:** 2026-07-06 (status corrections cycle 64; GAP-UX-09 partial fix cycle 66; US-U6 C1 partial fix, GAP-UX-02 stale correction cycle 68; GAP-UX-10, GAP-UX-11, US-U9 C6, US-U8 C4 stale corrections cycle 75; GAP-UX-01 resolved cycle 76)
 **Reviewer:** ux-expert persona
 **Source files examined:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, web/job-input.js, web/rewrite-review.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/workflow-steps.js
 
@@ -30,7 +30,7 @@
 **Stage indicator update without reload**
 ✅ Pass — `stateManager.onPhaseChange()` listener (`ui-core.js:1947–1950`) calls `updateWorkflowStepsClickable()` on phase change. `fetchStatus()` in `api-client.js:218–219` calls `updateWorkflowSteps(status)` on each poll.
 
-**Notable gap:** No visible "last active" timestamp is displayed when a user returns to a session. The session switcher modal shows timestamps per session, but once a session is loaded the header only shows position name, not "last edited 2 hours ago."
+**Session age on restore** ✅ RESOLVED (cycle 76) — `updatePositionTitle()` in `session-actions.js` now dynamically injects `#position-session-age` below `#position-company` and populates it from `status.session_last_modified` (ISO string added to `StatusResponse` in `web_app.py` and `status_routes.py`). `_formatSessionAge()` returns "Last edited Xm/Xh/Xd ago" / "yesterday"; hidden when < 5min (actively in use) or > 14d (no longer useful). CSS class `position-session-age` adds italic styling at `styles.css:201`.
 
 ---
 
@@ -222,8 +222,8 @@
 
 ## Additional Story Gaps / Proposed Story Items
 
-**GAP-UX-01: Session age not shown on restoration**
-When a user returns to a persisted session, the header shows the job title but not when the session was last active. A "Last edited 3h ago" line below the position title would immediately orient returning users (US-U1 Criterion 4 partial).
+**GAP-UX-01: Session age not shown on restoration — RESOLVED (cycle 76)**
+`updatePositionTitle()` (`session-actions.js`) dynamically injects `#position-session-age` using `_formatSessionAge(status.session_last_modified)`. Backend: `session_last_modified` ISO string added to `StatusResponse` dataclass (`web_app.py`) and populated from `entry.last_modified` in `status_routes.py`. US-U1 Criterion 4 ✅.
 
 **GAP-UX-02: Back-navigation on completed steps lacks destructive-action warning — RESOLVED (stale, cycle 68)**
 Source-verified: `handleStepClick()` (`workflow-steps.js:1111–1123`) already shows `_showReRunConfirmModal(step, 'back-nav', doNavigate)` when back-navigating to a completed step with downstream completed stages. Modal titled "← Navigate back to {step}?" lists affected stages and requires explicit Proceed. US-U1 Criterion 3 ✅.
@@ -261,7 +261,7 @@ Review tables show High/Medium/Low confidence badges but no explicit legend (e.g
 
 | Story | Result | Key Evidence |
 | ------- | -------- | -------------- |
-| US-U1 Workflow orientation | ✅ | index.html:122–148; workflow-steps.js:778+; styles.css:165–173; back-nav modal RESOLVED (workflow-steps.js:1111–1123); gap: no session age on restore |
+| US-U1 Workflow orientation | ✅ | index.html:122–148; workflow-steps.js:778+; styles.css:165–173; back-nav modal RESOLVED (workflow-steps.js:1111–1123); session age RESOLVED (session-actions.js `_formatSessionAge`, cycle 76) |
 | US-U2 Job input UX | ✅ | job-input.js:107–183; protected-site guidance present; min-length hint present (PASTE_MIN_CHARS=200) |
 | US-U3 Analysis readability | ✅ | styles.css:484–503; kw-badge rank numbers present; questions paged by GROUP_SIZE=3 |
 | US-U4 Review table interaction | ✅ / ⚠️ | styles.css:1199–1226; rewrite-review.js:274–275 (bulk); relevance badges lack numeric scale |

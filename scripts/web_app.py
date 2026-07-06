@@ -145,6 +145,7 @@ class StatusResponse:
     skill_qualifier_overrides: Dict[str, Dict[str, Any]]
     ai_attribution: bool
     highest_phase: Optional[str]
+    session_last_modified: Optional[str] = None
 
 
 @dataclass

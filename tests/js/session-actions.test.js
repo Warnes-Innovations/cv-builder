@@ -10,6 +10,7 @@
  */
 import {
   updatePositionTitle,
+  _formatSessionAge,
   _ACTION_LABELS,
   sendAction,
   saveSession,
@@ -127,6 +128,100 @@ describe('updatePositionTitle', () => {
   it('parses label from job_description_text as last resort', () => {
     updatePositionTitle({ position_name: '', job_description_text: 'Engineer at BigCo' })
     expect(document.getElementById('position-title').textContent).not.toBe('')
+  })
+})
+
+// ── _formatSessionAge ─────────────────────────────────────────────────────
+
+describe('_formatSessionAge', () => {
+  function isoMinsAgo(mins) {
+    return new Date(Date.now() - mins * 60_000).toISOString()
+  }
+
+  it('returns empty string for null/undefined', () => {
+    expect(_formatSessionAge(null)).toBe('')
+    expect(_formatSessionAge(undefined)).toBe('')
+  })
+
+  it('returns empty string for invalid ISO strings', () => {
+    expect(_formatSessionAge('not-a-date')).toBe('')
+  })
+
+  it('returns empty string when session edited < 5 minutes ago (actively in use)', () => {
+    expect(_formatSessionAge(isoMinsAgo(3))).toBe('')
+  })
+
+  it('returns minutes label for 5–59 minutes ago', () => {
+    expect(_formatSessionAge(isoMinsAgo(5))).toBe('Last edited 5m ago')
+    expect(_formatSessionAge(isoMinsAgo(30))).toBe('Last edited 30m ago')
+    expect(_formatSessionAge(isoMinsAgo(59))).toBe('Last edited 59m ago')
+  })
+
+  it('returns hours label for 1–23 hours ago', () => {
+    expect(_formatSessionAge(isoMinsAgo(60))).toBe('Last edited 1h ago')
+    expect(_formatSessionAge(isoMinsAgo(120))).toBe('Last edited 2h ago')
+    expect(_formatSessionAge(isoMinsAgo(23 * 60))).toBe('Last edited 23h ago')
+  })
+
+  it('returns "yesterday" for 1 day ago', () => {
+    expect(_formatSessionAge(isoMinsAgo(24 * 60))).toBe('Last edited yesterday')
+  })
+
+  it('returns days label for 2–13 days ago', () => {
+    expect(_formatSessionAge(isoMinsAgo(2 * 24 * 60))).toBe('Last edited 2d ago')
+    expect(_formatSessionAge(isoMinsAgo(13 * 24 * 60))).toBe('Last edited 13d ago')
+  })
+
+  it('returns empty string for sessions older than 14 days', () => {
+    expect(_formatSessionAge(isoMinsAgo(14 * 24 * 60))).toBe('')
+    expect(_formatSessionAge(isoMinsAgo(30 * 24 * 60))).toBe('')
+  })
+})
+
+// ── updatePositionTitle session age injection ─────────────────────────────
+
+describe('updatePositionTitle session age indicator', () => {
+  function buildPositionBarWithCompany() {
+    document.body.innerHTML = `
+      <div class="position-bar">
+        <div id="position-title"></div>
+        <div id="position-company"></div>
+        <button id="rename-session-btn" style="display:none"></button>
+      </div>`
+  }
+
+  beforeEach(buildPositionBarWithCompany)
+
+  it('injects #position-session-age when session_last_modified is old enough', () => {
+    const isoStr = new Date(Date.now() - 2 * 60 * 60_000).toISOString() // 2h ago
+    updatePositionTitle({ position_name: 'Dev', session_last_modified: isoStr })
+    const el = document.getElementById('position-session-age')
+    expect(el).not.toBeNull()
+    expect(el.textContent).toBe('Last edited 2h ago')
+    expect(el.style.display).toBe('')
+  })
+
+  it('hides #position-session-age when session was edited very recently', () => {
+    const isoStr = new Date(Date.now() - 2 * 60_000).toISOString() // 2m ago
+    updatePositionTitle({ position_name: 'Dev', session_last_modified: isoStr })
+    const el = document.getElementById('position-session-age')
+    if (el) expect(el.style.display).toBe('none')
+  })
+
+  it('does not inject age element when session_last_modified is absent', () => {
+    updatePositionTitle({ position_name: 'Dev' })
+    const el = document.getElementById('position-session-age')
+    if (el) expect(el.style.display).toBe('none')
+  })
+
+  it('reuses existing #position-session-age element on re-renders', () => {
+    const isoStr = new Date(Date.now() - 2 * 60 * 60_000).toISOString()
+    updatePositionTitle({ position_name: 'Dev', session_last_modified: isoStr })
+    const firstEl = document.getElementById('position-session-age')
+    updatePositionTitle({ position_name: 'Dev', session_last_modified: isoStr })
+    const secondEl = document.getElementById('position-session-age')
+    expect(document.querySelectorAll('#position-session-age').length).toBe(1)
+    expect(firstEl).toBe(secondEl)
   })
 })
 
