@@ -257,7 +257,7 @@ function renderQGroupNav(numGroups, qs, existingAnswers) {
     if (isActive) cls.push('active');
     if (isDone) cls.push('done');
     const stateLabel = isActive ? 'current' : isDone ? 'completed' : 'not yet answered';
-    const ariaLabel = `Review answers for Group ${i + 1}, ${stateLabel} — no resubmission`;
+    const ariaLabel = `Review answers for Group ${i + 1}, ${stateLabel} — no resubmission, your draft is saved automatically`;
     dots.push(
       `<button type="button" class="${cls.join(' ')}" data-group="${i}"` +
       `${isActive ? ' aria-current="step"' : ''} aria-label="${escapeHtml(ariaLabel)}"` +

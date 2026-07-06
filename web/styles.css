@@ -72,8 +72,11 @@
   --cv-emerald-bg:             #ecfdf5;   /* emerald-50 — emerald hover/badge background */
   --cv-orange-text:            #7c2d12;   /* orange-900 — dirty-phases callout text */
   --cv-warn-text-dark:         #78350f;   /* amber-900  — darkest warning text */
-  --cv-green-700:              #15803d;   /* green-700  — medium-dark success text */
+  --cv-success-md-dark:        #15803d;   /* green-700  — hover/darken pair for --cv-success-md, and darker success text/badge color (distinct hue from --cv-success-dark, which is emerald) */
   --cv-bg-input:               #fafafa;   /* neutral-50 — textarea/input background */
+  --cv-orange-bg:              #fff7ed;   /* orange-50  — dirty-phases callout / non-confidential badge background */
+  --cv-orange-border:          #f97316;   /* orange-500 — dirty-phases callout left border */
+  --cv-orange-text-dark:       #9a3412;   /* orange-800 — dirty-phases callout heading text */
 }
 
 /* ===== RESET & BASE ===== */
@@ -565,7 +568,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .q-group-dot:hover { border-color: var(--cv-accent); }
 .q-group-dot:focus-visible { outline: 2px solid var(--cv-accent); outline-offset: 2px; }
-.q-group-dot.active { background: var(--cv-accent); border-color: var(--cv-accent); color: var(--cv-white); }
+.q-group-dot.active { background: var(--cv-accent); border-color: var(--cv-accent); color: var(--cv-white); box-shadow: 0 0 0 2px var(--cv-white), 0 0 0 4px var(--cv-accent); }
 .q-group-dot.done { background: var(--cv-success-bg); border-color: var(--cv-success-border); color: var(--cv-success-text); border-style: dashed; }
 .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--cv-bg-subtle); }
 .question-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
@@ -805,7 +808,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 }
 .confidence-high {
   background: var(--cv-success-bg-md);
-  color: var(--cv-green-700);
+  color: var(--cv-success-md-dark);
   border: 1px solid var(--cv-success-bg-lt);
 }
 .confidence-medium {
@@ -1206,7 +1209,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
   box-shadow: 0 6px 16px rgba(22, 163, 74, 0.24);
 }
 .model-wizard-primary-close:hover {
-  background: var(--cv-green-700);
+  background: var(--cv-success-md-dark);
 }
 .wizard-busy-overlay {
   position: absolute;
@@ -1368,7 +1371,7 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid var(--cv-gray-3
 .rewrite-card-title { font-weight: 600; font-size: 0.95em; color: var(--cv-text-primary); }
 .weak-badge { background: var(--cv-warn-bg-md); color: var(--cv-warn-text); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
 .rw-change-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
-.rw-change-new { background: var(--cv-success-bg-md); color: var(--cv-green-700); }
+.rw-change-new { background: var(--cv-success-bg-md); color: var(--cv-success-md-dark); }
 .rw-change-updated { background: var(--cv-info-bg-md); color: var(--cv-accent-hover); }
 .rewrite-card-body  { padding: 0 16px 14px; }
 .rewrite-inline-diff { background: var(--cv-bg-light); border: 1px solid var(--cv-border); border-radius: 6px; padding: 10px 12px; font-size: 0.9em; line-height: 1.6; margin-bottom: 10px; word-wrap: break-word; }
@@ -1562,8 +1565,8 @@ details.rewrite-rationale summary { cursor: pointer; color: var(--cv-gray-700); 
 .proposal-reason { font-size: 11px; color: var(--cv-gray-500); font-style: italic; }
 .proposal-actions { display: flex; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px solid var(--cv-bg-subtle); }
 .proposal-approve-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--cv-gray-700); }
-.dirty-phases-callout { background: #fff7ed; border-left: 4px solid #f97316; border-radius: 8px; padding: 14px 16px; color: var(--cv-orange-text); margin-top: 12px; }
-.dirty-phases-callout h4 { margin: 0 0 6px; font-size: 14px; color: #9a3412; }
+.dirty-phases-callout { background: var(--cv-orange-bg); border-left: 4px solid var(--cv-orange-border); border-radius: 8px; padding: 14px 16px; color: var(--cv-orange-text); margin-top: 12px; }
+.dirty-phases-callout h4 { margin: 0 0 6px; font-size: 14px; color: var(--cv-orange-text-dark); }
 .dirty-phases-callout p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--cv-orange-text); }
 .step-stale-badge { background: #fed7aa; color: var(--cv-orange-text); border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 600; vertical-align: middle; }
 .step-fwd-badge { background: var(--cv-info-bg-md); color: var(--cv-info-dark); border-radius: 4px; padding: 1px 4px; font-size: 10px; font-weight: 600; vertical-align: middle; }
@@ -1630,7 +1633,11 @@ details.rewrite-rationale summary { cursor: pointer; color: var(--cv-gray-700); 
   .tab-stage-label { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 600px) {
-  .tab-stage-label { display: none; }
+  /* Committee fix (ux-expert): keep the label visible rather than hiding it
+     outright — it's the only indicator of which stage's sub-tabs are showing,
+     and no substitute affordance exists at this width. Truncate further
+     instead. */
+  .tab-stage-label { max-width: 22vw; }
 }
 
 /* ==== Master CV Management Tab ==== */
