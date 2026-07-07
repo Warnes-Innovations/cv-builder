@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (C) 2026 Gregory R. Warnes -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.warnes.cv-builder</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/Caskroom/miniconda/base/bin/conda</string>
+        <string>run</string>
+        <string>-n</string>
+        <string>cvgen</string>
+        <string>--no-capture-output</string>
+        <string>python</string>
+        <string>scripts/web_app.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/warnes/src/cv-builder</string>
+
+    <!-- Source LLM API keys before launch -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ENABLE_TOKENS</key>
+        <string>1</string>
+        <key>HOME</key>
+        <string>/Users/warnes</string>
+    </dict>
+
+    <!-- Start at login and keep running -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Throttle restarts on repeated crashes: wait 10s before retry -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/warnes/Library/Logs/cv-builder/launchd-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/warnes/Library/Logs/cv-builder/launchd-stderr.log</string>
+</dict>
+</plist>

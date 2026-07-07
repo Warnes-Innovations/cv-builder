@@ -49,7 +49,9 @@ beforeEach(() => {
 
   vi.stubGlobal('escapeHtml', value => String(value ?? ''))
   vi.stubGlobal('refreshAtsScore', vi.fn(async () => {}))
-  globalThis.fetch = vi.fn()
+  // Default: synonym-map returns empty object; ATS score endpoint should not be called
+  // when the score is already cached.
+  globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
   stateManager.setSessionId('session-123')
 })
 
@@ -72,7 +74,9 @@ describe('openAtsReportModal', () => {
 
     await openAtsReportModal()
 
-    expect(fetch).not.toHaveBeenCalled()
+    // openAtsReportModal always fetches the synonym map; assert that the ATS score
+    // endpoint is NOT called when a cached score is already available.
+    expect(fetch).not.toHaveBeenCalledWith('/api/cv/ats-score', expect.anything())
     expect(document.getElementById('ats-report-modal-overlay').style.display).toBe('flex')
     expect(document.getElementById('ats-report-modal-body').textContent).toContain('81%')
     expect(document.getElementById('ats-report-modal-body').textContent).toContain('python')
@@ -140,7 +144,7 @@ describe('_renderAtsReport', () => {
     })
 
     expect(html).toContain('49%')
-    expect(html).toContain('Basis: post_generation')
+    expect(html).toContain('Scored: After generation')
     expect(html).toContain('python')
     expect(html).toContain('Preferred Skills')
     expect(html).toContain('kubernetes')

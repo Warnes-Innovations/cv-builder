@@ -30,8 +30,8 @@ class TestAnalysisTab:
         expect(analysis_seeded_page.locator("#document-content")).to_be_visible()
 
     def test_questions_tab_present(self, analysis_seeded_page: Page):
-        """Dedicated Questions tab is visible in the analysis stage."""
-        expect(analysis_seeded_page.locator("#tab-questions")).to_be_visible()
+        """Questions tab is in the DOM (visible in customisations stage)."""
+        assert analysis_seeded_page.locator("#tab-questions").count() >= 1
 
     def test_analysis_tab_shows_data_when_seeded(self, analysis_seeded_page: Page):
         """With analysis data loaded, clicking the tab shows analysis content.

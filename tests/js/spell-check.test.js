@@ -187,6 +187,7 @@ describe('submitSpellCheckDecisions', () => {
 
   it('calls sendAction generate_cv on success', async () => {
     window._spellSugMap = {}
+    globalThis.fetchStatus = vi.fn(async () => ({ decisions_confirmed: { tagline: true } }))
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true, json: async () => ({ ok: true }),
     })
@@ -242,6 +243,16 @@ describe('submitSpellCheckDecisions', () => {
     const ignoredItem = body.spell_audit.find(e => e.final === 'teh')
     expect(ignoredItem.outcome).toBe('ignore')
   })
+
+  it('does not call sendAction when user cancels the generate confirmation', async () => {
+    window._spellSugMap = {}
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true }),
+    })
+    vi.stubGlobal('showConfirmModal', vi.fn(async () => false))
+    await submitSpellCheckDecisions()
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
+  })
 })
 
 describe('renderSpellCheckZeroState', () => {
@@ -252,13 +263,14 @@ describe('renderSpellCheckZeroState', () => {
   it('renders an explicit continue button instead of auto-generating', () => {
     renderSpellCheckZeroState('Spell check passed — no issues found.')
 
-    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+    expect(document.getElementById('document-content').textContent).toContain('Generate Preview →')
     expect(globalThis.sendAction).not.toHaveBeenCalled()
   })
 })
 
 describe('submitEmptySpellCheck', () => {
   it('persists an empty audit and then generates', async () => {
+    globalThis.fetchStatus = vi.fn(async () => ({ decisions_confirmed: { tagline: true } }))
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true }),
@@ -271,11 +283,23 @@ describe('submitEmptySpellCheck', () => {
     }))
     expect(globalThis.sendAction).toHaveBeenCalledWith('generate_cv')
   })
+
+  it('does not call sendAction when user cancels the generate confirmation', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    })
+    vi.stubGlobal('showConfirmModal', vi.fn(async () => false))
+    await submitEmptySpellCheck()
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
+  })
 })
 
 describe('populateSpellCheckTab', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="document-content"></div>'
+    // Clear the spell-check cache between tests to prevent result bleed.
+    window._spellCheckCache = null
   })
 
   it('renders a zero-state review panel when there are no sections', async () => {
@@ -288,7 +312,7 @@ describe('populateSpellCheckTab', () => {
 
     expect(globalThis.sendAction).not.toHaveBeenCalled()
     expect(document.getElementById('document-content').textContent).toContain('No CV sections are available to check.')
-    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+    expect(document.getElementById('document-content').textContent).toContain('Generate Preview →')
   })
 
   it('renders a zero-state review panel when checks find no issues', async () => {
@@ -311,6 +335,6 @@ describe('populateSpellCheckTab', () => {
 
     expect(globalThis.sendAction).not.toHaveBeenCalled()
     expect(document.getElementById('document-content').textContent).toContain('Spell check passed — no issues found.')
-    expect(document.getElementById('document-content').textContent).toContain('Continue to Generate CV')
+    expect(document.getElementById('document-content').textContent).toContain('Generate Preview →')
   })
 })

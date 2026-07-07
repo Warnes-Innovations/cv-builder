@@ -6,12 +6,12 @@
 
 /**
  * Focused regression tests for session switcher helpers in web/session-manager.js.
- * buildSessionSwitcherLabel uses the abbreviated labels from session-manager.js
- * (e.g. 'Generate' not 'generation'); formatSessionPhaseLabel from utils.js keeps long form.
+ * buildSessionSwitcherLabel and formatSessionPhaseLabel both use abbreviated labels
+ * from session-manager.js (e.g. 'Generate', 'Rewrites', 'Layout').
  */
 
-import { formatSessionPhaseLabel } from '../../web/utils.js';
 import {
+  formatSessionPhaseLabel,
   buildSessionSwitcherLabel,
   getActiveSessionOwnershipMeta,
 } from '../../web/session-manager.js'
@@ -36,8 +36,8 @@ describe('session switcher helpers', () => {
   })
 
   it('formats workflow phases for display', () => {
-    expect(formatSessionPhaseLabel('rewrite_review')).toBe('rewrite')
-    expect(formatSessionPhaseLabel('layout_review')).toBe('layout review')
+    expect(formatSessionPhaseLabel('rewrite_review')).toBe('Rewrites')
+    expect(formatSessionPhaseLabel('layout_review')).toBe('Layout')
     expect(formatSessionPhaseLabel('custom_phase')).toBe('custom phase')
   })
 

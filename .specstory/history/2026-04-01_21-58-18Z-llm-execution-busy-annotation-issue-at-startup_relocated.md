@@ -2,7 +2,7 @@
 
 # 2026-04-02 13:54:47Z
 
-<!-- VS Code Copilot IDE Session e733a32d-d426-4b50-9cee-9c7547d0546c (2026-04-02 13:54:47Z) -->
+<!-- copilotide Session e733a32d-d426-4b50-9cee-9c7547d0546c (2026-04-02 13:54:47Z) -->
 
 _**User (2026-04-02 13:54:47Z)**_
 
@@ -156,4 +156,4 @@ The user is asking about a UX issue: when the app starts and shows a modal dialo
 
 Let me look at the session modal implementation to understand how it can be dismissed.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

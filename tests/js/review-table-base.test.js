@@ -23,6 +23,8 @@ import {
   switchReviewSubtab,
   _loadReviewPane,
   _updatePageEstimate,
+  bulkAction,
+  undoBulkAction,
 } from '../../web/review-table-base.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
 
@@ -179,6 +181,38 @@ describe('switchTab', () => {
     expect(globalThis.updateActionButtons).toHaveBeenCalledWith('layout')
   })
 
+  it('announces a single combined stage + tab message (GAP-16 Part A) instead of two separate live-region writes', () => {
+    vi.useFakeTimers()
+    document.body.innerHTML += '<div id="workflow-stage-announcer"></div>'
+    globalThis.getStageForTab.mockReturnValue('job')
+
+    switchTab('analysis')
+    vi.advanceTimersByTime(60)
+
+    expect(document.getElementById('workflow-stage-announcer').textContent).toBe('Now viewing: Job Input — Analysis')
+    vi.useRealTimers()
+  })
+
+  it('falls back to a tab-only announcement when no stage is resolved for the tab', () => {
+    vi.useFakeTimers()
+    document.body.innerHTML += '<div id="workflow-stage-announcer"></div>'
+    globalThis.getStageForTab.mockReturnValue(null)
+
+    switchTab('analysis')
+    vi.advanceTimersByTime(60)
+
+    expect(document.getElementById('workflow-stage-announcer').textContent).toBe('Now viewing: Analysis')
+    vi.useRealTimers()
+  })
+
+  it('notifies the early preview panel of the target tab (GAP-16 Part B)', () => {
+    vi.stubGlobal('toggleEarlyPreviewPanel', vi.fn())
+
+    switchTab('analysis')
+
+    expect(globalThis.toggleEarlyPreviewPanel).toHaveBeenCalledWith('analysis')
+  })
+
   it('adds full-width class for non-generate tabs', () => {
     switchTab('analysis')
     expect(document.getElementById('document-content').classList.contains('full-width')).toBe(true)
@@ -213,6 +247,22 @@ describe('switchTab', () => {
     await expect(loadTabContent('download')).resolves.toBeUndefined()
     expect(document.getElementById('document-content').innerHTML).toContain('Download')
   })
+
+  it('renders a thrown error as text, not HTML (ported from ui-core.test.js — see web/ui-core.js header comment)', async () => {
+    vi.stubGlobal(
+      'populateJobTab',
+      vi.fn(async () => {
+        throw new Error('<img src=x onerror=alert(1)>')
+      }),
+    )
+
+    await loadTabContent('job')
+
+    const content = document.getElementById('document-content')
+    expect(content.innerHTML).not.toContain('<img src=x onerror=alert(1)>')
+    expect(content.textContent).toContain('Error loading content: <img src=x onerror=alert(1)>')
+    expect(content.querySelector('img')).toBeNull()
+  })
 })
 
 // ── populateAnalysisTab ───────────────────────────────────────────────────
@@ -240,8 +290,9 @@ describe('populateAnalysisTab', () => {
     expect(html).toContain('Docker')
   })
 
-  it('renders ATS keywords with rank badges', () => {
-    populateAnalysisTab({ title: 'Dev', required_skills: [], ats_keywords: ['ML', 'NLP'] })
+  it('renders ATS keywords with rank badges', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+    await populateAnalysisTab({ title: 'Dev', required_skills: [], ats_keywords: ['ML', 'NLP'] })
     const html = document.getElementById('document-content').innerHTML
     expect(html).toContain('#1')
     expect(html).toContain('ML')
@@ -551,5 +602,161 @@ describe('_updatePageEstimate', () => {
         }),
       )
     })
+  })
+})
+
+// ── bulkAction + undoBulkAction ───────────────────────────────────────────
+
+function _makeExpTable(entries) {
+  const tbody = document.createElement('tbody')
+  entries.forEach(({ id, action }) => {
+    const tr = document.createElement('tr')
+    tr.dataset.expId = id
+    const btn = document.createElement('button')
+    btn.className = 'icon-btn active'
+    btn.dataset.action = action
+    btn.setAttribute('aria-pressed', 'true')
+    tr.appendChild(btn)
+    tbody.appendChild(tr)
+  })
+  const table = document.createElement('table')
+  table.id = 'experience-review-table'
+  table.appendChild(tbody)
+  return table
+}
+
+describe('bulkAction snapshot and undoBulkAction', () => {
+  function _resetDOM() {
+    document.body.innerHTML = ''
+    const table = _makeExpTable([
+      { id: 'e1', action: 'include' },
+      { id: 'e2', action: 'emphasize' },
+    ])
+    const toolbar = document.createElement('div')
+    toolbar.id = 'exp-bulk-toolbar'
+    const undoBtn = document.createElement('button')
+    undoBtn.className = 'bulk-undo-btn'
+    undoBtn.style.display = 'none'
+    toolbar.appendChild(undoBtn)
+    document.body.appendChild(toolbar)
+    document.body.appendChild(table)
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    userSelections.experiences = { e1: 'include', e2: 'emphasize' }
+    userSelections.skills = {}
+    window.pendingRecommendations = {}
+    vi.stubGlobal('$', () => ({ DataTable: () => null }))
+    Object.assign($, { fn: { DataTable: { isDataTable: () => false } } })
+    _resetDOM()
+  })
+
+  afterEach(() => {
+    // Clear any lingering snapshot so module state doesn't leak between tests
+    undoBulkAction('experience')
+    undoBulkAction('skill')
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('bulkAction snapshots selections before applying changes', () => {
+    bulkAction('exclude', 'experience')
+    // After bulk: both should be exclude
+    expect(userSelections.experiences.e1).toBe('exclude')
+    expect(userSelections.experiences.e2).toBe('exclude')
+  })
+
+  it('bulkAction shows the undo button', () => {
+    bulkAction('exclude', 'experience')
+    const undoBtn = document.getElementById('exp-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('')
+  })
+
+  it('undoBulkAction restores previous selections', () => {
+    bulkAction('exclude', 'experience')
+    undoBulkAction('experience')
+    expect(userSelections.experiences.e1).toBe('include')
+    expect(userSelections.experiences.e2).toBe('emphasize')
+  })
+
+  it('undoBulkAction hides the undo button', () => {
+    bulkAction('exclude', 'experience')
+    undoBulkAction('experience')
+    const undoBtn = document.getElementById('exp-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('none')
+  })
+
+  it('undoBulkAction is a no-op when called with wrong type', () => {
+    bulkAction('exclude', 'experience')
+    const before = { ...userSelections.experiences }
+    undoBulkAction('skill')
+    expect(userSelections.experiences).toEqual(before)
+  })
+
+  it('undoBulkAction is a no-op when no snapshot exists', () => {
+    userSelections.experiences = { e1: 'exclude' }
+    undoBulkAction('experience')
+    expect(userSelections.experiences.e1).toBe('exclude')
+  })
+
+  it('undoBulkAction re-applies button active state for restored rows', () => {
+    const rows = document.querySelectorAll('#experience-review-table tbody tr')
+    // Simulate: after bulk exclude, both buttons show 'exclude'
+    rows.forEach(row => {
+      row.querySelectorAll('.icon-btn').forEach(b => b.classList.remove('active'))
+      const excBtn = document.createElement('button')
+      excBtn.className = 'icon-btn active'
+      excBtn.dataset.action = 'exclude'
+      row.appendChild(excBtn)
+    })
+    bulkAction('exclude', 'experience')
+    undoBulkAction('experience')
+    // Each row should now have original action button re-activated
+    const row1 = document.querySelector('tr[data-exp-id="e1"]')
+    const restored = row1.querySelector('[data-action="include"]')
+    expect(restored?.classList.contains('active')).toBe(true)
+  })
+
+  it('skill bulkAction hides the experience undo button (cross-tab clobber fix)', () => {
+    // Wire up a skill toolbar so _setBulkUndoVisible can find it
+    const skillToolbar = document.createElement('div')
+    skillToolbar.id = 'skill-bulk-toolbar'
+    const skillUndoBtn = document.createElement('button')
+    skillUndoBtn.className = 'bulk-undo-btn'
+    skillUndoBtn.style.display = 'none'
+    skillToolbar.appendChild(skillUndoBtn)
+    document.body.appendChild(skillToolbar)
+
+    // Experience bulk action shows exp undo button
+    bulkAction('exclude', 'experience')
+    const expUndoBtn = document.getElementById('exp-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(expUndoBtn.style.display).toBe('')
+
+    // Skill bulk action should hide exp undo button
+    bulkAction('exclude', 'skill')
+    expect(expUndoBtn.style.display).toBe('none')
+  })
+
+  it('undoBulkAction clears bulk-applied state for rows that had no prior selection', () => {
+    // e1 and e2 have prior selections; e3 has none
+    userSelections.experiences = { e1: 'include', e2: 'emphasize' }
+    const tbody = document.querySelector('#experience-review-table tbody')
+    const row3 = document.createElement('tr')
+    row3.dataset.expId = 'e3'
+    const excBtn = document.createElement('button')
+    excBtn.className = 'icon-btn'
+    excBtn.dataset.action = 'exclude'
+    row3.appendChild(excBtn)
+    tbody.appendChild(row3)
+
+    // Bulk exclude applies to e3 (no prior selection)
+    bulkAction('exclude', 'experience')
+    expect(userSelections.experiences.e3).toBe('exclude')
+
+    // Undo: e3 should be cleared (no prior selection)
+    undoBulkAction('experience')
+    expect(userSelections.experiences.e3).toBeUndefined()
+    expect(excBtn.classList.contains('active')).toBe(false)
   })
 })

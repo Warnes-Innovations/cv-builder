@@ -142,10 +142,6 @@ class TestParseBibtexFile(unittest.TestCase):
     def tearDown(self):
         Path(self.bib_path).unlink(missing_ok=True)
 
-    def test_returns_dict(self):
-        result = parse_bibtex_file(self.bib_path)
-        self.assertIsInstance(result, dict)
-
     def test_all_entries_present(self):
         result = parse_bibtex_file(self.bib_path)
         self.assertIn("warnes2024ml", result)
@@ -269,6 +265,10 @@ class TestFormatPublication(unittest.TestCase):
         result = format_publication(self.article, style="apa")
         self.assertIn("2024", result)
 
+    def test_apa_uses_italic_journal_marker(self):
+        result = format_publication(self.article, style="apa")
+        self.assertIn("*Bioinformatics", result)
+
     def test_ieee_style(self):
         result = format_publication(self.article, style="ieee")
         self.assertIsInstance(result, str)
@@ -283,6 +283,44 @@ class TestFormatPublication(unittest.TestCase):
         proc = self.pubs["warnes2023nlp"]
         result = format_publication(proc, style="apa")
         self.assertIn("2023", result)
+
+    def test_brief_non_r_java_software_uses_open_source_java_label(self):
+        java_pub = {
+            "type": "misc",
+            "authors": "Warnes, Gregory R.",
+            "year": "2000",
+            "title": "DistLib: Statistical Distribution Library for Java",
+            "note": "Java library",
+            "fields": {"type": "software"},
+        }
+        result = format_publication(java_pub, style="brief")
+        self.assertIn("Open-Source Java Library.", result)
+        self.assertNotIn("Software Java library", result)
+
+    def test_brief_non_r_python_software_uses_open_source_python_label(self):
+        py_pub = {
+            "type": "misc",
+            "authors": "Warnes, Gregory R.",
+            "year": "2003",
+            "title": "fpconst: IEEE 754 Floating Point Special Values",
+            "note": "Python library",
+            "fields": {"type": "software"},
+        }
+        result = format_publication(py_pub, style="brief")
+        self.assertIn("Open-Source Python Library.", result)
+
+    def test_brief_generic_software_uses_open_source_software_label(self):
+        generic_pub = {
+            "type": "misc",
+            "authors": "Warnes, Gregory R.",
+            "year": "2002",
+            "title": "HYDRA: Platform-Neutral MCMC Library",
+            "note": "Software library",
+            "fields": {"type": "software"},
+        }
+        result = format_publication(generic_pub, style="brief")
+        self.assertIn("Open-Source Software Library.", result)
+        self.assertNotIn("Software Software", result)
 
 
 # ---------------------------------------------------------------------------
@@ -582,20 +620,18 @@ class TestRoundTrip(unittest.TestCase):
 class TestBibtexTextToPublications(unittest.TestCase):
     """Direct tests for bibtex_text_to_publications edge cases."""
 
-    def test_empty_string_returns_empty_dict(self):
-        result = bibtex_text_to_publications("")
-        self.assertEqual(result, {})
-
-    def test_whitespace_only_returns_empty_dict(self):
-        result = bibtex_text_to_publications("   \n\t  ")
-        self.assertEqual(result, {})
+    def test_empty_whitespace_and_invalid_inputs_return_empty_dict(self):
+        cases = [
+            ("empty string",        ""),
+            ("whitespace only",     "   \n\t  "),
+            ("invalid bibtex",      "this is not bibtex at all!"),
+        ]
+        for label, text in cases:
+            with self.subTest(input=label):
+                self.assertEqual(bibtex_text_to_publications(text), {})
 
     def test_none_input_returns_empty_dict(self):
         result = bibtex_text_to_publications(None)
-        self.assertEqual(result, {})
-
-    def test_invalid_bibtex_returns_empty_dict(self):
-        result = bibtex_text_to_publications("this is not bibtex at all!")
         self.assertEqual(result, {})
 
     def test_write_failure_returns_empty_dict_not_unbound_error(self):

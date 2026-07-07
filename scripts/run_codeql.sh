@@ -9,7 +9,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/run_codeql.sh [--source-root PATH] [--output-root PATH]
+Usage: scripts/run_codeql.sh [--source-root PATH] [--output-root PATH] [--custom-only]
 
 Run a local CodeQL scan for the repository using the CodeQL CLI bundled with the
 VS Code extension when the standalone `codeql` command is not on PATH.
@@ -17,14 +17,37 @@ VS Code extension when the standalone `codeql` command is not on PATH.
 Options:
   --source-root PATH  Repository root to scan. Default: repo root
   --output-root PATH  Parent directory for scan artifacts. Default: /tmp
+  --custom-only       Run only .github/codeql/ custom queries (fast, no DB rebuild)
+                      against the database already loaded in VS Code's CodeQL extension.
   --help              Show this help message and exit
 
+Modes:
+  Default             Rebuilds full CodeQL databases from source and runs the standard
+                      python-code-scanning + javascript-code-scanning suites. Slow (~15 min).
+  --custom-only       Runs only the cv-builder custom queries in .github/codeql/ against the
+                      database cached by the VS Code extension. Fast (~1-5 min).
+
 Outputs:
-  A timestamped work directory containing:
+  A timestamped work directory (or /tmp/codeql_custom_*.csv for --custom-only) containing:
     - a filtered source snapshot
     - CodeQL databases for Python and JavaScript
     - SARIF reports
     - plain-text logs and a summary report
+
+Custom Queries:
+  .github/codeql/unlogged-exceptions.ql          handlers that log nothing and don't re-raise
+  .github/codeql/swallowed-exceptions.ql          bare except:pass (silent discard)
+  .github/codeql/exception-detail-in-response.ql  str(e) in jsonify() response (info leak)
+  .github/codeql/route-without-session.ql         Flask routes missing _get_session()
+  .github/codeql/llm-call-without-timeout.ql      LLM API calls without timeout
+  .github/codeql/master-data-write-outside-window.ql  master_data writes outside init/refinement
+  .github/codeql/test-writes-user-dir.ql          tests writing to ~/CV/ without tmp isolation
+  .github/codeql/html-to-text-without-strip.ql    BeautifulSoup get_text without CSS/JS strip
+  .github/codeql/hardcoded-secrets.ql             API-key-shaped strings in suspicious variables
+  .github/codeql/path-traversal.ql                user input flowing to file system operations
+  .github/codeql/master-data-writes.ql            all writes to master_data variables
+  .github/codeql/session-state-keys.ql            inventory of session state keys used
+  .github/codeql/flask-routes.ql                  inventory of all Flask routes and HTTP methods
 EOF
 }
 
@@ -32,6 +55,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)
 source_root="$repo_root"
 output_root="/tmp"
+custom_only=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,6 +66,10 @@ while [[ $# -gt 0 ]]; do
     --output-root)
       output_root="$2"
       shift 2
+      ;;
+    --custom-only)
+      custom_only=true
+      shift
       ;;
     --help|-h)
       usage
@@ -94,6 +122,81 @@ CODEQL_BIN=$(find_codeql) || {
   echo "Unable to locate the CodeQL CLI. Install the VS Code CodeQL extension or add 'codeql' to PATH." >&2
   exit 1
 }
+
+# ── Custom-only mode: run .github/codeql/ queries against the extension's cached DB ──
+if [[ "$custom_only" == "true" ]]; then
+  # Locate the database loaded by the VS Code CodeQL extension for this workspace.
+  # The extension stores databases under: ~/Library/.../workspaceStorage/<workspace-id>/GitHub.vscode-codeql/<repo-slug>/
+  vscode_storage="$HOME/Library/Application Support/Code/User/workspaceStorage"
+  py_db=$(find "$vscode_storage" -path "*/GitHub.vscode-codeql/*/python/codeql-database.yml" 2>/dev/null \
+    | head -1 | sed 's|/codeql-database.yml$||')
+
+  if [[ -z "$py_db" ]] || [[ ! -d "$py_db" ]]; then
+    echo "No CodeQL Python database found in VS Code workspace storage." >&2
+    echo "Open the CodeQL extension and add a database for this repo first." >&2
+    exit 1
+  fi
+
+  echo "CodeQL CLI:    $CODEQL_BIN"
+  echo "Python DB:     $py_db"
+  echo "Custom queries: $repo_root/.github/codeql/"
+
+  timestamp=$(date +%Y%m%d-%H%M%S)
+  out_csv="/tmp/codeql_custom_${timestamp}.csv"
+  err_log="/tmp/codeql_custom_${timestamp}.log"
+
+  # Collect all .ql files from the custom query directory
+  query_files=()
+  while IFS= read -r f; do
+    query_files+=("$f")
+  done < <(find "$repo_root/.github/codeql" -name "*.ql" | sort)
+  echo "Queries to run: ${#query_files[@]}"
+
+  "$CODEQL_BIN" database analyze "$py_db" \
+    "${query_files[@]}" \
+    --format=csv \
+    --output="$out_csv" \
+    2>"$err_log" || { cat "$err_log" >&2; exit 1; }
+
+  echo
+  echo "=== Custom Query Results ==="
+  # Pretty-print: rule name, severity, message, file, line
+  python3 - "$out_csv" <<'PY'
+import csv, sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("(no results file)")
+    sys.exit(0)
+
+rows = list(csv.reader(path.open()))
+by_rule = {}
+for row in rows:
+    if len(row) < 7:
+        continue
+    rule, desc, sev, msg, loc_file, line, *_ = row
+    by_rule.setdefault(rule, []).append((sev, msg, loc_file, line))
+
+if not by_rule:
+    print("No issues found.")
+    sys.exit(0)
+
+# Sort: error first, then warning, then recommendation
+sev_order = {"error": 0, "warning": 1, "recommendation": 2}
+for rule in sorted(by_rule, key=lambda r: sev_order.get(by_rule[r][0][0], 9)):
+    findings = by_rule[rule]
+    print(f"\n[{findings[0][0].upper()}] {rule} ({len(findings)} finding{'s' if len(findings) != 1 else ''})")
+    for sev, msg, loc, line in findings[:10]:  # cap at 10 per rule
+        print(f"  {loc}:{line}  {msg[:100]}")
+    if len(findings) > 10:
+        print(f"  ... and {len(findings) - 10} more")
+PY
+  echo
+  echo "Full CSV:  $out_csv"
+  echo "Error log: $err_log"
+  exit 0
+fi
 
 timestamp=$(date +%Y%m%d-%H%M%S)
 repo_name=$(basename "$source_root")

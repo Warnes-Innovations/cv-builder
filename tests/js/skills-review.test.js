@@ -202,7 +202,7 @@ describe('submitSkillDecisions', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
     await submitSkillDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('session-only skill'),
+      expect.stringContaining('available for write-back to master CV in the Harvest tab'),
     )
   })
 

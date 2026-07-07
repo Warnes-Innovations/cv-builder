@@ -2,7 +2,7 @@
 
 # 2026-03-31 23:00:50Z
 
-<!-- copilotide Session d2028207-486f-43ee-9cc1-d9dfa27d1db2 (2026-03-31 23:00:50Z) -->
+<!-- VS Code Copilot IDE Session d2028207-486f-43ee-9cc1-d9dfa27d1db2 (2026-03-31 23:00:50Z) -->
 
 _**User (2026-03-31 23:00:50Z)**_
 
@@ -14,4 +14,4 @@ _**Agent (copilot/auto)**_
 
 I’ll gather the repo-specific preflight and 
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

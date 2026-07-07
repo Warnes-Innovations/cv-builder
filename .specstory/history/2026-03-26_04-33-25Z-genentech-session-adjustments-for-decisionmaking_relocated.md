@@ -2,7 +2,7 @@
 
 # 2026-03-26 04:38:50Z
 
-<!-- VS Code Copilot IDE Session 155365b1-dea7-4e15-b7c2-99e60ad90272 (2026-03-26 04:38:50Z) -->
+<!-- copilotide Session 155365b1-dea7-4e15-b7c2-99e60ad90272 (2026-03-26 04:38:50Z) -->
 
 _**User (2026-03-26 04:38:50Z)**_
 
@@ -115,4 +115,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 Applicable guidance: critical workflows, project-specific patterns, generated bundle handling, and the “When modifying code” section. Skills I’m using for this check: preflight, cv-builder-patterns, and workflow-orchestration; I’m reading those first, then I’ll inspect the current 
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

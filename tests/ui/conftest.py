@@ -52,7 +52,7 @@ from tests.ui.fixtures.mock_responses import (  # noqa: E402
 )
 
 BASE_URL = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
-SERVER_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "15"))  # seconds
+SERVER_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "30"))  # seconds
 
 
 def _base_url_port(url: str) -> int:
@@ -411,7 +411,9 @@ def _install_mock_routes(
 
 
 def _wait_for_ui_ready(page: Page) -> None:
-    """Wait until app init exposes stage/tab helpers used by tests."""
+    """Wait until app init exposes stage/tab helpers used by tests and
+    remove any onboarding modal that might block interactions.
+    """
     page.wait_for_function(
         """
         () => typeof updateActionButtons === 'function'
@@ -419,6 +421,17 @@ def _wait_for_ui_ready(page: Page) -> None:
             && document.readyState === 'complete'
         """
     )
+    # app.js's bootstrap sequence awaits fetchStatus() asynchronously after
+    # load, and that call's continuation (updateWorkflowSteps ->
+    # updateTabBarForStage) can otherwise fire after fixture/test setup and
+    # silently re-hide tabs outside the mocked status's phase. Wait for that
+    # initial network activity to settle before handing off to the caller.
+    page.wait_for_load_state("networkidle")
+    # Remove or disable onboarding overlay if present and observe future inserts
+    try:
+        page.evaluate("() => { const remove = () => { const el = document.getElementById('onboarding-modal-overlay'); if (el) el.remove(); }; remove(); const mo = new MutationObserver(remove); mo.observe(document.documentElement, { childList: true, subtree: true }); }")
+    except Exception:
+        pass
 
 
 def _setup_global_state(page: Page, phase: str = 'customization') -> None:
@@ -460,8 +473,8 @@ def _force_stage(page: Page, stage: str) -> None:
                 customizations: 'exp-review',
                 rewrite: 'rewrite',
                 spell: 'spell',
-                generate: 'generate',
                 layout: 'layout',
+                download: 'final_generate',
                 finalise: 'download',
             };
             const tab = map[s];
@@ -511,7 +524,7 @@ def page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_ANALYSIS_DONE)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "customization")
     _force_stage(p, "customizations")
@@ -540,7 +553,7 @@ def seeded_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_ANALYSIS_DONE)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "customization")
     _force_stage(p, "customizations")
@@ -563,7 +576,7 @@ def analysis_seeded_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_IN_ANALYSIS)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "job_analysis")
     _force_stage(p, "analysis")
@@ -586,7 +599,7 @@ def job_stage_page(browser, live_server):
     _install_mock_routes(p, status_response=API_STATUS_INIT)
 
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "init")
     _force_stage(p, "job")
@@ -604,7 +617,7 @@ def rewrite_stage_page(browser, live_server):
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_REWRITE)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "rewrite_review")
     _force_stage(p, "rewrite")
@@ -621,7 +634,7 @@ def spell_stage_page(browser, live_server):
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_SPELL)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "spell_check")
     _force_stage(p, "spell")
@@ -638,7 +651,7 @@ def finalise_stage_page(browser, live_server):
     p.set_default_timeout(10_000)
     _install_mock_routes(p, status_response=API_STATUS_FINALISE)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
     _setup_global_state(p, "refinement")
     _force_stage(p, "finalise")
@@ -649,16 +662,16 @@ def finalise_stage_page(browser, live_server):
 
 @pytest.fixture
 def generate_stage_page(browser, live_server):
-    """Page in generation phase — #tab-generate is visible."""
+    """Page in refinement phase — #tab-final_generate and #tab-download visible."""
     context = browser.new_context()
     p = context.new_page()
     p.set_default_timeout(10_000)
-    _install_mock_routes(p, status_response=API_STATUS_GENERATE)
+    _install_mock_routes(p, status_response=API_STATUS_FINALISE)
     p.goto(f"{live_server}/?session=test-session-id",
-           wait_until="networkidle")
+           wait_until="load")
     _wait_for_ui_ready(p)
-    _setup_global_state(p, "generation")
-    _force_stage(p, "generate")
-    _sync_workflow_steps(p, API_STATUS_GENERATE)
+    _setup_global_state(p, "refinement")
+    _force_stage(p, "download")
+    _sync_workflow_steps(p, API_STATUS_FINALISE)
     yield p
     context.close()

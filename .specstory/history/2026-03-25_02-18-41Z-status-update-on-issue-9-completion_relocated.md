@@ -2,7 +2,7 @@
 
 # 2026-03-25 02:19:09Z
 
-<!-- VS Code Copilot IDE Session 555f576d-1706-4cb0-948e-73c099243b24 (2026-03-25 02:19:09Z) -->
+<!-- copilotide Session 555f576d-1706-4cb0-948e-73c099243b24 (2026-03-25 02:19:09Z) -->
 
 _**User (2026-03-25 02:19:09Z)**_
 
@@ -372,4 +372,4 @@ _**User (2026-03-25 19:28:07Z)**_
 
 Are you there?
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal2) points to cv-builder" -->

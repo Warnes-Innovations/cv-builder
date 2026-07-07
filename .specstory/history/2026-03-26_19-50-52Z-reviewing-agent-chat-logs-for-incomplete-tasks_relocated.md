@@ -2,7 +2,7 @@
 
 # 2026-03-26 19:54:06Z
 
-<!-- VS Code Copilot IDE Session 65c54277-797f-41d4-98a2-d14b8be10a3a (2026-03-26 19:54:06Z) -->
+<!-- copilotide Session 65c54277-797f-41d4-98a2-d14b8be10a3a (2026-03-26 19:54:06Z) -->
 
 _**User (2026-03-26 19:54:06Z)**_
 
@@ -40,4 +40,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 I'm considering using `run_in_terminal` for my task. I might also explore using `git branch` to see if it contains specific commits. Additionally, I could use `grep_search` to look for names in the repository. It seems like I could run a parallel check with a command like `git log --all -G regex --oneline -- tests/ui tests`, even if it's a bit large. I might also want to grep through the current files for additional context.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

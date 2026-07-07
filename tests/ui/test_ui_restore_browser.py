@@ -164,7 +164,7 @@ class TestBrowserRestore:
         assert restored["tab"] == "spell"
         expect(page.locator("#tab-spell")).to_be_visible()
 
-    def test_reload_into_generation_idle_selects_generate_tab(
+    def test_reload_into_generation_idle_selects_layout_tab(
         self,
         page: Page,
     ):
@@ -174,12 +174,15 @@ class TestBrowserRestore:
             generation_state_response=API_GENERATION_STATE_IDLE,
         )
 
-        restored = _reload_and_capture(page, "tab-generate")
+        restored = _reload_and_capture(page, "tab-layout")
 
         assert restored["phase"] == "generation"
-        assert restored["stage"] == "generate"
-        assert restored["tab"] == "generate"
-        assert restored["generationState"]["phase"] == "idle"
+        assert restored["stage"] == "layout"
+        assert restored["tab"] == "layout"
+        # generation phase with generated_files → app infers layout_review
+        assert restored["generationState"]["phase"] in (
+            "idle", "layout_review"
+        )
 
     def test_reload_into_layout_review_idle_selects_layout_tab(
         self,
@@ -196,8 +199,10 @@ class TestBrowserRestore:
         assert restored["phase"] == "layout_review"
         assert restored["stage"] == "layout"
         assert restored["tab"] == "layout"
-        assert restored["generationState"]["phase"] == "idle"
-        assert restored["generationState"]["previewAvailable"] is False
+        # Entering layout review restores/regenerates preview HTML, which
+        # transitions generation_state into active layout_review mode.
+        assert restored["generationState"]["phase"] == "layout_review"
+        assert restored["generationState"]["previewAvailable"] is True
 
     def test_reload_into_layout_review_idle_recovers_when_stored_html_missing(
         self,
@@ -303,7 +308,7 @@ class TestBrowserRestore:
         assert restored["generationState"]["phase"] == "confirmed"
         assert restored["generationState"]["layoutConfirmed"] is True
 
-    def test_reload_into_refinement_final_complete_selects_finalise_tab(
+    def test_reload_into_refinement_final_complete_selects_download_tab(
         self,
         page: Page,
     ):
@@ -313,14 +318,14 @@ class TestBrowserRestore:
             generation_state_response=API_GENERATION_STATE_FINAL_COMPLETE,
         )
 
-        restored = _reload_and_capture(page, "tab-finalise")
+        restored = _reload_and_capture(page, "tab-download")
 
         assert restored["phase"] == "refinement"
-        assert restored["stage"] == "finalise"
-        assert restored["tab"] == "finalise"
+        assert restored["stage"] == "download"
+        assert restored["tab"] == "download"
         assert restored["generationState"]["phase"] == "final_complete"
 
-    def test_reload_into_refinement_legacy_idle_keeps_finalise_access(
+    def test_reload_into_refinement_legacy_idle_selects_download_tab(
         self,
         page: Page,
     ):
@@ -330,10 +335,10 @@ class TestBrowserRestore:
             generation_state_response=API_GENERATION_STATE_IDLE,
         )
 
-        restored = _reload_and_capture(page, "tab-finalise")
+        restored = _reload_and_capture(page, "tab-download")
 
         assert restored["phase"] == "refinement"
-        assert restored["stage"] == "finalise"
-        assert restored["tab"] == "finalise"
+        assert restored["stage"] == "download"
+        assert restored["tab"] == "download"
         assert restored["generationState"]["phase"] == "idle"
         expect(page.locator("#tab-download")).to_be_visible()

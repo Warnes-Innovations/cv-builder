@@ -353,7 +353,7 @@ class TestGenerateCvApprovedRewrites(unittest.TestCase):
         action = {'action': 'generate_cv'}
         cm._execute_action(action)
 
-        _, kwargs = orch.generate_cv.call_args
+        _, kwargs = orch.generate_preview_html_only.call_args
         self.assertEqual(kwargs.get('approved_rewrites'), approved)
         self.assertEqual(kwargs.get('spell_audit'), spell_audit)
 
@@ -372,7 +372,7 @@ class TestGenerateCvApprovedRewrites(unittest.TestCase):
         action = {'action': 'generate_cv'}
         cm._execute_action(action)
 
-        _, kwargs = orch.generate_cv.call_args
+        _, kwargs = orch.generate_preview_html_only.call_args
         self.assertEqual(kwargs.get('approved_rewrites'), [])
         self.assertEqual(kwargs.get('spell_audit'), [])
 

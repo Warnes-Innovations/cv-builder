@@ -201,9 +201,9 @@ describe('sendMessage', () => {
 
     expect(globalThis._updateLlmStatusPill).toHaveBeenCalledWith(
       'rate-limited',
-      'Rate limited',
+      'Too many requests',
       '⏳',
-      'Provider rate limit reached. Wait briefly and retry.',
+      'The AI provider received too many requests. Wait a moment before retrying.',
     )
   })
 

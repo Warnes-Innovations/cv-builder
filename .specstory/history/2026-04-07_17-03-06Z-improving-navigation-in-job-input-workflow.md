@@ -2,7 +2,7 @@
 
 # 2026-04-07 17:08:47Z
 
-<!-- copilotide Session 2def896e-e0e2-42b7-8510-9408252106ca (2026-04-07 17:08:47Z) -->
+<!-- VS Code Copilot IDE Session 2def896e-e0e2-42b7-8510-9408252106ca (2026-04-07 17:08:47Z) -->
 
 _**User (2026-04-07 17:08:47Z)**_
 
@@ -313,4 +313,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to create a PR for the `feat/step-pill-nav-state` branch and check for merge conflicts. Let me load the git-workflow skill first, then proceed.
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

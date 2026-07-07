@@ -42,8 +42,8 @@ from unittest.mock import MagicMock, patch, mock_open
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from scripts.web_app import (
-    create_app,
+from scripts.web_app import create_app
+from scripts.routes.generation_routes import (
     _harvest_apply_bullet,
     _harvest_add_skill,
     _harvest_add_summary_variant,
@@ -714,6 +714,21 @@ class TestHarvestAddSummaryVariant(unittest.TestCase):
 
     def test_duplicate_not_appended(self):
         master = {'professional_summaries': ['Existing summary.']}
+        result = _harvest_add_summary_variant(master, 'Existing summary.')
+        self.assertFalse(result)
+        self.assertEqual(len(master['professional_summaries']), 1)
+
+    def test_dict_format_preserved(self):
+        """GAP-94: dict format must stay dict after harvest write-back."""
+        master = {'professional_summaries': {'standard': 'Original summary.', 'executive': 'Exec summary.'}}
+        result = _harvest_add_summary_variant(master, 'Harvested variant.')
+        self.assertTrue(result)
+        self.assertIsInstance(master['professional_summaries'], dict)
+        self.assertIn('Harvested variant.', master['professional_summaries'].values())
+
+    def test_dict_format_duplicate_not_added(self):
+        """Duplicate in dict format not re-added."""
+        master = {'professional_summaries': {'standard': 'Existing summary.'}}
         result = _harvest_add_summary_variant(master, 'Existing summary.')
         self.assertFalse(result)
         self.assertEqual(len(master['professional_summaries']), 1)

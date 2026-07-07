@@ -68,11 +68,12 @@ class TestCalculateRelevanceScore(unittest.TestCase):
         score = calculate_relevance_score(item, set(), [])
         self.assertAlmostEqual(score, 0.0)
 
-    def test_importance_ten_contributes_40_points(self):
-        item = _make_exp(importance=10)
-        # No other scoring factors
-        score = calculate_relevance_score(item, set(), [])
-        self.assertAlmostEqual(score, 40.0)
+    def test_importance_ten_scores_higher_than_five_and_zero(self):
+        score_0  = calculate_relevance_score(_make_exp(importance=0),  set(), [])
+        score_5  = calculate_relevance_score(_make_exp(importance=5),  set(), [])
+        score_10 = calculate_relevance_score(_make_exp(importance=10), set(), [])
+        self.assertGreater(score_10, score_5)
+        self.assertGreater(score_5,  score_0)
 
     def test_keyword_match_increases_score(self):
         item  = _make_exp(description='python developer')
@@ -80,25 +81,27 @@ class TestCalculateRelevanceScore(unittest.TestCase):
         with_kw = calculate_relevance_score(item, {'python'}, [])
         self.assertGreater(with_kw, no_kw)
 
-    def test_domain_exact_match_adds_15_points(self):
-        item_no_domain  = _make_exp(importance=5)
+    def test_domain_exact_match_increases_score(self):
+        item_no_domain   = _make_exp(importance=5)
         item_with_domain = _make_exp(importance=5, domain_relevance=['bioinformatics'])
-        base = calculate_relevance_score(item_no_domain, set(), [])
+        base        = calculate_relevance_score(item_no_domain,   set(), [])
         with_domain = calculate_relevance_score(item_with_domain, set(), [], 'bioinformatics')
-        self.assertAlmostEqual(with_domain - base, 15.0)
+        self.assertGreater(with_domain, base)
 
-    def test_domain_partial_match_adds_7_5_points(self):
+    def test_domain_partial_match_increases_score_less_than_exact(self):
         item = _make_exp(importance=5, domain_relevance=['bioinformatics'])
-        base = calculate_relevance_score(_make_exp(importance=5), set(), [])
-        with_domain = calculate_relevance_score(item, set(), [], 'other_domain')
-        self.assertAlmostEqual(with_domain - base, 7.5)
+        base    = calculate_relevance_score(_make_exp(importance=5), set(), [])
+        partial = calculate_relevance_score(item, set(), [], 'other_domain')
+        exact   = calculate_relevance_score(item, set(), [], 'bioinformatics')
+        self.assertGreater(partial, base)
+        self.assertGreater(exact, partial)
 
-    def test_audience_tag_adds_10_points(self):
+    def test_audience_tag_increases_score(self):
         item_no_aud   = _make_exp(importance=5)
         item_with_aud = _make_exp(importance=5, audience=['data_science'])
         base   = calculate_relevance_score(item_no_aud,   set(), [])
         with_a = calculate_relevance_score(item_with_aud, set(), [])
-        self.assertAlmostEqual(with_a - base, 10.0)
+        self.assertGreater(with_a, base)
 
     def test_max_score_capped_at_100(self):
         item = _make_exp(

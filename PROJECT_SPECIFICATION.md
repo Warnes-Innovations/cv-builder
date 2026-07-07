@@ -147,6 +147,39 @@ Classification is performed by the LLM during job analysis and applied to both t
 - Classification label (hard/soft) is included in the `knowsAbout` entries of the HTML JSON-LD block
 - Missing hard skills are surfaced more prominently than missing soft skills in the match score UI (hard skills are weighted 2× in the overall score calculation)
 
+### US-7: Interview Preparation
+**As a** job applicant who has submitted a CV  
+**I want** AI-generated interview questions with suggested responses  
+**So that** I can prepare thoroughly for my interview and enter with confidence
+
+**Acceptance Criteria**:
+- System generates a set of likely interview questions drawn from the job description and the selected CV content
+- Each question is displayed in a selectable list; user can deselect questions they do not want to prep and add custom questions
+- For each selected question the system generates a candidate prose response grounded in the user's own experience
+- User can edit the prose response directly or provide natural-language instructions to the LLM for refinement
+- System derives a set of key-point bullet talking points from the prose response
+- User can edit the bullet points directly or provide LLM instructions for refinement
+- All session state (questions selected, prose, bullets, edits) is stored in the session file — never in `Master_CV_Data.json`
+- User can trigger generation of a combined interview-prep document in any combination of Markdown, MS-Word DOCX, and PDF
+- Download links for generated files appear both in the Interview Prep tab and in the Download Files tab
+- Completed files are stored under the run-specific output directory (e.g. `InterviewPrep_*.{md,docx,pdf}`)
+
+### US-8: Thank You Letter
+**As a** job applicant who has completed an interview  
+**I want** to quickly produce a personalised thank-you email or letter  
+**So that** I can reinforce my fit for the role and leave a positive impression
+
+**Acceptance Criteria**:
+- System prompts the user for the hiring manager's name before generating content
+- LLM generates multiple-choice suggested values for each section of the thank-you letter (opening, key strength mentioned, role enthusiasm, next-steps reference, closing)
+- User can select from the LLM suggestions, edit the text directly, or provide LLM instructions for refinement
+- User can choose between email format and formal letter format (or both)
+- User can trigger generation of the finalised thank-you in any combination of Markdown, MS-Word DOCX, and PDF
+- A pre-populated `mailto:` link is provided in the Thank You tab so the user can open the email directly in their mail client
+- Download links for generated files appear both in the Thank You tab and in the Download Files tab
+- Completed files are stored under the run-specific output directory (e.g. `ThankYou_*.{md,docx,pdf}`)
+- All session state (manager name, selections, edits) is stored in the session file — never in `Master_CV_Data.json`
+
 ---
 
 ## 3. Technical Architecture
@@ -965,6 +998,10 @@ This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
 - A fetch loading state (spinner or progress bar) appears **within 300 ms** of URL submission.
 - Extracted fields (company name, role title, date) are inline-editable at the confirmation UI; editing does not restart the workflow.
 - Paste text area shows a minimum character guidance hint.
+- When a job was loaded via URL, the source URL is stored in session state and displayed in two places:
+  - **Position title** (the large `<h1>` on the Job tab): the title text is rendered as a clickable link (`target="_blank"`) pointing to the job posting.
+  - **URL subtitle** (immediately below the `<h1>`): the full URL is shown as a link, taking the full available width with `text-overflow: ellipsis` truncation and the complete URL exposed on hover via `title` attribute.
+- URL display is conditional: when a job was pasted or uploaded (no `job_url` in session state), no link or subtitle is rendered and the title remains plain text.
 
 **Failure modes to guard against:**
 
@@ -972,6 +1009,7 @@ This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
 - Raw status code or generic error on protected-site fetch failure.
 - Fetch taking >3 s with no visible progress indicator.
 - Correcting an extracted field requires restarting the step.
+- Job source URL displayed even when the job was pasted (not fetched from a URL).
 
 ---
 
@@ -1106,6 +1144,161 @@ This interface fully satisfies **US-A4** (Rewrite Review) acceptance criteria:
 - Review table overflows viewport horizontally at 1280 × 800 causing full-page horizontal scroll.
 - Page blank-whites for >2 s on first load.
 - Content areas collapsing to zero height and jumping on LLM response arrival.
+
+---
+
+### 7.x Post-Layout Phases Overview
+
+After the user completes Layout Review, six additional phases become simultaneously unlocked in the navigation. All six are independent and may be used in any order. They share the following behaviour:
+
+- Each phase has its own navigation step in the top nav bar.
+- Each phase has a "Proceed to [Next Phase] →" button for linear progression.
+- All state for these phases is stored in the session file only; `Master_CV_Data.json` is never written during these phases.
+- Generated artefacts (files) for each phase are placed in the same run-specific output directory as the CV files and are also linked from the Download Files tab.
+
+| Nav Step | Phase Tab | Purpose |
+|----------|-----------|---------|
+| Download Files | `download` / `final_generate` | Download all generated CV files |
+| Cover Letter | `cover-letter` | Generate a tailored cover letter |
+| Screening | `screening` | View and answer screening questions |
+| Interview Prep | `interview-prep` | Generate questions, responses, and talking points |
+| Thank You | `thank-you` | Generate a thank-you email or letter |
+| Harvest | `harvest` | Harvest improvements back to master CV |
+
+The `postLayoutUnlocked` flag is set in `ui-core.js` when `currentPhase` equals `final_generation` or `refinement`. All six steps are clickable at that point regardless of the order they were previously visited.
+
+---
+
+### 7.x Interview Preparation Phase Design
+
+#### Overview
+
+The Interview Prep phase (nav step `interview_prep`, tab `interview-prep`) generates a personalised set of likely interview questions, a full prose response for each, and distilled bullet talking points — all grounded in the specific job description and the user's own CV content.
+
+#### User Flow
+
+1. **Question generation** — On entering the tab for the first time, the system calls `POST /api/interview-prep/generate` with the current session's job analysis and selected CV content. The LLM returns a ranked list of likely interview questions (behavioural, technical, and situational).
+
+2. **Question selection** — Questions are displayed in a checklist. Each is selected by default. The user may deselect any question they do not want to prep. A free-text field allows adding custom questions not generated by the LLM.
+
+3. **Per-question prep editor** — For each selected question, an accordion card is rendered:
+   - **Prose response** — LLM-generated narrative answer grounded in the user's experience. User can edit directly or type natural-language instructions into a refinement prompt box and click "Refine with AI" (`POST /api/interview-prep/refine` with `mode: "prose"`).
+   - **Key-point bullets** — LLM-derived bullet talking points summarising the prose. User can edit directly or type LLM instructions and click "Refine with AI" (`POST /api/interview-prep/refine` with `mode: "bullets"`). Regenerating bullets after prose edits automatically re-derives them from the current prose.
+
+4. **Document generation** — Below the question list, checkboxes let the user choose output formats:
+   - ☐ Markdown (`.md`)
+   - ☐ MS-Word DOCX (`.docx`)
+   - ☐ PDF (`.pdf`)
+   
+   Radio buttons (or checkboxes) let the user choose document content form:
+   - ◉ Prose responses only
+   - ○ Bullet talking points only
+   - ○ Combined (prose + bullets per question)
+   
+   Clicking "Generate Interview Prep Documents" calls `POST /api/interview-prep/generate-files`. On completion, download links appear in this tab and new entries are added to the Download Files tab.
+
+#### State Storage
+
+All session state for this phase is kept in the session file under key `interview_prep`:
+
+```json
+{
+  "interview_prep": {
+    "questions": [
+      {
+        "id": "iq_001",
+        "text": "Tell me about a time you led a cross-functional team.",
+        "selected": true,
+        "source": "llm",
+        "prose": "In my role at Torqata I led...",
+        "bullets": ["Identified stakeholder gap early", "Built consensus via weekly syncs", "..."],
+        "prose_edited": true,
+        "bullets_edited": false
+      }
+    ],
+    "output_formats": ["md", "docx"],
+    "document_form": "combined",
+    "generated_files": ["InterviewPrep_Torqata_2026-04-01.docx", "..."]
+  }
+}
+```
+
+#### API Endpoints (Planned)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/api/interview-prep/generate` | Generate initial question list + per-question prose + bullets |
+| `POST` | `/api/interview-prep/refine` | Refine a single question's prose or bullets via LLM instruction |
+| `POST` | `/api/interview-prep/generate-files` | Render selected questions to Markdown/DOCX/PDF artefacts |
+
+---
+
+### 7.x Thank You Letter Phase Design
+
+#### Overview
+
+The Thank You phase (nav step `thank_you`, tab `thank-you`) gives the user a fast path to a personalised post-interview thank-you email or formal letter. The LLM provides structured multiple-choice suggestions for each letter section; the user picks, edits, or refines each section before generating the final document.
+
+#### User Flow
+
+1. **Hiring manager prompt** — On entering the tab, the user is prompted for the hiring manager's name (and optionally their email address for the mailto link). This input is required before generation begins.
+
+2. **LLM section generation** — The system calls `POST /api/thank-you/generate`. For each structural section of the letter the LLM returns two to four candidate options:
+   - **Opening** (e.g. "Thank you for the opportunity to interview for the Senior Data Scientist role…")
+   - **Key strength highlight** (one relevant achievement or skill drawn from the CV)
+   - **Role enthusiasm** (one sentence expressing genuine interest in the specific role/company)
+   - **Next-steps reference** (e.g. "I look forward to hearing from you by…" or a reference to a specific next step discussed in the interview)
+   - **Closing** (e.g. "Warm regards" / "Best regards")
+
+3. **User selection and editing** — Each section is presented as a radio-button multiple-choice group showing the LLM options. The user may:
+   - Select one of the generated options as-is.
+   - Edit the selected option text directly in-line.
+   - Type LLM instructions into a refinement prompt box and click "Refine with AI" (`POST /api/thank-you/refine`).
+
+4. **Format choice** — Checkboxes let the user choose:
+   - ☐ Email format (concise, no formal header)
+   - ☐ Formal letter format (address block, date, salutation, signature block)
+
+5. **Document generation** — Checkboxes for output formats:
+   - ☐ Markdown (`.md`)
+   - ☐ MS-Word DOCX (`.docx`)
+   - ☐ PDF (`.pdf`)
+   
+   Clicking "Generate Thank You Documents" calls `POST /api/thank-you/generate-files`. On completion:
+   - Download links appear in this tab.
+   - A pre-populated `mailto:` link opens the user's mail client with subject and body pre-filled from the email version.
+   - New entries are added to the Download Files tab.
+
+#### State Storage
+
+All session state for this phase is kept in the session file under key `thank_you`:
+
+```json
+{
+  "thank_you": {
+    "manager_name": "Dr. Jane Smith",
+    "manager_email": "jsmith@example.com",
+    "sections": {
+      "opening":         {"options": ["...", "..."], "selected_index": 0, "final_text": "Thank you for..."},
+      "strength":        {"options": ["...", "..."], "selected_index": 1, "final_text": "My work on..."},
+      "enthusiasm":      {"options": ["...", "..."], "selected_index": 0, "final_text": "I'm excited by..."},
+      "next_steps":      {"options": ["...", "..."], "selected_index": 0, "final_text": "I look forward to..."},
+      "closing":         {"options": ["Warm regards", "Best regards"], "selected_index": 0, "final_text": "Warm regards"}
+    },
+    "formats": ["email", "letter"],
+    "output_formats": ["md", "docx", "pdf"],
+    "generated_files": ["ThankYou_Torqata_2026-04-01.docx", "..."]
+  }
+}
+```
+
+#### API Endpoints (Planned)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/api/thank-you/generate` | Generate multi-choice options for each letter section |
+| `POST` | `/api/thank-you/refine` | Refine a single section via LLM instruction |
+| `POST` | `/api/thank-you/generate-files` | Render the assembled letter to Markdown/DOCX/PDF artefacts |
 
 ---
 
@@ -1325,27 +1518,30 @@ A **History** panel (accessible from the ▾ dropdown or a dedicated "Manage His
 
 ## 10. Post-MVP Roadmap (Phase 2)
 
-### Priority #3: Cover Letter Generation
+### Priority #3: Cover Letter Generation ✅ Shipped
 - Same workflow as CV generation
 - Separate Jinja2 HTML template
 - Integrate with CV context
-- **Estimated**: 2-3 days
 
-### Priority #4: Interview Question Responses
-- Parse screening questions
-- LLM generates responses based on CV
-- Editable text fields
-- Export as text/PDF
-- **Estimated**: 2-3 days
+### Priority #4: Interview Preparation ✅ Promoted to full phase
+- See [US-7](#us-7-interview-preparation) and [Section 7.x Interview Prep Phase Design](#7x-interview-preparation-phase-design) for the full design specification.
+- LLM-generated interview questions from job description and CV context
+- User selects or adds questions; prose responses and bullet talking points per question
+- Exports Markdown/DOCX/PDF; download links in Interview Prep tab and Download Files tab
 
-### Priority #5: Job Application Tracking
+### Priority #5: Thank You Letter ✅ Promoted to full phase
+- See [US-8](#us-8-thank-you-letter) and [Section 7.x Thank You Letter Phase Design](#7x-thank-you-letter-phase-design) for the full design specification.
+- LLM-generated multi-choice sections; email and letter formats
+- Exports Markdown/DOCX/PDF; mailto and download links in Thank You tab and Download Files tab
+
+### Priority #6: Job Application Tracking
 - Track submitted applications
 - Link CV versions to jobs
 - Status tracking (applied, interview, rejected, offer)
 - SQLite database
 - **Estimated**: 3-4 days
 
-### Lower Priorities (#6-#10):
+### Lower Priorities (#7-#10):
 - Google Drive integration
 - Analytics dashboard
 - LinkedIn profile generation

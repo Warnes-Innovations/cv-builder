@@ -1,11 +1,4 @@
 {
-    "python-envs.pythonProjects": [
-        {
-            "path": ".",
-            "envManager": "ms-python.python:conda",
-            "packageManager": "ms-python.python:conda"
-        }
-    ],
     "python.defaultInterpreterPath": "/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/python",
     "python.testing.pytestPath": "/usr/local/Caskroom/miniconda/base/envs/cvgen/bin/pytest",
     "python.testing.pytestArgs": [
@@ -13,5 +6,8 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "vitest.rootConfig": "vitest.config.mjs"
+    "vitest.rootConfig": "vitest.config.mjs",
+    "specstory.cloudSync.enabled": "never",
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda"
 }

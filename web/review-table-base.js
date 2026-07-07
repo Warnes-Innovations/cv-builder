@@ -13,7 +13,7 @@
  *   appendMessage, saveTabData, cleanJsonResponse, escapeHtml,
  *   getStageForTab, updateTabBarForStage, updateActionButtons,
  *   populateJobTab, populateQuestionsTab, buildAchievementsEditor,
- *   renderRewritePanel, populateCVEditorTab, populateCVTab,
+ *   renderRewritePanel, populateCVEditorTab,
  *   populateDownloadTab, populateSpellCheckTab, initiateLayoutInstructions,
  *   populateFinaliseTab, populateMasterTab, populateCoverLetterTab,
  *   populateScreeningTab, extractFirstJsonObject,
@@ -28,6 +28,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('review-table-base');
 
 import { stateManager } from './state-manager.js';
+import { _STEP_DISPLAY } from './workflow-steps.js';
 
 // ── Module-level state ────────────────────────────────────────────────────
 
@@ -35,8 +36,40 @@ let userSelections = {
   experiences: {},  // exp_id -> 'emphasize'|'include'|'de-emphasize'|'exclude'
   skills: {}        // skill_name -> 'emphasize'|'include'|'de-emphasize'|'exclude'
 };
+let _bulkUndoSnapshot = null; // { type, snapshot } — single-level undo for bulkAction
 let pageEstimateTimer = null;
 let pageEstimateRequestId = 0;
+
+// Draft input cache – preserves user-typed values across tab switches
+const _draftInputs = {};
+
+function _saveDraftInputsForTab(tabName) {
+  if (!tabName) return;
+  const content = document.getElementById('document-content');
+  if (!content) return;
+  const saved = {};
+  content.querySelectorAll('textarea, input, select').forEach(el => {
+    if (!el.id || el.type === 'file') return;
+    saved[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? el.checked : el.value;
+  });
+  if (Object.keys(saved).length > 0) {
+    _draftInputs[tabName] = saved;
+  }
+}
+
+function _restoreDraftInputsForTab(tabName) {
+  const cached = _draftInputs[tabName];
+  if (!cached) return;
+  Object.entries(cached).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (!el || el.readOnly || el.disabled || el.type === 'file') return;
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      el.checked = value;
+    } else {
+      el.value = value;
+    }
+  });
+}
 
 function ensureTabDataState() {
   return stateManager.getAllTabData();
@@ -68,29 +101,178 @@ function updateInclusionCounts() {
   } catch (e) { log.warn('Failed to update inclusion counts:', e); }
 }
 
-// ── Tab switching ─────────────────────────────────────────────────────────
+// ── Generate CV tab ───────────────────────────────────────────────────────
 
-function switchTab(tab) {
-  // Sync second-bar visibility to this tab's stage
-  if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
-    const tabStage = getStageForTab(tab);
-    if (tabStage) {
-      updateTabBarForStage(tabStage);
-      updateActionButtons(tabStage);
-    }
+function _populateGenerateTab(cvData, content) {
+  if (!cvData || !cvData.files || !cvData.files.length) {
+    content.innerHTML = '<div class="empty-state"><div class="icon">📄</div><h3>Generated CV</h3><p>Generate CV to see preview</p></div>';
+    return;
   }
 
-  // Update active tab and ARIA state
+  const meta     = cvData.metadata || {};
+  const role     = meta.role     || meta.position || '';
+  const company  = meta.company  || '';
+  const subtitle = role && company ? `${role} — ${company}` : role || company || 'CV generated';
+
+  const ICONS = { '.pdf': '📄', '.docx': '📝', '.html': '🌐' };
+  const LABELS = {
+    '.pdf':  f => f.includes('ATS') ? 'ATS PDF'  : 'Human PDF',
+    '.docx': f => f.includes('ATS') ? 'ATS DOCX' : f.startsWith('CoverLetter_') ? 'Cover Letter' : 'Human DOCX',
+    '.html': () => 'HTML',
+  };
+
+  const downloadableExts = new Set(['.pdf', '.docx', '.html']);
+  const files = (cvData.files || []).filter(f => {
+    const ext = f.slice(f.lastIndexOf('.')).toLowerCase();
+    return downloadableExts.has(ext) && f !== 'job_description.txt';
+  });
+
+  const sid = typeof getSessionIdFromURL === 'function' ? getSessionIdFromURL() : null;
+  const sessionParam = sid ? `?session_id=${encodeURIComponent(sid)}` : '';
+
+  let fileRows = '';
+  for (const f of files) {
+    const ext   = f.slice(f.lastIndexOf('.')).toLowerCase();
+    const icon  = ICONS[ext]  || '📁';
+    const label = LABELS[ext] ? LABELS[ext](f) : f;
+    fileRows += `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9;">
+        <span style="font-size:1.4em;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.85em;font-weight:600;color:#374151;">${label}</div>
+          <div style="font-size:0.78em;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(f)}</div>
+        </div>
+        <a href="/api/download/${encodeURIComponent(f)}${sessionParam}" download="${escapeHtml(f)}"
+           class="btn-secondary" style="padding:6px 14px;font-size:0.85em;text-decoration:none;display:inline-block;">Download</a>
+      </div>`;
+  }
+
+  content.innerHTML = `
+    <div style="max-width:640px;margin:0 auto;padding:24px 0;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+        <span style="font-size:2em;">✅</span>
+        <div>
+          <h2 style="margin:0;font-size:1.2em;color:#111827;">CV Generated</h2>
+          <div style="font-size:0.9em;color:#6b7280;">${escapeHtml(subtitle)}</div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:0 16px;margin-bottom:24px;">
+        ${fileRows}
+      </div>
+      <div class="nav-buttons nav-end">
+        <button class="continue-btn" onclick="switchTab('layout')">Open Layout Review →</button>
+      </div>
+    </div>`;
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+
+// Tracks which customise-stage sub-tabs have been viewed this session (GAP-269).
+const _visitedCustomiseTabs = new Set();
+const _CUSTOMISE_TABS = new Set(['goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score']);
+
+function _updateVisitedTabIndicators() {
+  _visitedCustomiseTabs.forEach(name => {
+    const el = document.getElementById(`tab-${name}`);
+    if (el) el.classList.add('tab--visited');
+  });
+}
+
+// Inject a dismissible guidance card on the first visit to any Customise sub-tab (GAP-351).
+function _maybeShowCustomizationsGuide(content) {
+  if (window._customGuideShown) return;
+  window._customGuideShown = true;
+  if (!content) content = document.getElementById('document-content');
+  if (!content) return;
+  const guide = document.createElement('div');
+  guide.id = 'customizations-guide';
+  guide.className = 'intake-confirm-card';
+  guide.style.marginBottom = '20px';
+  guide.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+      '<h3 style="margin:0 0 6px;">📋 Customisation Guide</h3>' +
+      '<button onclick="document.getElementById(\'customizations-guide\').remove()" ' +
+              'style="background:none;border:none;cursor:pointer;font-size:1.1em;color:#64748b;padding:0;" ' +
+              'title="Dismiss" aria-label="Dismiss guide">✕</button>' +
+    '</div>' +
+    '<p style="margin:0 0 10px;font-size:0.88em;">Work through these review tabs in order for best results:</p>' +
+    '<ol style="margin:0;padding-left:20px;line-height:1.8;font-size:0.85em;">' +
+      '<li><strong>Goals</strong> — set page length and ATS constraints <em style="color:#64748b">(optional)</em></li>' +
+      '<li><strong>Screening Questions</strong> — pre-answer role questions <em style="color:#64748b">(optional)</em></li>' +
+      '<li><strong>Experiences</strong> — include/exclude roles and set prominence <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
+      '<li><strong>Experience Bullets</strong> — review AI-generated bullet points <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
+      '<li><strong>Skills</strong> — include/exclude skills <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
+      '<li><strong>Achievements</strong> — select key achievements <em style="color:#64748b">(recommended)</em></li>' +
+      '<li><strong>Tagline</strong> — review or edit your professional tagline <em style="color:#64748b">(recommended)</em></li>' +
+      '<li><strong>Summary</strong> — review or edit your professional summary <em style="color:#64748b">(recommended)</em></li>' +
+      '<li><strong>Publications</strong> — include/exclude publications <em style="color:#64748b">(if applicable)</em></li>' +
+      '<li><strong>ATS Score</strong> — check your keyword match score <em style="color:#64748b">(optional)</em></li>' +
+    '</ol>';
+  content.prepend(guide);
+}
+
+function switchTab(tab) {
+  // Clear keyboard-focused card state when leaving a review tab
+  if (typeof resetCardFocus === 'function') resetCardFocus();
+
+  // Save unsaved user input from the tab we are leaving
+  _saveDraftInputsForTab(stateManager.getCurrentTab());
+
+  // Sync second-bar visibility to this tab's stage
+  let _switchTabStage = null;
+  if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
+    _switchTabStage = getStageForTab(tab);
+    if (_switchTabStage) {
+      updateTabBarForStage(_switchTabStage);
+      updateActionButtons(_switchTabStage);
+    }
+  }
+  // Always update workflow clickable state using current phase
+  if (typeof stateManager?.getPhase === 'function' && typeof updateWorkflowStepsClickable === 'function') {
+    updateWorkflowStepsClickable(stateManager.getPhase());
+  }
+
+  // GAP-16 Part B: show/hide and (re)render the early CV preview panel for
+  // this tab. toggleEarlyPreviewPanel's own in-scope check decides visibility.
+  if (typeof toggleEarlyPreviewPanel === 'function') toggleEarlyPreviewPanel(tab);
+
+  // Update active tab, ARIA state, and roving tabindex (WCAG 2.1 tablist pattern)
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.remove('active');
     t.setAttribute('aria-selected', 'false');
+    t.setAttribute('tabindex', '-1');
   });
   const activeTab = document.getElementById(`tab-${tab}`);
   if (activeTab) {
     activeTab.classList.add('active');
     activeTab.setAttribute('aria-selected', 'true');
+    activeTab.setAttribute('tabindex', '0');
+    const tabpanel = document.getElementById('document-content');
+    if (tabpanel) tabpanel.setAttribute('aria-labelledby', `tab-${tab}`);
   }
   stateManager.setCurrentTab(tab);
+
+  // Mark this tab as visited and refresh the visited indicators (GAP-269)
+  if (_CUSTOMISE_TABS.has(tab)) {
+    _visitedCustomiseTabs.add(tab);
+    _updateVisitedTabIndicators();
+  }
+
+  // Announce the tab change to screen readers (GAP-73). Combined with the
+  // stage name (GAP-16 Part A) into a single message from this one call site
+  // — #tab-stage-label is a visible-only label, not a second live region, to
+  // avoid a double-announce of the same navigation event.
+  const announcer = document.getElementById('workflow-stage-announcer');
+  if (announcer && activeTab) {
+    const stageLabel = _switchTabStage ? _STEP_DISPLAY[_switchTabStage] : null;
+    const tabLabel = activeTab.textContent.trim();
+    const message = stageLabel ? `Now viewing: ${stageLabel} — ${tabLabel}` : `Now viewing: ${tabLabel}`;
+    announcer.textContent = '';
+    setTimeout(() => { announcer.textContent = message; }, 50);
+  }
+
+  // Sync view-cursor ring to the newly visible tab
+  if (typeof _updateViewingIndicator === 'function') _updateViewingIndicator(tab);
 
   // All tabs except 'cv' use full-width layout (no paper-sized centering)
   const content = document.getElementById('document-content');
@@ -100,13 +282,60 @@ function switchTab(tab) {
   loadTabContent(tab);
 }
 
+// Maps each tab to the workflow step whose staleness it inherits.
+const _STALE_TAB_STEP = {
+  analysis:             'analysis',
+  'exp-review':         'customizations',
+  'ach-editor':         'customizations',
+  'skills-review':      'customizations',
+  'achievements-review':'customizations',
+  'tagline-review':     'customizations',
+  'summary-review':     'customizations',
+  'publications-review':'customizations',
+  'ats-score':          'customizations',
+  rewrite:              'rewrite',
+  spell:                'spell',
+};
+
+const _STEP_DISPLAY_LABEL = {
+  analysis:       'Job Analysis',
+  customizations: 'Customisations',
+  rewrite:        'Rewrite Review',
+  spell:          'Spell Check',
+};
+
+function _injectStaleBanner(contentEl, step) {
+  if (!stateManager.isStepStale(step)) return;
+  if (contentEl.querySelector('.stale-content-banner')) return; // already present
+  const label = _STEP_DISPLAY_LABEL[step] || step;
+  const banner = document.createElement('div');
+  banner.className = 'stale-content-banner';
+  banner.setAttribute('role', 'status');
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = '⚠ These results may be outdated — an earlier step was re-run.';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'stale-rerun-link';
+  btn.textContent = `↻ Re-run ${label}`;
+  btn.addEventListener('click', () => {
+    if (typeof confirmReRunPhase === 'function') confirmReRunPhase(step);
+  });
+  banner.appendChild(msgSpan);
+  banner.appendChild(btn);
+  contentEl.insertBefore(banner, contentEl.firstChild);
+}
+
 async function loadTabContent(tab) {
   const content = document.getElementById('document-content');
   const tabData = ensureTabDataState();
 
+  try {
   switch (tab) {
     case 'job':
       await populateJobTab();
+      break;
+    case 'goals':
+      if (typeof populateGoalsTab === 'function') await populateGoalsTab();
       break;
     case 'analysis':
       if (tabData.analysis) {
@@ -133,6 +362,9 @@ async function loadTabContent(tab) {
     case 'achievements-review':
       await populateReviewTab('achievements');
       break;
+    case 'tagline-review':
+      await populateTaglineReviewTab();
+      break;
     case 'summary-review':
       await populateReviewTab('summary');
       break;
@@ -149,18 +381,31 @@ async function loadTabContent(tab) {
           window._rewritePanelCache.warnings,
         );
       } else {
-        content.innerHTML = '<div class="empty-state"><div class="icon">✏️</div><h3>Rewrites</h3><p>Complete customizations to reach this step</p></div>';
+        content.innerHTML = '<div class="empty-state"><div class="icon">✏️</div><h3>Rewrites</h3><p>Loading rewrites…</p></div>';
+        try {
+          const data = await apiCall('GET', '/api/rewrites');
+          if (data.rewrites) {
+            renderRewritePanel(data.rewrites, data.persuasion_warnings || []);
+          } else {
+            content.innerHTML = '<div class="empty-state"><div class="icon">✏️</div><h3>Rewrites</h3><p>Complete customizations to reach this step</p></div>';
+          }
+        } catch (e) {
+          content.innerHTML = '<div class="empty-state"><div class="icon">✏️</div><h3>Rewrites</h3><p>Complete customizations to reach this step</p></div>';
+        }
       }
       break;
     case 'editor':
       await populateCVEditorTab();
       break;
-    case 'generate':
-      if (tabData.cv) {
-        populateCVTab(tabData.cv);
+    case 'final_generate':
+      if (typeof populateFinalGenerateTab === 'function') {
+        await populateFinalGenerateTab(tabData.cv || {});
       } else {
-        content.innerHTML = '<div class="empty-state"><div class="icon">📄</div><h3>Generated CV</h3><p>Generate CV to see preview</p></div>';
+        content.innerHTML = '<div class="empty-state"><div class="icon">📄</div><h3>Generated Files</h3><p>Generate final files to see downloads.</p></div>';
       }
+      break;
+    case 'generate':
+      _populateGenerateTab(tabData.cv, content);
       break;
     case 'download':
       if (tabData.cv && Object.keys(tabData.cv).length > 0) {
@@ -178,6 +423,15 @@ async function loadTabContent(tab) {
     case 'finalise':
       await populateFinaliseTab();
       break;
+    case 'harvest':
+      if (typeof populateHarvestTab === 'function') await populateHarvestTab();
+      break;
+    case 'interview-prep':
+      if (typeof populateInterviewPrepTab === 'function') await populateInterviewPrepTab();
+      break;
+    case 'thank-you':
+      if (typeof populateThankYouTab === 'function') await populateThankYouTab();
+      break;
     case 'master':
       await populateMasterTab();
       break;
@@ -188,6 +442,26 @@ async function loadTabContent(tab) {
       await populateScreeningTab();
       break;
   }
+  } catch (error) {
+    log.error(`Error loading tab ${tab}:`, error);
+    // textContent, not innerHTML — a thrown error message must never be
+    // interpreted as HTML (e.g. an error string containing a stray <img>).
+    const errorMessage = document.createElement('p');
+    errorMessage.style.cssText = 'padding: 20px; color: #c41e3a;';
+    errorMessage.textContent = `Error loading content: ${error.message}`;
+    content.appendChild(errorMessage);
+    return;
+  }
+
+  // Show customisations guidance on the first visit to any Customise sub-tab (GAP-351).
+  if (_CUSTOMISE_TABS.has(tab)) _maybeShowCustomizationsGuide(content);
+
+  // Inject stale-content banner when this tab's step has been superseded
+  const _staleStep = _STALE_TAB_STEP[tab];
+  if (_staleStep) _injectStaleBanner(content, _staleStep);
+
+  // Restore unsaved user input for the newly loaded tab
+  _restoreDraftInputsForTab(tab);
 }
 
 // ── Review tab (flat, one pane per top-level tab) ─────────────────────────
@@ -199,12 +473,45 @@ async function showTableBasedReview() {
   }
 
   switchTab('exp-review');
-  appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** tabs. Select your preferences using the action buttons, then submit your decisions.');
+  appendMessage('assistant', '✅ Customizations generated! Please review each section in the **Customizations** tab — Experiences, Achievements, Skills, Summary, and Publications. Select your preferences using the action buttons, then submit your decisions.');
 }
 
 // ── Analysis tab ──────────────────────────────────────────────────────────
 
-function populateAnalysisTab(result) {
+// Cached synonym map: alias (lower) → canonical, and canonical (lower) → [aliases]
+let _synonymMapCache = null;
+async function _loadSynonymMap() {
+  if (_synonymMapCache) return _synonymMapCache;
+  try {
+    const sessionId = stateManager.getSessionId && stateManager.getSessionId();
+    const url = sessionId ? `/api/synonym-map?session_id=${encodeURIComponent(sessionId)}` : '/api/synonym-map';
+    const res  = await fetch(url);
+    if (!res.ok) return (_synonymMapCache = {});
+    const raw  = await res.json();
+    const aliasToCanon = {};
+    const canonToAliases = {};
+    Object.entries(raw).forEach(([alias, canon]) => {
+      aliasToCanon[alias.toLowerCase()] = canon;
+      const cl = canon.toLowerCase();
+      (canonToAliases[cl] = canonToAliases[cl] || []).push(alias);
+    });
+    _synonymMapCache = { aliasToCanon, canonToAliases };
+  } catch (_) { _synonymMapCache = {}; }
+  return _synonymMapCache;
+}
+
+function _kwSynonymAnnotation(kw, synMap) {
+  if (!synMap || (!synMap.aliasToCanon && !synMap.canonToAliases)) return '';
+  const kl = kw.toLowerCase();
+  // Is kw an alias? Show canonical form.
+  if (synMap.aliasToCanon[kl]) return ` = ${synMap.aliasToCanon[kl]}`;
+  // Is kw a canonical form? Show aliases.
+  const aliases = synMap.canonToAliases && synMap.canonToAliases[kl];
+  if (aliases && aliases.length) return ` (${aliases.join(', ')})`;
+  return '';
+}
+
+async function populateAnalysisTab(result) {
   const content = document.getElementById('document-content');
   try {
     // result may already be a parsed object (e.g. coming from stateManager) or a
@@ -228,7 +535,17 @@ function populateAnalysisTab(result) {
     html += `<h1>${data.title || 'Role'}</h1>`;
     if (data.company) html += `<p class="company">🏢 ${data.company}</p>`;
     html += '<div class="meta">';
-    if (data.domain)     html += `<span class="meta-chip">🔬 ${data.domain}</span>`;
+    if (data.domain) {
+      const conf = data.domain_confidence;
+      let confLabel = '';
+      let confTitle = '';
+      if (typeof conf === 'number') {
+        if (conf >= 0.8) { confLabel = ''; confTitle = `Domain confidence: High (${Math.round(conf * 100)}%)`; }
+        else if (conf >= 0.6) { confLabel = ' ⚠'; confTitle = `Domain confidence: Medium (${Math.round(conf * 100)}%) — verify this is correct`; }
+        else { confLabel = ' ⚠'; confTitle = `Domain confidence: Low (${Math.round(conf * 100)}%) — the JD spans multiple domains; consider overriding`; }
+      }
+      html += `<span class="meta-chip" title="${escapeHtml(confTitle || 'Inferred technical domain')}">🔬 ${escapeHtml(data.domain)}${confLabel}</span>`;
+    }
     if (data.role_level) html += `<span class="meta-chip">📊 ${data.role_level}</span>`;
     if (data.suggested_summary) html += `<span class="meta-chip">💬 ${data.suggested_summary}</span>`;
     html += '</div></div>';
@@ -268,12 +585,16 @@ function populateAnalysisTab(result) {
       html += '</ul></div>';
     }
 
-    // ── Section 4: ATS Keywords with rank badges ──────────────────────────
+    // ── Section 4: ATS Keywords with rank badges and synonym annotations ──
     const atsKws = Array.isArray(data.ats_keywords) ? data.ats_keywords : [];
     if (atsKws.length > 0) {
+      const synMap = await _loadSynonymMap();
       html += '<div class="analysis-section"><h2>🔑 ATS Keywords <small style="font-weight:400;color:#64748b;font-size:12px;">(higher rank = higher priority)</small></h2><div class="kw-badges">';
       atsKws.forEach((kw, idx) => {
-        html += `<span class="kw-badge"><span class="kw-rank">#${idx + 1}</span>${kw}</span>`;
+        const annotation = _kwSynonymAnnotation(kw, synMap);
+        const titleAttr  = annotation ? ` title="Synonym: ${escapeHtml(kw + annotation)}"` : '';
+        const annotHtml  = annotation ? `<span style="font-size:10px;color:#64748b;margin-left:3px;">${escapeHtml(annotation)}</span>` : '';
+        html += `<span class="kw-badge"${titleAttr}><span class="kw-rank">#${idx + 1}</span>${escapeHtml(kw)}${annotHtml}</span>`;
       });
       html += '</div></div>';
     }
@@ -294,6 +615,7 @@ function populateAnalysisTab(result) {
       html += '</ul></div>';
     }
 
+    html += '<div class="nav-buttons nav-end"><button class="continue-btn" onclick="sendAction(\u0027recommend_customizations\u0027)">Continue to Customizations →</button></div>';
     html += '</div>'; // .analysis-page
     content.innerHTML = html;
   } catch (e) {
@@ -321,7 +643,7 @@ async function handleCustomizationResponse(response) {
       saveTabData();
 
       if (!isReconnectInProgress()) {
-        appendMessage('assistant', '✅ Customizations generated! Please review the **Experiences** and **Skills** in the **Customizations** tab. Select your preferences using the action buttons, then submit your decisions.');
+        appendMessage('assistant', '✅ Customizations generated! Please review each section in the **Customizations** tab — Experiences, Achievements, Skills, Summary, and Publications. Select your preferences using the action buttons, then submit your decisions.');
         switchTab('exp-review');
       }
     } else if (!isReconnectInProgress()) {
@@ -423,26 +745,6 @@ async function populateReviewTab(pane) {
       <span id="pe-label">Estimated length: calculating…</span>
       <div class="pe-bar"><div class="pe-fill" id="pe-fill" style="width:0%;background:#86efac;"></div></div>
     </div>
-    <details id="generation-settings-panel" style="margin:0 0 16px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;background:#f8fafc;">
-      <summary style="cursor:pointer;font-weight:600;color:#374151;user-select:none;">⚙️ Generation Settings</summary>
-      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-        <label for="max-skills-input" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Max skills in CV:</label>
-        <input type="range" id="max-skills-input" min="1" max="60" step="1" value="20" style="flex:1;accent-color:#3b82f6;">
-        <span id="max-skills-value" style="font-weight:600;color:#1e293b;min-width:2em;text-align:right;">20</span>
-        <span style="font-size:0.85em;color:#9ca3af;">(default: 20)</span>
-      </div>
-      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <label for="skills-title-select" style="font-size:0.9em;color:#4b5563;white-space:nowrap;">Skills section title:</label>
-        <select id="skills-title-select" style="font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;">
-          <option value="Skills">Skills</option>
-          <option value="Technical Skills">Technical Skills</option>
-          <option value="Key Skills">Key Skills</option>
-          <option value="Core Skills">Core Skills</option>
-          <option value="__custom__">Custom…</option>
-        </select>
-        <input type="text" id="skills-title-custom" placeholder="Enter custom title" style="display:none;font-size:0.9em;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;color:#1e293b;min-width:160px;">
-      </div>
-    </details>
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
   const navBack = {
@@ -453,7 +755,7 @@ async function populateReviewTab(pane) {
   const navContinue = {
     experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Experience Bullets →</button>`,
     skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
-    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Summary →</button>`,
+    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Tagline →</button>`,
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
   };
   const navHtml = pane === 'summary' ? '' : `
@@ -468,33 +770,6 @@ async function populateReviewTab(pane) {
     <div id="${cfg.container}"></div>
     ${navHtml}
   `;
-
-  // Sync slider and skills title for experiences tab
-  if (pane === 'experiences') {
-    (async () => {
-      const status = await fetchStatus();
-      const currentMax = status.max_skills || 20;
-      const slider = document.getElementById('max-skills-input');
-      const label = document.getElementById('max-skills-value');
-      if (slider) {
-        slider.value = currentMax;
-        if (label) label.textContent = currentMax;
-        slider.addEventListener('input', () => {
-          if (label) label.textContent = slider.value;
-        });
-        slider.addEventListener('change', async () => {
-          const v = parseInt(slider.value, 10);
-          if (label) label.textContent = v;
-          try {
-            await apiCall('POST', '/api/generation-settings', { max_skills: v });
-          } catch (e) {
-            log.warn('Failed to save max_skills setting:', e);
-          }
-        });
-      }
-      _syncSkillsTitleControls(status.skills_section_title || 'Skills');
-    })();
-  }
 
   window._activeReviewPane = pane;
   switch (pane) {
@@ -520,14 +795,53 @@ async function populateReviewTab(pane) {
 // Track which pane is currently active
 window._activeReviewPane = 'experiences';
 
+// Wire ArrowLeft/ArrowRight keyboard navigation on review sub-tab container (GAP-354).
+// Called once after the container is first rendered (re-calling is a no-op).
+function _initReviewSubtabKeyNav(container) {
+  if (!container || container.dataset.keynavInit) return;
+  container.dataset.keynavInit = '1';
+  container.setAttribute('role', 'tablist');
+  container.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const tabs = [...container.querySelectorAll('.review-subtab:not([disabled])')];
+    if (!tabs.length) return;
+    const current = tabs.findIndex(t => t.dataset.pane === window._activeReviewPane);
+    const next = e.key === 'ArrowRight'
+      ? tabs[(current + 1) % tabs.length]
+      : tabs[(current - 1 + tabs.length) % tabs.length];
+    if (next) {
+      next.focus();
+      switchReviewSubtab(next.dataset.pane);
+    }
+    e.preventDefault();
+  });
+}
+
 async function switchReviewSubtab(pane) {
-  // Update button states
+  // Ensure tablist role and keyboard nav on the sub-tab container (GAP-303, GAP-354).
+  const firstBtn = document.querySelector('.review-subtab');
+  if (firstBtn?.parentElement) {
+    if (!firstBtn.parentElement.getAttribute('role')) {
+      firstBtn.parentElement.setAttribute('role', 'tablist');
+    }
+    _initReviewSubtabKeyNav(firstBtn.parentElement);
+  }
+
+  // Update button states, ARIA attributes, and roving tabindex (GAP-303, GAP-354).
   document.querySelectorAll('.review-subtab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.pane === pane);
+    const isActive = btn.dataset.pane === pane;
+    btn.classList.toggle('active', isActive);
+    if (!btn.getAttribute('role')) btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', String(isActive));
+    btn.setAttribute('aria-controls', `review-pane-${btn.dataset.pane}`);
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
   });
 
-  // Hide all panes, show the selected one
-  document.querySelectorAll('.review-pane').forEach(p => p.style.display = 'none');
+  // Hide all panes, show the selected one; ensure tabpanel roles (GAP-303)
+  document.querySelectorAll('.review-pane').forEach(p => {
+    p.style.display = 'none';
+    if (!p.getAttribute('role')) p.setAttribute('role', 'tabpanel');
+  });
   const target = document.getElementById(`review-pane-${pane}`);
   if (target) target.style.display = 'block';
 
@@ -667,17 +981,25 @@ function handleActionClick(itemId, action, type) {
     : document.querySelector(`tr[data-skill="${itemId}"]`);
 
   const buttons = row.querySelectorAll('.icon-btn');
-  buttons.forEach(btn => btn.classList.remove('active'));
+  buttons.forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+  });
 
   // Add active class to clicked button
   const clickedBtn = row.querySelector(`[data-action="${action}"]`);
   clickedBtn.classList.add('active');
+  if (clickedBtn.hasAttribute('aria-pressed')) clickedBtn.setAttribute('aria-pressed', 'true');
 
-  // Store selection
+  // Store selection and record explicit review
   if (type === 'experience') {
     userSelections.experiences[itemId] = action;
+    window._explicitlyReviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    window._explicitlyReviewed.experiences.add(itemId);
   } else {
     userSelections.skills[itemId] = action;
+    window._explicitlyReviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    window._explicitlyReviewed.skills.add(itemId);
   }
   _updatePageEstimate();
 }
@@ -688,7 +1010,11 @@ function handleActionClick(itemId, action, type) {
  * type:   'experience' | 'skill'
  */
 function bulkAction(action, type) {
-  const tableId  = type === 'experience' ? '#experience-review-table' : '#skills-review-table';
+  const selType   = type === 'experience' ? 'experiences' : 'skills';
+  const tableId   = type === 'experience' ? '#experience-review-table' : '#skills-review-table';
+  const otherType = type === 'experience' ? 'skill' : 'experience';
+  _bulkUndoSnapshot = { type, snapshot: { ...userSelections[selType] } };
+  _setBulkUndoVisible(otherType, false);
   const data     = window.pendingRecommendations || {};
   const dt       = $.fn.DataTable.isDataTable(tableId) ? $(tableId).DataTable() : null;
 
@@ -711,9 +1037,15 @@ function bulkAction(action, type) {
     }
 
     // Update button states
-    row.querySelectorAll('.icon-btn').forEach(btn => btn.classList.remove('active'));
+    row.querySelectorAll('.icon-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+    });
     const target = row.querySelector(`[data-action="${resolvedAction}"]`);
-    if (target) target.classList.add('active');
+    if (target) {
+      target.classList.add('active');
+      if (target.hasAttribute('aria-pressed')) target.setAttribute('aria-pressed', 'true');
+    }
 
     // Store selection
     if (type === 'experience') {
@@ -722,6 +1054,50 @@ function bulkAction(action, type) {
       userSelections.skills[itemId] = resolvedAction;
     }
   });
+  _updatePageEstimate();
+  _setBulkUndoVisible(type, true);
+}
+
+function _setBulkUndoVisible(type, show) {
+  const id  = type === 'experience' ? 'exp-bulk-toolbar' : 'skill-bulk-toolbar';
+  const btn = document.getElementById(id)?.querySelector('.bulk-undo-btn');
+  if (btn) btn.style.display = show ? '' : 'none';
+}
+
+function undoBulkAction(type) {
+  if (!_bulkUndoSnapshot || _bulkUndoSnapshot.type !== type) return;
+  const selType  = type === 'experience' ? 'experiences' : 'skills';
+  const tableId  = type === 'experience' ? '#experience-review-table' : '#skills-review-table';
+  const snapshot = _bulkUndoSnapshot.snapshot;
+  _bulkUndoSnapshot = null;
+
+  userSelections[selType] = { ...snapshot };
+
+  const dt = $.fn.DataTable.isDataTable(tableId) ? $(tableId).DataTable() : null;
+  const rows = dt
+    ? dt.rows({ search: 'applied' }).nodes().toArray()
+    : Array.from(document.querySelectorAll(`${tableId} tbody tr`));
+
+  rows.forEach(row => {
+    const expId   = row.dataset.expId;
+    const skillId = row.dataset.skill;
+    const itemId  = expId || skillId;
+    if (!itemId) return;
+    const restoredAction = snapshot[itemId];
+    row.querySelectorAll('.icon-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+    });
+    if (restoredAction) {
+      const target = row.querySelector(`[data-action="${restoredAction}"]`);
+      if (target) {
+        target.classList.add('active');
+        if (target.hasAttribute('aria-pressed')) target.setAttribute('aria-pressed', 'true');
+      }
+    }
+  });
+
+  _setBulkUndoVisible(type, false);
   _updatePageEstimate();
 }
 
@@ -741,6 +1117,20 @@ function _resolvedSkillAction(skillName, data) {
   return 'exclude';
 }
 
+// ── Tagline review tab ────────────────────────────────────────────────────
+
+async function populateTaglineReviewTab() {
+  const content = document.getElementById('document-content');
+  if (!content) return;
+  content.innerHTML = `
+    <h2 style="margin:0 0 16px;">🏷️ Applicant Tagline</h2>
+    <div id="tagline-review-container"></div>
+  `;
+  if (typeof buildTaglineReviewSection === 'function') {
+    await buildTaglineReviewSection();
+  }
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────
 
 export {
@@ -752,11 +1142,13 @@ export {
   handleCustomizationResponse,
   showTableBasedReview,
   populateReviewTab,
+  populateTaglineReviewTab,
   switchReviewSubtab,
   _loadReviewPane,
   _updatePageEstimate,
   handleActionClick,
   bulkAction,
+  undoBulkAction,
   _resolvedExpAction,
   _resolvedSkillAction,
 };

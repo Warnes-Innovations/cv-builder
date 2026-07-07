@@ -2,7 +2,7 @@
 
 # 2026-03-23 19:41:21Z
 
-<!-- copilotide Session 5d38868a-f5b6-4ad6-9f3a-308fae13cfae (2026-03-23 19:41:21Z) -->
+<!-- VS Code Copilot IDE Session 5d38868a-f5b6-4ad6-9f3a-308fae13cfae (2026-03-23 19:41:21Z) -->
 
 _**User (2026-03-23 19:41:21Z)**_
 
@@ -58,4 +58,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 Working in /Users/warnes/src/cv-builder.
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

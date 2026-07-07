@@ -24,11 +24,12 @@ VS Code extension and documented in multiple open-source Copilot clients.
 """
 
 import json
+import logging
 import time
-import os
 from pathlib import Path
-from typing import Optional
 import requests
+
+logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ def _load_cache() -> dict:
         if TOKEN_CACHE_PATH.exists():
             return json.loads(TOKEN_CACHE_PATH.read_text())
     except Exception:
-        pass
+        logger.debug("Token cache unreadable — starting fresh", exc_info=True)
     return {}
 
 

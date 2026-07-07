@@ -39,16 +39,18 @@ function _findSkillRec(skill, data) {
   return data.skill_recommendations.find(r => r.skill === skill || r.name === skill) || null;
 }
 
-/** Parse a raw confidence string to a {level, text} object, or null if unrecognised. */
+/** Parse a raw confidence string to a {level, text, title} object, or null if unrecognised. */
 function _parseConfidence(conf) {
   const c = (conf || '').toLowerCase();
-  if (c.includes('very high')) return { level: 'very-high', text: 'Very High Confidence' };
-  if (c.includes('very low'))  return { level: 'very-low',  text: 'Very Low Confidence'  };
-  if (c.includes('high'))      return { level: 'high',      text: 'High Confidence'      };
-  if (c.includes('medium'))    return { level: 'medium',    text: 'Medium Confidence'    };
-  if (c.includes('low'))       return { level: 'low',       text: 'Low Confidence'       };
+  if (c.includes('very high')) return { level: 'very-high', text: 'Very High Confidence', title: 'Excellent match — strongly aligns with the job requirements' };
+  if (c.includes('very low'))  return { level: 'very-low',  text: 'Very Low Confidence',  title: 'Poor match — minimal relevance to this role' };
+  if (c.includes('high'))      return { level: 'high',      text: 'High Confidence',      title: 'Strong alignment with the job requirements' };
+  if (c.includes('medium'))    return { level: 'medium',    text: 'Medium Confidence',    title: 'Moderate alignment — review this recommendation carefully' };
+  if (c.includes('low'))       return { level: 'low',       text: 'Low Confidence',       title: 'Weak alignment — include only if it strengthens your application' };
   return null;
 }
+
+const CONFIDENCE_COLUMN_LEGEND = 'AI assessment of how well this recommendation matches the role:\n• Very High — excellent match\n• High — strong alignment\n• Medium — review carefully\n• Low — include selectively\n• Very Low — poor match';
 
 // ---------------------------------------------------------------------------
 // Experience recommendations
@@ -207,4 +209,5 @@ export {
   getSkillRecommendation, getSkillConfidence, getSkillReasoning,
   getAchievementRecommendation, getAchievementConfidence, getAchievementReasoning,
   buildFallbackPostAnalysisQuestions,
+  CONFIDENCE_COLUMN_LEGEND,
 };

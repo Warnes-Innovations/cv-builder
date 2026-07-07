@@ -22,7 +22,8 @@
  *   - handleSkillsResponse (skills-review.js, Tier 5)
  *   - handleQuestionResponse (questions-panel.js)
  *   - extractFirstJsonObject, handleCustomizationResponse (app.js orchestrator)
- *   - isLoading, questionAnswers, pendingRecommendations (window globals)
+ *   - stateManager (state-manager.js — isLoading())
+ *   - questionAnswers, pendingRecommendations (window globals)
  */
 
 import { getLogger } from './logger.js';
@@ -213,18 +214,18 @@ function _deriveErrorState(error) {
   if (status === 401 || status === 403 || message.startsWith('401:') || message.startsWith('403:') || lower.includes('auth')) {
     return {
       kind: 'auth-required',
-      text: 'Authentication required',
+      text: 'Sign in required',
       icon: '🔑',
-      tooltip: 'Authentication failed. Check API key/token or sign in again.',
+      tooltip: 'API key or sign-in credentials are invalid. Open Settings to reconfigure.',
     };
   }
 
   if (status === 429 || message.startsWith('429:') || lower.includes('rate limit')) {
     return {
       kind: 'rate-limited',
-      text: 'Rate limited',
+      text: 'Too many requests',
       icon: '⏳',
-      tooltip: 'Provider rate limit reached. Wait briefly and retry.',
+      tooltip: 'The AI provider received too many requests. Wait a moment before retrying.',
     };
   }
 
@@ -334,6 +335,7 @@ async function _handleLLMMessage(text) {
   if (terminalState) {
     _setLiveLlmState(terminalState.kind, terminalState.text, terminalState.icon, terminalState.tooltip);
   }
+  if (typeof fetchAndDisplayLlmLog === 'function') fetchAndDisplayLlmLog();
 }
 
 // ---------------------------------------------------------------------------

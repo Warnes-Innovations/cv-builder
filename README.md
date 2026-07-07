@@ -4,7 +4,7 @@ An AI-powered CV generation system that uses Large Language Models (LLMs) for se
 
 ## Features
 
-- **Full Web UI**: Browser-based workflow with dedicated tabs for every step — job input, LLM analysis, experience/skill/achievement review, ATS scoring, rewrites, spell-check, cover letter, layout review, and finalisation
+- **Full Web UI**: Browser-based workflow with dedicated tabs for every step — job input, LLM analysis, experience/skill/achievement review, ATS scoring, rewrites, spell-check, cover letter, screening questions, layout review, download, interview preparation, thank you letter, and improvement harvesting
 - **LLM-Driven Analysis**: Semantic understanding of job descriptions via GitHub Copilot, GitHub Models, OpenAI, Anthropic Claude, Google Gemini, Groq, or local models
 - **Master CV Management**: Dedicated tab for managing your master CV data (personal info, experience, skills, education, publications, and more) separately from per-job customisation
 - **ATS Match Scoring**: Real-time keyword match score with hard/soft skill breakdown, recalculated live as you approve or reject items
@@ -13,6 +13,8 @@ An AI-powered CV generation system that uses Large Language Models (LLMs) for se
   - Human-readable PDF (styled, via WeasyPrint)
   - Human-readable DOCX (Word-native, editable)
 - **Cover Letter Generation**: AI-generated cover letters tailored to the job description
+- **Interview Preparation**: LLM-generated interview questions with user-editable prose responses and key-point bullets; exports Markdown/Word/PDF
+- **Thank You Letter**: LLM-assisted thank you email/letter with multiple-choice section suggestions; exports Markdown/Word/PDF
 - **Session Management**: Multiple independent sessions, auto-save, and session switching
 - **Multi-Provider LLM Support**: Switch providers or models without restarting
 
@@ -294,11 +296,14 @@ The web UI guides you through the full workflow via a tabbed interface:
 | 🔤 Spell Check | Spell-check the customised CV |
 | 📄 Generated CV | Preview the generated CV |
 | 🎨 Layout Review | Review and adjust layout |
-| ⬇️ File Review | Download generated files |
-| ✅ Finalise | Harvest improvements back to master CV |
+| 📄 Generate Final | Trigger final CV generation |
+| ⬇️ Download Files | Download all generated files |
 | 📚 Master CV | Edit master CV data directly |
 | 📩 Cover Letter | Generate a tailored cover letter |
 | 📋 Screening | View and answer screening questions |
+| 🎤 Interview Prep | Generate questions, prose responses, and bullet talking points |
+| 🙏 Thank You | Generate a thank-you email or letter after interview |
+| 🌾 Harvest | Harvest improvements back to master CV |
 
 ### CLI
 
@@ -328,6 +333,67 @@ python scripts/llm_cv_generator.py --job-file job.txt --non-interactive
 python scripts/llm_cv_generator.py --resume-session path/to/session.json
 ```
 
+### Headless API Driver (`cv_generate_cli.py`)
+
+Drive the cv-builder REST API end-to-end from the command line without the
+interactive web UI. The web app must be running before invoking the driver.
+
+```bash
+conda activate cvgen
+
+# Start the web app first (in a separate terminal)
+python scripts/web_app.py --llm-provider github
+
+# Generate a comprehensive CV (all experience, all achievements, all skills)
+python scripts/cv_generate_cli.py --mode comprehensive
+
+# Generate a focused pharma / scientific-advisor CV
+python scripts/cv_generate_cli.py --mode focused
+
+# Load a custom job description from a file
+python scripts/cv_generate_cli.py --mode comprehensive --job-file path/to/job.txt
+
+# Preview decisions without calling the API
+python scripts/cv_generate_cli.py --mode comprehensive --dry-run
+
+# Target a different running instance
+python scripts/cv_generate_cli.py --mode focused --base-url http://127.0.0.1:5000
+```
+
+**Modes:**
+
+| Mode | Description |
+|------|-------------|
+| `comprehensive` | All experience entries, full achievements and skills, all publications. |
+| `focused` | Highlights pharma/biostat roles (Pfizer, BI, Medidata, Novartis, Warnes Innovations). Excludes older / less-relevant entries. |
+
+Both modes use the `scientific_advisor` professional summary variant. The
+`--dry-run` flag prints a decision summary without making any API calls.
+
+### Comprehensive CV Package (full-data)
+
+Use the convenience wrapper to generate a recruiter-ready package from your
+master data with comprehensive mode enabled.
+
+```bash
+conda activate cvgen
+
+# Uses defaults: --path ~/CV and --output-dir ~/CV/files/Comprehensive_CV
+python scripts/cv-comprehensive.py
+
+# Overwrite existing output files
+python scripts/cv-comprehensive.py --force
+
+# Custom source/output paths
+python scripts/cv-comprehensive.py \
+  --path ~/CV \
+  --output-dir ~/CV/files/Comprehensive_CV \
+  --force
+```
+
+This command delegates to `scripts/cv-preview.py --comprehensive` and produces
+ATS DOCX, human DOCX, PDF, HTML, cover letter DOCX, and `metadata.json`.
+
 ### Web App Options
 
 ```bash
@@ -352,7 +418,9 @@ cv-builder/
 ├── run_tests.py                     # Test runner orchestrator
 ├── scripts/
 │   ├── web_app.py                   # Flask web server entry point
-│   ├── llm_cv_generator.py         # CLI entry point
+│   ├── llm_cv_generator.py         # Interactive CLI entry point
+│   ├── cv_generate_cli.py          # Headless API driver (non-interactive CLI)
+│   ├── cv-comprehensive.py         # Comprehensive full-data CV wrapper
 │   ├── generate_cv.py              # Legacy rule-based generator
 │   ├── requirements.txt            # Pip dependencies (CI / pure-pip)
 │   ├── requirements-conda.txt      # Pip deps for conda dev environment
@@ -403,6 +471,8 @@ Generated output is stored under `~/CV/cv-builder/` by default:
 │   ├── CV_*.pdf                   # Human-readable PDF
 │   ├── CV_*.docx                  # Human-readable DOCX
 │   ├── CoverLetter_*.docx         # Cover letter (if generated)
+│   ├── InterviewPrep_*.[md|docx|pdf]  # Interview prep (if generated)
+│   ├── ThankYou_*.[md|docx|pdf]   # Thank you letter/email (if generated)
 │   ├── metadata.json              # Generation metadata
 │   └── job_description.txt        # Original job posting
 └── sessions/                      # Auto-saved session files
@@ -573,6 +643,13 @@ npm run build
 | [LLM_PROVIDER_COMPARISON.md](LLM_PROVIDER_COMPARISON.md) | Provider speed, cost, and quality comparison |
 | [PROJECT_SPECIFICATION.md](PROJECT_SPECIFICATION.md) | Full product specification |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Active implementation backlog |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, test-running
+instructions, coding conventions, and the data-contract maintenance rule.
+
+Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.
 
 ## License
 

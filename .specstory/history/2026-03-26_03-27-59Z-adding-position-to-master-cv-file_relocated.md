@@ -2,7 +2,7 @@
 
 # 2026-03-26 03:28:47Z
 
-<!-- VS Code Copilot IDE Session ea67f607-6ac1-4d10-b8a4-4c0e542e9011 (2026-03-26 03:28:47Z) -->
+<!-- copilotide Session ea67f607-6ac1-4d10-b8a4-4c0e542e9011 (2026-03-26 03:28:47Z) -->
 
 _**User (2026-03-26 03:28:47Z)**_
 
@@ -64,4 +64,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 Applicable sections are data protection, Master CV handling, and final review. Relevant skills are `copilot-preflight`, `cv-builder-patterns`, and `code-review`; I’m updating the Rochester role to reflect that you laid the groundwork for HSCCI and the later Blue Gene/Q launch without misdating your tenure.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

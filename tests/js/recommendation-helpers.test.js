@@ -13,6 +13,7 @@ import {
   getSkillRecommendation, getSkillConfidence, getSkillReasoning,
   getAchievementRecommendation, getAchievementConfidence, getAchievementReasoning,
   buildFallbackPostAnalysisQuestions,
+  CONFIDENCE_COLUMN_LEGEND,
 } from '../../web/recommendation-helpers.js'
 import loglevel from '../../web/logger.js'
 
@@ -52,12 +53,12 @@ describe('getExperienceRecommendation', () => {
 describe('getConfidenceLevel', () => {
   it('parses "Very High Confidence"', () => {
     const data = { experience_recommendations: [{ id: 'e1', confidence: 'Very High Confidence' }] }
-    expect(getConfidenceLevel('e1', data)).toEqual({ level: 'very-high', text: 'Very High Confidence' })
+    expect(getConfidenceLevel('e1', data)).toEqual(expect.objectContaining({ level: 'very-high', text: 'Very High Confidence' }))
   })
 
   it('parses "Low Confidence"', () => {
     const data = { experience_recommendations: [{ id: 'e1', confidence: 'Low Confidence' }] }
-    expect(getConfidenceLevel('e1', data)).toEqual({ level: 'low', text: 'Low Confidence' })
+    expect(getConfidenceLevel('e1', data)).toEqual(expect.objectContaining({ level: 'low', text: 'Low Confidence' }))
   })
 
   it('defaults to medium when no confidence present', () => {
@@ -68,6 +69,34 @@ describe('getConfidenceLevel', () => {
   it('defaults to medium when rec not found', () => {
     const data = { experience_recommendations: [] }
     expect(getConfidenceLevel('e99', data)).toEqual({ level: 'medium', text: 'Medium Confidence' })
+  })
+
+  it('includes a title tooltip for parsed levels', () => {
+    const data = { experience_recommendations: [{ id: 'e1', confidence: 'High Confidence' }] }
+    const result = getConfidenceLevel('e1', data)
+    expect(result.title).toBeTruthy()
+    expect(typeof result.title).toBe('string')
+  })
+
+  it('does not include a title for the default-medium fallback', () => {
+    const data = { experience_recommendations: [] }
+    const result = getConfidenceLevel('e99', data)
+    expect(result.title).toBeUndefined()
+  })
+})
+
+describe('CONFIDENCE_COLUMN_LEGEND', () => {
+  it('is a non-empty string', () => {
+    expect(typeof CONFIDENCE_COLUMN_LEGEND).toBe('string')
+    expect(CONFIDENCE_COLUMN_LEGEND.length).toBeGreaterThan(20)
+  })
+
+  it('mentions all five confidence levels', () => {
+    expect(CONFIDENCE_COLUMN_LEGEND).toMatch(/Very High/i)
+    expect(CONFIDENCE_COLUMN_LEGEND).toMatch(/High/i)
+    expect(CONFIDENCE_COLUMN_LEGEND).toMatch(/Medium/i)
+    expect(CONFIDENCE_COLUMN_LEGEND).toMatch(/Low/i)
+    expect(CONFIDENCE_COLUMN_LEGEND).toMatch(/Very Low/i)
   })
 })
 
@@ -105,7 +134,7 @@ describe('getSkillRecommendation', () => {
 describe('getSkillConfidence', () => {
   it('returns parsed confidence from rec', () => {
     const data = { skill_recommendations: [{ skill: 'Python', confidence: 'High' }] }
-    expect(getSkillConfidence('Python', data)).toEqual({ level: 'high', text: 'High Confidence' })
+    expect(getSkillConfidence('Python', data)).toEqual(expect.objectContaining({ level: 'high', text: 'High Confidence' }))
   })
 
   it('returns medium for skills in recommended_skills without rec', () => {

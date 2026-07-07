@@ -11,20 +11,28 @@
  */
 
 import { getLogger } from './logger.js';
+import { handle409Conflict } from './fetch-utils.js';
 const log = getLogger('api-client');
 
 /**
  * Centralized localStorage key management to avoid duplication
  */
 const StorageKeys = {
-  SESSION_ID:   'cv-builder-session-id',
-  SESSION_PATH: 'cv-builder-session-path',
-  TAB_DATA:     'cv-builder-tab-data',
-  CURRENT_TAB:  'cv-builder-current-tab',
-  CHAT_COLLAPSED: 'cv-builder-chat-collapsed'
+  SESSION_ID:              'cv-builder-session-id',
+  SESSION_PATH:            'cv-builder-session-path',
+  TAB_DATA:                'cv-builder-tab-data',
+  CURRENT_TAB:             'cv-builder-current-tab',
+  CHAT_COLLAPSED:          'cv-builder-chat-collapsed',
+  LLM_DISCLOSURE_SHOWN:    'cv-builder-llm-disclosure-shown',
+  EARLY_PREVIEW_COLLAPSED: 'cv-builder-early-preview-collapsed',
 };
 
 const OWNER_TOKEN_KEY = 'cv-builder-owner-token';
+
+function disclosureKey(provider) {
+  const p = provider || 'unknown';
+  return `${StorageKeys.LLM_DISCLOSURE_SHOWN}-${p}`;
+}
 
 function getSessionIdFromURL() {
   if (typeof window === 'undefined' || !window.location) return null;
@@ -132,7 +140,12 @@ async function sessionAwareFetch(input, init = {}) {
     throw new Error('fetch is not available');
   }
   const [nextInput, nextInit] = _buildSessionAwareRequest(input, init);
-  return _nativeFetch(nextInput, nextInit);
+  let resp = await _nativeFetch(nextInput, nextInit);
+  if (resp.status === 409) {
+    const shouldRetry = await handle409Conflict(nextInput, nextInit, resp);
+    if (shouldRetry) resp = await _nativeFetch(nextInput, nextInit);
+  }
+  return resp;
 }
 
 if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
@@ -207,6 +220,11 @@ async function fetchStatus() {
     globalThis.updateAuthBadge(status?.copilot_auth || {}, provider);
   }
 
+  // Update workflow step bar (clickable/completed/active state) on every status fetch.
+  if (typeof globalThis.updateWorkflowSteps === 'function' && status && !status._error) {
+    globalThis.updateWorkflowSteps(status);
+  }
+
   return status;
 }
 
@@ -233,5 +251,6 @@ export {
   createSession,
   fetchStatus,
   fetchSettings, updateSettings,
+  disclosureKey,
 };
 

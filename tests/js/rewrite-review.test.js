@@ -24,6 +24,8 @@ import {
 // ── Global stubs ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  // jsdom does not implement scrollIntoView
+  Element.prototype.scrollIntoView = vi.fn()
   // CSS.escape may not be available or reliable in jsdom — always stub
   vi.stubGlobal('CSS', { escape: s => String(s) })
   vi.stubGlobal('escapeHtml', s => String(s ?? ''))
@@ -37,6 +39,9 @@ beforeEach(() => {
   vi.stubGlobal('scheduleAtsRefresh', vi.fn())
   vi.stubGlobal('parseRewritesResponse', d => d)
   vi.stubGlobal('PHASES', { GENERATION: 'generation' })
+
+  // jsdom does not implement Element.scrollIntoView; _scrollToNextPendingRewrite calls it.
+  Element.prototype.scrollIntoView = vi.fn()
 
   globalThis.fetch = vi.fn()
 })
@@ -187,12 +192,14 @@ describe('applyRewriteAction', () => {
     expect(card.classList.contains('rejected')).toBe(true)
   })
 
-  it('on edit: shows the textarea and hides the diff', () => {
+  it('on edit: shows the textarea and keeps the diff visible (dimmed) as reference', () => {
     applyRewriteAction('test1', 'edit')
     const afterEl = document.getElementById('rw-after-test1')
     const diffEl  = document.getElementById('rw-diff-test1')
     expect(afterEl.style.display).toBe('block')
-    expect(diffEl.style.display).toBe('none')
+    // Diff stays visible at reduced opacity as a reference for the user
+    expect(diffEl.style.display).toBe('')
+    expect(diffEl.style.opacity).toBe('0.55')
   })
 
   it('does not throw when card is absent', () => {
@@ -288,6 +295,7 @@ describe('updateRewriteTally', () => {
     Object.keys(mod.rewriteDecisions).forEach(k => delete mod.rewriteDecisions[k])
     mod.rewriteDecisions['p'] = { outcome: 'accept', final_text: null }
     mod.rewriteDecisions['q'] = { outcome: 'reject', final_text: null }
+    mod.setPersuasionWarningsAcknowledged(true)
     updateRewriteTally()
     const btn = document.getElementById('submit-rewrites-btn')
     expect(btn.disabled).toBe(false)
@@ -437,5 +445,63 @@ describe('submitRewriteDecisions', () => {
       expect.stringContaining('network down'),
       expect.any(Function)
     )
+  })
+})
+
+// ── renderRewritePanel — decision state restoration ───────────────────────────
+
+describe('renderRewritePanel decision restoration on re-render', () => {
+  let mod
+
+  beforeEach(async () => {
+    mod = await import('../../web/rewrite-review.js')
+    document.body.innerHTML = '<div id="document-content"></div>'
+    Object.keys(mod.rewriteDecisions).forEach(k => delete mod.rewriteDecisions[k])
+  })
+
+  const sampleRewrites = [
+    { id: 'rw-a', original: 'old text', proposed: 'new text' },
+    { id: 'rw-b', original: 'foo bar',  proposed: 'baz qux'  },
+  ]
+
+  it('restores accepted card styling on re-render', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-a', 'accept')
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('rw-card-rw-a').classList.contains('accepted')).toBe(true)
+  })
+
+  it('restores rejected card styling on re-render', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-b', 'reject')
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('rw-card-rw-b').classList.contains('rejected')).toBe(true)
+  })
+
+  it('restores edited text and shows accepted state after re-render', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-a', 'edit')
+    const ta = document.getElementById('rw-textarea-rw-a')
+    ta.value = 'user-edited text'
+    saveRewriteEdit('rw-a')
+
+    // Simulate tab navigation away and back
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('rw-card-rw-a').classList.contains('accepted')).toBe(true)
+    expect(mod.rewriteDecisions['rw-a'].final_text).toBe('user-edited text')
+  })
+
+  it('updates tally correctly after restoring mixed decisions', () => {
+    renderRewritePanel(sampleRewrites, [])
+    applyRewriteAction('rw-a', 'accept')
+    applyRewriteAction('rw-b', 'reject')
+    renderRewritePanel(sampleRewrites, [])
+
+    expect(document.getElementById('tally-accepted').textContent).toBe('1')
+    expect(document.getElementById('tally-rejected').textContent).toBe('1')
+    expect(document.getElementById('tally-pending').textContent).toBe('0')
   })
 })

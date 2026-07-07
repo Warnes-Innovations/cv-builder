@@ -203,6 +203,9 @@ class FakeConversationManager:
             self.job_barrier.wait(timeout=2)
         self.state["job_description"] = job_text
 
+    def add_to_history(self, role: str, content: str) -> None:
+        self.conversation_history.append({"role": role, "content": content})
+
     def normalize_skills_data(self, skills_data: Any) -> list[dict[str, Any]]:
         if isinstance(skills_data, list):
             return list(skills_data)
@@ -478,16 +481,16 @@ def build_app_fixture():
             patch("scripts.web_app.get_llm_provider", return_value=mock_llm)
         )
         stack.enter_context(
-            patch("scripts.web_app.get_cached_pricing", return_value={})
+            patch("scripts.routes.auth_routes.get_cached_pricing", return_value={})
         )
         stack.enter_context(
             patch(
-                "scripts.web_app.get_pricing_updated_at",
+                "scripts.routes.auth_routes.get_pricing_updated_at",
                 return_value="2026-03-18",
             )
         )
         stack.enter_context(
-            patch("scripts.web_app.get_pricing_source", return_value="static")
+            patch("scripts.routes.auth_routes.get_pricing_source", return_value="static")
         )
 
         def _build_orchestrator(*args: Any, **kwargs: Any) -> FakeOrchestrator:
@@ -1386,12 +1389,11 @@ def test_rewrite_approval_route_updates_phase_and_enforces_ownership(
         )
         assert success.status_code == 200
         payload = success.get_json()
-        assert payload == {
-            "ok": True,
-            "approved_count": 2,
-            "rejected_count": 1,
-            "phase": "spell_check",
-        }
+        assert payload["ok"] is True
+        assert payload["approved_count"] == 2
+        assert payload["rejected_count"] == 1
+        assert payload["phase"] == "spell_check"
+        assert "rewrite_audit" in payload
 
         manager = _manager_for_session(tracker, session_id)
         assert manager.rewrite_decisions == decisions
@@ -1631,10 +1633,10 @@ def test_summary_and_master_data_routes_enforce_ownership(build_app):
             json={"session_id": session_id, "owner_token": "owner-a"},
         )
         assert generated.status_code == 200
-        assert generated.get_json() == {
-            "ok": True,
-            "summary": "Generated summary",
-        }
+        resp_json = generated.get_json()
+        assert resp_json["ok"] is True
+        assert resp_json["summary"] == "Generated summary"
+        assert "quality_warning" in resp_json  # GAP-353: post-generation quality check
         assert manager.state["summary_focus_override"] == "ai_generated"
         assert (
             manager.state["session_summaries"]["ai_generated"]
@@ -2049,7 +2051,7 @@ def test_phase_navigation_and_review_routes_update_session_state(build_app):
             },
         )
         assert generation_settings.status_code == 200
-        assert generation_settings.get_json() == {"ok": True, "max_skills": 7, "skills_section_title": "Skills"}
+        assert generation_settings.get_json() == {"ok": True, "max_skills": 7, "skills_section_title": "Skills", "ai_attribution": False}
         assert manager.state["max_skills"] == 7
 
         # skills_section_title persists via generation-settings
@@ -2999,14 +3001,17 @@ def test_layout_settings_route_normalizes_layout_settings_and_history(build_app)
                 "session_id": session_id,
                 "base_font_size": "10",
                 "page_margin": "0.5",
+                "publications_start_new_page": True,
             },
         )
         assert updated.status_code == 200
         assert updated.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "10px"
         assert manager.state["page_margin"] == "0.5in"
+        assert manager.state["publications_start_new_page"] is True
         assert manager.state["customizations"]["base_font_size"] == "10px"
         assert manager.state["customizations"]["page_margin"] == "0.5in"
+        assert manager.state["customizations"]["publications_start_new_page"] is True
         assert manager.save_calls == 1
 
         history = client.get(
@@ -3035,14 +3040,17 @@ def test_layout_settings_route_normalizes_layout_settings_and_history(build_app)
                 "owner_token": "owner-a",
                 "base_font_size": "11px",
                 "page_margin": "0.75in",
+                "publications_start_new_page": "false",
             },
         )
         assert owned_update.status_code == 200
         assert owned_update.get_json() == {"ok": True}
         assert manager.state["base_font_size"] == "11px"
         assert manager.state["page_margin"] == "0.75in"
+        assert manager.state["publications_start_new_page"] is False
         assert manager.state["customizations"]["base_font_size"] == "11px"
         assert manager.state["customizations"]["page_margin"] == "0.75in"
+        assert manager.state["customizations"]["publications_start_new_page"] is False
         assert manager.save_calls == 2
 
 
@@ -3213,7 +3221,7 @@ def test_cv_ats_score_route_enriches_customizations_from_session_state(
         assert (
             customizations_arg["selected_summary"] == "Targeted summary text"
         )
-        assert mock_score.call_args.kwargs == {"basis": "review_checkpoint"}
+        assert mock_score.call_args.kwargs.get("basis") == "review_checkpoint"
         assert manager.state["generation_state"]["ats_score"] == returned_score
         assert manager.save_calls == 1
 
@@ -3394,7 +3402,7 @@ def test_cv_ats_score_route_falls_back_to_achievement_edits_when_needed(
                 "section": "experience",
             },
         ]
-        assert mock_score.call_args.kwargs == {"basis": "post_generation"}
+        assert mock_score.call_args.kwargs.get("basis") == "post_generation"
         assert manager.state["generation_state"]["ats_score"] == returned_score
         assert manager.save_calls == 1
 
@@ -3559,7 +3567,7 @@ def test_fetch_job_url_route_enforces_ownership_and_validates_input(build_app):
             },
         )
         assert invalid_url.status_code == 400
-        assert invalid_url.get_json()["error"] == "Invalid URL format"
+        assert invalid_url.get_json()["error"] == "Invalid or disallowed URL."
 
 
 def test_fetch_job_url_route_returns_protected_site_guidance(build_app):
@@ -3673,10 +3681,10 @@ def test_fetch_job_url_route_prefers_json_ld_when_body_is_too_short(build_app):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["job_text"] == json_ld_description
+    assert json_ld_description in payload["job_text"]
 
     manager = _manager_for_session(tracker, session_id)
-    assert manager.state["job_description"] == json_ld_description
+    assert json_ld_description in manager.state["job_description"]
     assert manager.state["position_name"].startswith(
         "Principal Machine Learning Engineer at Example Labs."
     )

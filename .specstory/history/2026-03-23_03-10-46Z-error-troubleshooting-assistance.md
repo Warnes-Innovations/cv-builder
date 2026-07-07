@@ -2,7 +2,7 @@
 
 # 2026-03-23 03:10:59Z
 
-<!-- copilotide Session 940ec313-20bb-49b6-a4d4-3d3b719ee5ef (2026-03-23 03:10:59Z) -->
+<!-- VS Code Copilot IDE Session 940ec313-20bb-49b6-a4d4-3d3b719ee5ef (2026-03-23 03:10:59Z) -->
 
 _**User (2026-03-23 03:10:59Z)**_
 
@@ -673,4 +673,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 I’m reloading the required review and commit skills first, then I’ll re-check the active worktree state so I can resume from the interrupted test phase without guessing.
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

@@ -23,6 +23,7 @@ const log = getLogger('experience-review');
 
 import { stateManager } from './state-manager.js';
 import { eyeSlashIcon } from './review-icons.js';
+import { CONFIDENCE_COLUMN_LEGEND } from './recommendation-helpers.js';
 
 function _findExperienceRecommendationRecord(expId, data) {
   if (!data || !Array.isArray(data.experience_recommendations)) return null;
@@ -57,6 +58,27 @@ async function getExperienceDetails(expId) {
   }
 }
 
+// ── Rerun snapshot (change badge for experiences) ────────────────────────────
+function _expSnapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `exp_snap_${sid}` : null;
+  } catch (_) { return null; }
+}
+function _saveExpSnapshot(recommendedIds) {
+  const key = _expSnapshotKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify([...recommendedIds])); } catch (_) {}
+}
+function _getExpSnapshot() {
+  const key = _expSnapshotKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch (_) { return null; }
+}
+
 // ── Build review table (fetch + initialise) ────────────────────────────────
 
 async function buildExperienceReviewTable() {
@@ -67,10 +89,12 @@ async function buildExperienceReviewTable() {
   container.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading experience recommendations…</p></div>';
 
   let allExperienceIds = [];
+  let savedRowOrder = [];
   try {
     const statusRes = await fetch('/api/status');
     const statusData = parseStatusResponse(await statusRes.json());
     allExperienceIds = statusData.all_experience_ids || data.recommended_experiences || [];
+    savedRowOrder    = Array.isArray(statusData.experience_row_order) ? statusData.experience_row_order : [];
   } catch (error) {
     allExperienceIds = data.recommended_experiences || [];
   }
@@ -84,13 +108,42 @@ async function buildExperienceReviewTable() {
     experiencesWithDetails.push({ id: expId, details });
   }
 
-  // On first load: sort by start date (most recent first); on re-render preserve user order
+  // On first load: restore user's saved order if present; otherwise default-sort
+  // with present/current positions first, then reverse-chronological by end date.
+  // On re-render, preserve the in-memory user order.
   if (!window._experiencesOrdered) {
-    experiencesWithDetails.sort((a, b) => {
-      const aStart = a.details?.start_date || '0';
-      const bStart = b.details?.start_date || '0';
-      return bStart.localeCompare(aStart);
-    });
+    if (savedRowOrder.length > 0) {
+      // Restore user's explicitly saved ordering from the session
+      const orderMap = Object.fromEntries(savedRowOrder.map((id, i) => [id, i]));
+      experiencesWithDetails.sort((a, b) => {
+        const ai = orderMap[a.id] ?? savedRowOrder.length;
+        const bi = orderMap[b.id] ?? savedRowOrder.length;
+        return ai - bi;
+      });
+    } else {
+      // Default: sort by LLM recommendation strength first, then reverse-chronological
+      const _ACTION_RANK = { emphasize: 0, include: 1, 'de-emphasize': 2, exclude: 3 };
+      const _parseEndKey = (exp) => {
+        const raw = (exp.details?.end_date || exp.details?.end || '').trim().toLowerCase();
+        if (!raw || ['present', 'current', 'now', 'ongoing'].includes(raw)) return '9999-12';
+        if (/^\d{4}$/.test(raw)) return raw + '-12';
+        return raw;
+      };
+      const _getActionRank = (exp) => {
+        const rec = getExperienceRecommendation(exp.id, data);
+        if (!rec) return 1; // default to 'include' rank when no recommendation
+        if (rec === 'Emphasize')    return 0;
+        if (rec === 'Include')      return 1;
+        if (rec === 'De-emphasize') return 2;
+        if (rec === 'Omit')         return 3;
+        return 1;
+      };
+      experiencesWithDetails.sort((a, b) => {
+        const rankDiff = _getActionRank(a) - _getActionRank(b);
+        if (rankDiff !== 0) return rankDiff;
+        return _parseEndKey(b).localeCompare(_parseEndKey(a));
+      });
+    }
     window._experiencesOrdered = experiencesWithDetails;
   } else {
     // Merge any newly discovered experiences into the cached order
@@ -99,6 +152,13 @@ async function buildExperienceReviewTable() {
       if (!knownIds.has(exp.id)) window._experiencesOrdered.push(exp);
     }
   }
+
+  // Compute which recommendations are new since last render (rerun change badges)
+  const prevExpSnap = _getExpSnapshot();
+  const newRecommendedExps = prevExpSnap
+    ? new Set([...recommendedSet].filter(id => !prevExpSnap.has(id)))
+    : new Set();
+  _saveExpSnapshot(recommendedSet);
 
   // Initialise saved decisions
   const savedExpDecs = window._savedDecisions?.experience_decisions || {};
@@ -114,12 +174,12 @@ async function buildExperienceReviewTable() {
     userSelections.experiences[expId] = savedExpDecs[expId] || defaultAction;
   }
 
-  _renderExperienceTable(container, recommendedSet, data);
+  _renderExperienceTable(container, recommendedSet, data, newRecommendedExps);
 }
 
 // ── Render table HTML ──────────────────────────────────────────────────────
 
-function _renderExperienceTable(container, recommendedSet, data) {
+function _renderExperienceTable(container, recommendedSet, data, newRecommendedExps = new Set()) {
   if (!container) container = document.getElementById('experience-table-container');
   if (!container) return;
   if (!recommendedSet) recommendedSet = new Set((window.pendingRecommendations?.recommended_experiences) || []);
@@ -138,7 +198,7 @@ function _renderExperienceTable(container, recommendedSet, data) {
           <th>Experience</th>
           <th>Dates</th>
           <th>Recommendation</th>
-          <th>Confidence</th>
+          <th title="${CONFIDENCE_COLUMN_LEGEND}">Confidence ⓘ</th>
           <th>Reasoning</th>
           <th>Your Selection</th>
         </tr>
@@ -160,7 +220,7 @@ function _renderExperienceTable(container, recommendedSet, data) {
     const duration          = startDate ? `${startDate} - ${endDate}` : (details?.duration || '');
     const defaultAction     = userSelections.experiences[expId] || 'include';
     const recommendationText = recommendation || 'Include';
-    const confidenceBadge   = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const confidenceBadge   = `<span class="confidence-badge confidence-${confidence.level}" title="${confidence.title || ''}">${confidence.text}</span>`;
     const reasoningSegments = [reasoning || 'This experience was selected based on its relevance to the position requirements.'];
     if (bulletOrderSummary) reasoningSegments.push(`Suggested bullet order: ${bulletOrderSummary}.`);
     if (bulletOrder?.reasoning) reasoningSegments.push(String(bulletOrder.reasoning));
@@ -170,11 +230,14 @@ function _renderExperienceTable(container, recommendedSet, data) {
     const isFirst           = rowIdx === 0;
     const isLast            = rowIdx === exps.length - 1;
     const titleEsc          = escapeHtml(title);
+    const rerunNewBadge = newRecommendedExps.has(expId)
+      ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
+      : '';
 
     tableHTML += `
       <tr data-exp-id="${expId}" data-start-date="${startDate}">
         <td>
-          <strong>${titleEsc}</strong><br>
+          <strong>${titleEsc}</strong>${rerunNewBadge}<br>
           <span style="color:#6b7280;">${escapeHtml(company)}</span>
         </td>
         <td style="white-space:nowrap;">${escapeHtml(duration)}</td>
@@ -182,10 +245,10 @@ function _renderExperienceTable(container, recommendedSet, data) {
         <td>${confidenceBadge}</td>
         <td style="max-width:300px;"><small>${escapeHtml(reasoningText)}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${titleEsc}"       title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         title="Include — standard treatment">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${titleEsc}"       aria-pressed="${defaultAction === 'emphasize'}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${titleEsc}"         aria-pressed="${defaultAction === 'include'}"      title="Include — standard treatment">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${titleEsc}"    aria-pressed="${defaultAction === 'de-emphasize'}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${titleEsc}"         aria-pressed="${defaultAction === 'exclude'}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
           <button class="icon-btn" data-action="reorder" aria-label="Reorder bullets for ${titleEsc}" title="${bulletOrderSummary ? `Reorder bullet points (AI suggested order ${bulletOrderSummary})` : 'Reorder bullet points'}" style="color:#6366f1;">↕</button>
           <button class="icon-btn" data-action="row-up"   aria-label="Move ${titleEsc} earlier in CV" title="Move up in CV"   ${isFirst ? 'disabled' : ''}>↑</button>
           <button class="icon-btn" data-action="row-down" aria-label="Move ${titleEsc} later in CV"   title="Move down in CV" ${isLast  ? 'disabled' : ''}>↓</button>
@@ -223,12 +286,14 @@ function _renderExperienceTable(container, recommendedSet, data) {
   // Bulk toolbar
   const expToolbar = document.createElement('div');
   expToolbar.className = 'bulk-toolbar';
+  expToolbar.id = 'exp-bulk-toolbar';
   expToolbar.innerHTML = `
     <span>Bulk:</span>
     <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','experience')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','experience')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','experience')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','experience')">${eyeSlashIcon()} Exclude All</button>
+    <button class="bulk-btn bulk-undo-btn" style="display:none" onclick="undoBulkAction('experience')" title="Undo the last bulk action">↩ Undo</button>
   `;
   container.insertBefore(expToolbar, container.firstChild);
 

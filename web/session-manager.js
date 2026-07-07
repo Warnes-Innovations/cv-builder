@@ -22,14 +22,15 @@
  *   - updateActionButtons (ui-helpers.js)
  *   - updatePositionTitle (session-actions.js)
  *   - escapeHtml, SESSION_PHASE_LABELS_SHORT (utils.js)
- *   - sessionId, tabData, isReconnecting, lastKnownPhase, interactiveState,
+ *   - stateManager (state-manager.js — getAllTabData()/getCurrentTab()/setTabData()/setCurrentTab())
+ *   - sessionId, isReconnecting, lastKnownPhase, interactiveState,
  *     rewriteDecisions, PHASES (window globals)
  */
 
 import { getLogger } from './logger.js';
 const log = getLogger('session-manager');
 
-import { SESSION_PHASE_LABELS_SHORT } from './utils.js';
+import { SESSION_PHASE_LABELS_SHORT, SESSION_PHASE_LABELS } from './utils.js';
 import { PHASES, stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ function getActiveSessionOwnershipMeta(session, {
   const isCurrentSession = Boolean(currentSessionId) && session.session_id === currentSessionId;
   const sameOwner = Boolean(session.owned_by_requester);
 
-  if (isCurrentSession && sameOwner) {
+  if (isCurrentSession) {
     return { label: 'Current tab', className: 'session-status-current', isCurrent: true };
   }
   if (sameOwner) {
@@ -112,11 +113,202 @@ function formatSessionTimestamp(timestamp, { includeTime = true } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Welcome / onboarding modal (GAP-36 / GAP-37)
+// ---------------------------------------------------------------------------
+
+const _WELCOME_DISMISSED_KEY = 'cv-builder-welcome-dismissed';
+
+/**
+ * Switch which content section is visible inside the welcome modal.
+ * @param {'present'|'missing'} section
+ */
+function _setWelcomeSection(section) {
+  const sPresent = document.getElementById('welcome-section-present');
+  const sEmpty   = document.getElementById('welcome-section-empty');
+  const sMissing = document.getElementById('welcome-section-missing');
+  const fPresent = document.getElementById('welcome-footer-present');
+  const fMissing = document.getElementById('welcome-footer-missing');
+  if (sPresent) sPresent.style.display = section === 'present' ? '' : 'none';
+  if (sEmpty)   sEmpty.style.display   = section === 'empty'   ? '' : 'none';
+  if (sMissing) sMissing.style.display = section === 'missing' ? '' : 'none';
+  // Empty skeleton: show "present" footer (Close/dismiss) not "missing" footer (Create/Reload)
+  if (fPresent) fPresent.style.display = (section === 'present' || section === 'empty') ? 'flex' : 'none';
+  if (fMissing) fMissing.style.display = section === 'missing' ? 'flex' : 'none';
+  // For empty state: change CTA to navigate to Master CV instead of just closing
+  const getStartedBtn = fPresent ? fPresent.querySelector('button.primary') : null;
+  if (getStartedBtn) {
+    if (section === 'empty') {
+      getStartedBtn.textContent = 'Open Master CV';
+      getStartedBtn.onclick = () => { closeWelcomeModal(); if (typeof openMasterCvModal === 'function') openMasterCvModal(); };
+    } else {
+      getStartedBtn.textContent = 'Get Started';
+      getStartedBtn.onclick = () => {
+        closeWelcomeModal();
+        if (typeof switchTab === 'function') switchTab('job');
+      };
+    }
+  }
+}
+
+/**
+ * Show the onboarding modal in the "missing master CV" state.
+ * Called from createNewSessionAndNavigate() when the backend returns master_cv_missing.
+ * @param {string} masterCvPath - Server-reported expected file path.
+ */
+function showOnboardingModal(masterCvPath) {
+  const overlay  = document.getElementById('onboarding-modal-overlay');
+  const pathEl   = document.getElementById('onboarding-master-cv-path');
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (pathEl)   pathEl.textContent   = masterCvPath || '(unknown)';
+  if (statusEl) statusEl.textContent = '';
+  _setWelcomeSection('missing');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    _openOnboardingFocusTrap(overlay);
+  }
+}
+
+/**
+ * Show the welcome modal unless the user has dismissed it.
+ * Calls /api/setup/master-cv-status to choose which section to display.
+ * Safe to call on every startup — no-ops immediately if dismissed.
+ */
+async function maybeShowWelcomeModal() {
+  try {
+    if (localStorage.getItem(_WELCOME_DISMISSED_KEY)) return;
+  } catch (_) {}
+  // Skip for returning users who already have an active session (GAP-314).
+  try {
+    const statusRes = await fetch('/api/status');
+    if (statusRes.ok) {
+      const statusData = await statusRes.json().catch(() => ({}));
+      if (statusData?.phase && statusData.phase !== 'init') return;
+    }
+  } catch (_) {}
+  let section = 'present';
+  try {
+    const res = await fetch('/api/setup/master-cv-status');
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!data.exists) {
+        const pathEl = document.getElementById('onboarding-master-cv-path');
+        if (pathEl) pathEl.textContent = data.path || '(unknown)';
+        section = 'missing';
+      } else if (data.is_empty) {
+        section = 'empty';
+      }
+    }
+  } catch (_) {}
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (statusEl) statusEl.textContent = '';
+  _setWelcomeSection(section);
+  const overlay = document.getElementById('onboarding-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    _openOnboardingFocusTrap(overlay);
+  }
+}
+
+/** Wire focus trap and Escape handler for the onboarding overlay (WCAG 2.1.2). */
+function _openOnboardingFocusTrap(overlay) {
+  if (typeof globalThis.setInitialFocus === 'function') globalThis.setInitialFocus('onboarding-modal-overlay');
+  if (typeof globalThis.trapFocus === 'function')       globalThis.trapFocus('onboarding-modal-overlay');
+  if (!overlay._onboardingEscHandler) {
+    overlay._onboardingEscHandler = (e) => {
+      if (e.key === 'Escape') closeWelcomeModal();
+    };
+    overlay.addEventListener('keydown', overlay._onboardingEscHandler);
+  }
+}
+
+/**
+ * Show the welcome modal unconditionally (ignores the "don't show again" flag).
+ * Used by the Help button so users can always reopen onboarding mid-session.
+ */
+async function showWelcomeModal() {
+  let section = 'present';
+  try {
+    const res = await fetch('/api/setup/master-cv-status');
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!data.exists) {
+        const pathEl = document.getElementById('onboarding-master-cv-path');
+        if (pathEl) pathEl.textContent = data.path || '(unknown)';
+        section = 'missing';
+      } else if (data.is_empty) {
+        section = 'empty';
+      }
+    }
+  } catch (_) {}
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (statusEl) statusEl.textContent = '';
+  _setWelcomeSection(section);
+  const overlay = document.getElementById('onboarding-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    _openOnboardingFocusTrap(overlay);
+  }
+}
+
+/**
+ * Close the welcome modal.
+ * If "Don't show again" is checked, persists the dismissal in localStorage.
+ */
+function closeWelcomeModal() {
+  const overlay  = document.getElementById('onboarding-modal-overlay');
+  const checkbox = document.getElementById('welcome-dont-show-again');
+  if (overlay) {
+    overlay.style.display = 'none';
+    if (overlay._onboardingEscHandler) {
+      overlay.removeEventListener('keydown', overlay._onboardingEscHandler);
+      delete overlay._onboardingEscHandler;
+    }
+  }
+  if (checkbox && checkbox.checked) {
+    try { localStorage.setItem(_WELCOME_DISMISSED_KEY, '1'); } catch (_) {}
+  }
+  if (typeof globalThis.restoreFocus === 'function') globalThis.restoreFocus();
+}
+
+/**
+ * Called by the onboarding modal "Create empty profile" button.
+ * POSTs to /api/setup/create-master-cv, then navigates to a new session.
+ */
+async function onboardingCreateEmptyProfile() {
+  const btn      = document.getElementById('onboarding-create-btn');
+  const statusEl = document.getElementById('onboarding-modal-status');
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Creating profile…';
+  try {
+    const res  = await fetch('/api/setup/create-master-cv', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.error === 'already_exists'
+        ? 'File already exists — please reload the page.'
+        : (data.error || `Server error ${res.status}`);
+      if (statusEl) statusEl.textContent = msg;
+      if (btn) btn.disabled = false;
+      return;
+    }
+    // File created — now navigate to a new session
+    if (statusEl) statusEl.textContent = 'Profile created! Starting session…';
+    await createNewSessionAndNavigate();
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Session creation
 // ---------------------------------------------------------------------------
 
 async function createNewSessionAndNavigate() {
   const data = await createSession();
+  if (data.error === 'master_cv_missing') {
+    showOnboardingModal(data.master_cv_path || '');
+    return;
+  }
   if (!data.session_id) throw new Error('Failed to create session');
   // Clear any stale session path — the new session has no saved file yet.
   // If SESSION_PATH were left pointing at a previous session's file, the
@@ -128,6 +320,10 @@ async function createNewSessionAndNavigate() {
 
 async function createNewSessionInNewTab() {
   const data = await createSession();
+  if (data.error === 'master_cv_missing') {
+    showOnboardingModal(data.master_cv_path || '');
+    return;
+  }
   if (!data.session_id) throw new Error('Failed to create session');
   window.open(data.redirect_url || `/?session=${data.session_id}`, '_blank', 'noopener');
 }
@@ -221,14 +417,15 @@ function showSessionsLandingPanel(message = '') {
 
 function _restoreTabForPhase(sessionPhase) {
   const phaseTabMap = {
-    [PHASES.INIT]: 'job',
-    [PHASES.JOB_ANALYSIS]: 'analysis',
-    [PHASES.CUSTOMIZATION]: 'exp-review',
-    [PHASES.REWRITE_REVIEW]: 'rewrite',
-    [PHASES.SPELL_CHECK]: 'spell',
-    [PHASES.GENERATION]: 'generate',
-    [PHASES.LAYOUT_REVIEW]: 'layout',
-    [PHASES.REFINEMENT]: 'finalise',
+    [PHASES.INIT]:             'job',
+    [PHASES.JOB_ANALYSIS]:     'analysis',
+    [PHASES.CUSTOMIZATION]:    'exp-review',
+    [PHASES.REWRITE_REVIEW]:   'rewrite',
+    [PHASES.SPELL_CHECK]:      'spell',
+    [PHASES.GENERATION]:       'layout',
+    [PHASES.LAYOUT_REVIEW]:    'layout',
+    [PHASES.FINAL_GENERATION]: 'final_generate',
+    [PHASES.REFINEMENT]:       'download',
   };
   const targetTab = phaseTabMap[sessionPhase] || 'job';
 
@@ -242,10 +439,21 @@ function _restoreTabForPhase(sessionPhase) {
 function _resolveRestoredPhase(statusData) {
   const phase = statusData?.phase || PHASES.INIT;
 
-  // Guard against stale persisted phase values that moved past analysis while
-  // analysis data was never produced for this session.
+  // Guard: no job_analysis means we cannot be past the initial input step.
   if (!statusData?.job_analysis) {
     return PHASES.INIT;
+  }
+
+  // Guard: phase claims customizations were reviewed, but they were never
+  // generated (e.g. backend restarted after analyze_job but before
+  // recommend_customizations ran, or legacy sessions saved with the old
+  // premature-CUSTOMIZATION bug). Fall back so the user sees the Analysis
+  // step and can run Recommend Customizations from there.
+  if (
+    (phase === PHASES.CUSTOMIZATION || phase === PHASES.REWRITE_REVIEW)
+    && !statusData?.customizations
+  ) {
+    return PHASES.JOB_ANALYSIS;
   }
 
   return phase;
@@ -258,6 +466,22 @@ function _resolveRestoredPhase(statusData) {
 async function ensureSessionContext() {
   const urlSessionId = getSessionIdFromURL();
   if (!urlSessionId) {
+    // Auto-resume when exactly one active session exists — skip the modal (GAP-323).
+    try {
+      const activeRes = await fetch('/api/sessions/active');
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        const activeSessions = activeData.sessions || [];
+        if (activeSessions.length === 1 && activeSessions[0].path) {
+          const loaded = await loadSessionFile(activeSessions[0].path);
+          if (loaded) {
+            // Explain the auto-resume so users know they can switch (GAP-369).
+            appendMessage('system', 'ℹ️ Only one active session found — auto-resumed. Open <strong>Sessions</strong> to switch or start a new one.');
+            return true;
+          }
+        }
+      }
+    } catch (_) { /* fall through to modal */ }
     showSessionsLandingPanel();
     openSessionsModal({ required: true });
     return false;
@@ -265,6 +489,35 @@ async function ensureSessionContext() {
 
   stateManager.setSessionId(urlSessionId);
   return _claimCurrentSession(urlSessionId);
+}
+
+function _appendRestoredDecisionsSummary() {
+  const phase = stateManager.getPhase();
+  const customizations = stateManager.getTabData('customizations') || window.pendingRecommendations;
+  const parts = [];
+
+  if (customizations) {
+    const expCount = (customizations.recommended_experiences || []).length;
+    if (expCount > 0) parts.push(`${expCount} experience${expCount !== 1 ? 's' : ''} recommended`);
+    const skillCount = (customizations.recommended_skills || []).length;
+    if (skillCount > 0) parts.push(`${skillCount} skill${skillCount !== 1 ? 's' : ''} recommended`);
+  }
+
+  const decisions = window._savedDecisions || {};
+  const approvedRewrites = Array.isArray(window.approvedRewrites) ? window.approvedRewrites.length
+    : Object.keys(decisions.experience_decisions || {}).length;
+  if (approvedRewrites > 0) parts.push(`${approvedRewrites} rewrite${approvedRewrites !== 1 ? 's' : ''} approved`);
+
+  const ats = stateManager.getAtsScore();
+  if (ats && typeof ats.overall === 'number') {
+    parts.push(`ATS score ${Math.round(ats.overall)}%`);
+  }
+
+  if (parts.length > 0) {
+    const phaseLabel = SESSION_PHASE_LABELS_SHORT[phase] || String(phase).replace(/_/g, ' ');
+    const positionCtx = window._restoredPositionName ? ` for ${window._restoredPositionName}` : '';
+    appendMessage('system', `📋 Restored${positionCtx} at stage: ${phaseLabel} — ${parts.join(', ')}.`);
+  }
 }
 
 async function restoreSession() {
@@ -315,7 +568,17 @@ async function restoreSession() {
     // Restore UI-only prefs (activeReviewPane) from localStorage.
     restoreTabData({ uiPrefsOnly: serverHasData });
 
+    // Show a restored-decisions summary when the backend had live session data.
+    if (serverHasData) {
+      _appendRestoredDecisionsSummary();
+    }
+
     stateManager.setIsReconnecting(false);
+
+    // Run a background health check so the status pill reflects live connectivity.
+    if (typeof globalThis.testCurrentModel === 'function') {
+      globalThis.testCurrentModel().catch(() => {});
+    }
 
   } catch (error) {
     log.warn('Session restoration failed:', error);
@@ -368,6 +631,7 @@ function _hydrateStatusDerivedState(statusData) {
   window.questionAnswers = (statusData.post_analysis_answers && typeof statusData.post_analysis_answers === 'object')
     ? statusData.post_analysis_answers
     : {};
+  window._restoredPositionName = statusData.position_name || null;
 }
 
 function _hydrateStatusTabState(statusData) {
@@ -442,6 +706,13 @@ async function restoreBackendState() {
             previewGeneratedAt: generationData.preview_generated_at || null,
             previewRequestId: generationData.preview_request_id || null,
             confirmedAt: generationData.confirmed_at || null,
+            // Optional server-provided revision metadata (if backend exposes them)
+            contentRevision: (function() {
+              const v = generationData.content_revision ?? generationData.contentRevision;
+              return (v === undefined || v === null) ? 0 : (Number.isFinite(Number(v)) ? Number(v) : 0);
+            })(),
+            lastPreviewContentRevision: generationData.last_preview_content_revision ?? generationData.lastPreviewContentRevision ?? null,
+            lastFinalContentRevision: generationData.last_final_content_revision ?? generationData.lastFinalContentRevision ?? null,
           });
 
           if (hasCachedAtsScore) {
@@ -542,23 +813,29 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
 
     await fetchStatus();
 
+    // Run a background health check so the status pill reflects live connectivity.
+    if (typeof globalThis.testCurrentModel === 'function') {
+      globalThis.testCurrentModel().catch(() => {});
+    }
+
     // Rehydrate tabData and switch to the correct tab for the restored phase
     const sessionPhase = data.phase || PHASES.INIT;
     const phaseTabMap = {
-      [PHASES.INIT]:           'job',
-      [PHASES.JOB_ANALYSIS]:   'analysis',
-      [PHASES.CUSTOMIZATION]:  'exp-review',
-      [PHASES.REWRITE_REVIEW]: 'rewrite',
-      [PHASES.SPELL_CHECK]:    'spell',
-      [PHASES.GENERATION]:     'generate',
-      [PHASES.LAYOUT_REVIEW]:  'layout',
-      [PHASES.REFINEMENT]:     'finalise',
+      [PHASES.INIT]:             'job',
+      [PHASES.JOB_ANALYSIS]:     'analysis',
+      [PHASES.CUSTOMIZATION]:    'exp-review',
+      [PHASES.REWRITE_REVIEW]:   'rewrite',
+      [PHASES.SPELL_CHECK]:      'spell',
+      [PHASES.GENERATION]:       'layout',
+      [PHASES.LAYOUT_REVIEW]:    'layout',
+      [PHASES.FINAL_GENERATION]: 'final_generate',
+      [PHASES.REFINEMENT]:       'download',
     };
     const targetTab = phaseTabMap[sessionPhase] || 'job';
 
     const customizationPhases = [
       PHASES.CUSTOMIZATION, PHASES.REWRITE_REVIEW, PHASES.SPELL_CHECK,
-      PHASES.GENERATION, PHASES.LAYOUT_REVIEW, PHASES.REFINEMENT,
+      PHASES.GENERATION, PHASES.LAYOUT_REVIEW, PHASES.FINAL_GENERATION, PHASES.REFINEMENT,
     ];
     if (customizationPhases.includes(sessionPhase)) {
       try {
@@ -569,22 +846,34 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
       } catch (_) { /* non-fatal */ }
     }
 
-    // For rewrite_review phase, pre-populate the rewrite panel cache
-    if (sessionPhase === PHASES.REWRITE_REVIEW) {
+    // For rewrite_review phase, pre-populate the rewrite panel cache.
+    // For any later phase, seed _backendRewriteAudit so the Download tab audit log works.
+    const rewritePhasesIncludingLater = [
+      PHASES.REWRITE_REVIEW, PHASES.SPELL_CHECK, PHASES.GENERATION,
+      PHASES.LAYOUT_REVIEW, PHASES.FINAL_GENERATION, PHASES.REFINEMENT,
+    ];
+    if (rewritePhasesIncludingLater.includes(sessionPhase)) {
       try {
         const rr = await fetch('/api/rewrites');
         if (rr.ok) {
           const rd = parseRewritesResponse(await rr.json());
-          const rewrites = rd.rewrites || [];
-          const warnings = rd.persuasion_warnings || [];
-          rewriteDecisions = {};
-          renderRewritePanel(rewrites, warnings);
+          // Seed cold-restore fallback so _renderRewriteAuditLog() has data
+          // whether the user is on the Rewrites tab or the Download tab.
+          if (typeof window.setBackendRewriteAudit === 'function') {
+            window.setBackendRewriteAudit(rd.rewrite_audit || []);
+          }
+          if (sessionPhase === PHASES.REWRITE_REVIEW) {
+            const rewrites = rd.rewrites || [];
+            const warnings = rd.persuasion_warnings || [];
+            rewriteDecisions = {};
+            renderRewritePanel(rewrites, warnings);
+          }
         }
       } catch (_) { /* non-fatal */ }
     }
 
     switchTab(targetTab);
-    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${data.phase || PHASES.INIT})`);
+    appendMessage('system', `✅ Session restored: ${data.position_name || 'Unnamed'} (${SESSION_PHASE_LABELS[data.phase] || String(data.phase || PHASES.INIT).replace(/_/g, ' ')})`);
     return true;
   } catch (err) {
     appendMessage('system', `❌ Error restoring session: ${err.message}`);
@@ -597,18 +886,65 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
 // ---------------------------------------------------------------------------
 
 async function promptRenameCurrentSession() {
-  const current = (document.getElementById('position-title')?.textContent || '').trim();
-  const newName = prompt('Rename session:', current);
-  if (!newName || !newName.trim() || newName.trim() === current) return;
-  try {
-    const res  = await fetch('/api/rename-current-session', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ new_name: newName.trim() }),
-    });
-    const data = await res.json();
-    if (data.ok) await fetchStatus();
-    else alert(`Rename failed: ${data.error}`);
-  } catch (e) { alert(`Rename error: ${e.message}`); }
+  const titleEl = document.getElementById('position-title');
+  const renameBtn = document.getElementById('rename-session-btn');
+  const current = (titleEl?.textContent || '').trim();
+
+  // Build inline input widget so we never call window.prompt()
+  const wrapper = document.createElement('span');
+  wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:4px;';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.setAttribute('aria-label', 'New session name');
+  input.style.cssText = 'font-size:inherit;padding:1px 4px;border:1px solid #94a3b8;border-radius:3px;width:220px;';
+  const okBtn = document.createElement('button');
+  okBtn.textContent = '✓';
+  okBtn.title = 'Save rename';
+  okBtn.setAttribute('aria-label', 'Save rename');
+  okBtn.style.cssText = 'background:#10b981;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:1px 6px;font-size:1em;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '✕';
+  cancelBtn.title = 'Cancel rename';
+  cancelBtn.setAttribute('aria-label', 'Cancel rename');
+  cancelBtn.style.cssText = 'background:#6b7280;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:1px 6px;font-size:1em;';
+  wrapper.append(input, okBtn, cancelBtn);
+
+  if (titleEl) titleEl.style.display = 'none';
+  if (renameBtn) renameBtn.style.display = 'none';
+  titleEl?.parentElement?.insertBefore(wrapper, titleEl);
+  input.focus();
+  input.select();
+
+  async function doRename() {
+    const newName = input.value.trim();
+    cleanup();
+    if (!newName || newName === current) return;
+    try {
+      const res  = await fetch('/api/rename-current-session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_name: newName }),
+      });
+      const data = await res.json();
+      if (data.ok) await fetchStatus();
+      else if (typeof showToast === 'function') showToast(`Rename failed: ${data.error}`, 'error');
+    } catch (e) {
+      if (typeof showToast === 'function') showToast(`Rename error: ${e.message}`, 'error');
+    }
+  }
+
+  function cleanup() {
+    wrapper.remove();
+    if (titleEl) titleEl.style.display = '';
+    if (renameBtn) renameBtn.style.display = '';
+  }
+
+  okBtn.addEventListener('click', doRename);
+  cancelBtn.addEventListener('click', cleanup);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doRename();
+    if (e.key === 'Escape') cleanup();
+  });
 }
 
 function saveTabData() {
@@ -671,7 +1007,13 @@ export {
   formatSessionTimestamp,
   createNewSessionAndNavigate,
   createNewSessionInNewTab,
+  onboardingCreateEmptyProfile,
+  showOnboardingModal,
+  maybeShowWelcomeModal,
+  showWelcomeModal,
+  closeWelcomeModal,
   _claimCurrentSession,
+  _resolveRestoredPhase,
   showSessionsLandingPanel,
   ensureSessionContext,
   restoreSession,

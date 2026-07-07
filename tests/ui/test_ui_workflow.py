@@ -152,10 +152,10 @@ class TestFullWorkflow:
         assert not errors, f"JS errors on page load: {errors}"
 
     def test_all_workflow_step_elements_rendered(self, page: Page):
-        """All 8 workflow step elements are in the DOM."""
+        """All workflow step elements are in the DOM."""
         steps = ["step-job", "step-analysis", "step-customizations",
-                 "step-rewrite", "step-spell", "step-generate",
-                 "step-layout", "step-finalise"]
+                 "step-rewrite", "step-spell",
+                 "step-layout", "step-download"]
         for step in steps:
             el = page.locator(f"#{step}")
             assert el.count() >= 1, \
@@ -170,8 +170,8 @@ class TestFullWorkflow:
             "tab-achievements-review", "tab-summary-review",
             "tab-publications-review",
             "tab-rewrite", "tab-spell",
-            "tab-editor",    # hidden by design (GAP-19)
-            "tab-generate",  # renamed from tab-cv
+            "tab-editor",        # hidden by design (GAP-19)
+            "tab-final_generate",
             "tab-layout", "tab-download",
         ]
         for tab in tabs:

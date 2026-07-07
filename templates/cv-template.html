@@ -13,7 +13,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CV - {{ personal_info.name }}</title>
     <meta name="author"      content="{{ personal_info.name }}">
-    <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.job_title }}">
+    <meta name="description" content="{{ personal_info.name }} – {{ template_metadata.applicant_tagline }}">
     <!-- Schema.org/Person structured data for ATS parsers -->
     <script type="application/ld+json">
 {{ json_ld_str | json_script }}
@@ -82,43 +82,20 @@
             margin-bottom: 20px;
         }
 
-        #page-one {
-            height: 279.4mm;
-            overflow: hidden;
-        }
-
-        #page-two {
-            min-height: 279.4mm;
-            height: auto;
-            overflow: visible;
-        }
-
-        #page-one .left-col {
-            width: 32%;
-            padding: 30px 20px;
-            border-right: 1px solid var(--border-color);
-            flex-shrink: 0;
-            background-color: var(--sidebar-bg);
-        }
-
-        #page-one .right-col {
-            width: 68%;
-            padding: 40px 30px;
-        }
-
-        #page-two .left-col {
+        /* Issue #70: unified column selectors — single #cv-body div flows continuously */
+        #cv-body .left-col {
             width: 32%;
             padding: 40px 20px;
             border-right: 1px solid var(--border-color);
             flex-shrink: 0;
             background-color: var(--sidebar-bg);
-            min-height: 100%;
             align-self: stretch;
         }
 
-        #page-two .right-col {
-            width: 68%;
-            padding: 40px 30px;
+        #cv-body .right-col {
+            flex: 1;
+            padding: 0 30px 40px;
+            min-width: 0;
         }
 
         /* --- Components & Styles --- */
@@ -202,7 +179,7 @@
             break-inside: avoid;
         }
 
-        .skill-group h4 {
+        .skill-group h3 {
             font-size: 0.95rem;
             font-weight: 700;
             color: var(--secondary-color);
@@ -235,6 +212,7 @@
             font-size: 2.2rem;
             font-weight: 700;
             color: var(--primary-color);
+            margin-top: 0;
             margin-bottom: 5px;
             line-height: 1.2;
         }
@@ -397,61 +375,67 @@
                 page-break-after: avoid;
             }
 
-            #page-one {
-                height: calc(11in - (2 * var(--page-margin)));
-                min-height: calc(11in - (2 * var(--page-margin)));
-                overflow: hidden;
-            }
-
-            #page-two {
-                min-height: calc(11in - (2 * var(--page-margin)));
-                page-break-before: always;
-                overflow: visible;
-                background: linear-gradient(
+            /* Issue #70: single continuous two-column layout in print.
+               Left and right columns each flow across pages as whole sections;
+               no forced page break between content groups. */
+            #cv-body {
+                display: block;
+                /* Faux-column technique: paint sidebar bg + border-rule on every
+                   page fragment so the sidebar colour fills full page height even
+                   when sidebar content ends before the right column does.
+                   Use !important to override .page { background: white !important }.
+                   Use literal colours (not var()) for reliable Chromium print rendering.
+                   -webkit-box-decoration-break: clone reproduces the gradient on each page. */
+                background-image: linear-gradient(
                     to right,
-                    var(--sidebar-bg) 0,
-                    var(--sidebar-bg) 32%,
-                    white 32%,
-                    white 100%
+                    #eef2f5 calc(32% - 1px),
+                    #d1d8dd calc(32% - 1px),
+                    #d1d8dd 32%,
+                    white 32%
                 ) !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-                -webkit-box-decoration-break: clone;
-                box-decoration-break: clone;
-            }
-
-            /* Hide screen-only page-break markers in print */
-            .page-break-marker { display: none; }
-            #page-one .left-col,
-            #page-two .left-col {
-                width: 32%;
-                float: left;
-                background-color: var(--sidebar-bg) !important;
-                min-height: calc(11in - (2 * var(--page-margin)));
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-                -webkit-box-decoration-break: clone;
-                box-decoration-break: clone;
-            }
-
-            #page-two .left-col {
                 background-color: transparent !important;
-                min-height: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                -webkit-box-decoration-break: clone;
+                box-decoration-break: clone;
             }
 
-            #page-one .right-col,
-            #page-two .right-col {
-                width: auto;
+            #cv-body .left-col {
+                float: left;
+                width: 32%;
+                /* Background comes from parent gradient; transparent here avoids
+                   double-painting and lets the full-height gradient show through. */
+                background-color: transparent !important;
+                border-right: none; /* simulated by parent gradient */
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                -webkit-box-decoration-break: clone;
+                box-decoration-break: clone;
+            }
+
+            #cv-body .right-col {
                 margin-left: 32%;
                 overflow: visible;
                 background: white !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                padding-top: 0;
             }
 
-            #page-one .right-col {
-                padding-top: 40px;
+            /* Right-column sections should flow continuously across pages.
+               Title + first content block keep-together rules above still apply. */
+            #cv-body .right-col .section {
+                break-inside: auto;
+                page-break-inside: auto;
             }
+
+            #cv-body .right-col .pub-section.pub-start-new-page {
+                break-before: page;
+                page-break-before: always;
+            }
+
+            /* Hide screen-only page-break markers in print */
+            .page-break-marker { display: none; }
 
             a {
                 text-decoration: none;
@@ -462,6 +446,15 @@
             @page {
                 size: letter;
                 margin: var(--page-margin);
+                @bottom-left {
+                    content: "Generated: {{ template_metadata.generated_date[:10] }}";
+                    font-family: var(--font-body, Arial, sans-serif);
+                    font-size: 7.5pt;
+                    color: #ccc;
+                    padding-left: 2pt;
+                    padding-bottom: 2pt;
+                    font-style: italic;
+                }
                 @bottom-right {
                     content: counter(page) " / " counter(pages);
                     font-family: var(--font-body, Arial, sans-serif);
@@ -474,6 +467,9 @@
                 @top-center { content: none; }
                 @top-right { content: none; }
             }
+
+            /* Hide screen timestamp in print (handled by @page @bottom-left) */
+            .page-timestamp { display: none; }
         }
 
         /* Screen-only page-break guide lines (injected by JS) */
@@ -502,39 +498,50 @@
         .pub-list { list-style: decimal; padding-left: 1.4em; margin: 0; }
         .pub-item { margin-bottom: 0.7em; font-size: 0.88em; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; }
         .pub-citation { color: var(--text-main); }
+        .pub-citation-link { color: var(--text-main); text-decoration: underline; text-decoration-color: var(--accent-color); }
         .pub-section { page-break-inside: auto; break-inside: auto; }
         .pub-count { font-size: 0.75em; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
-        .pub-venue-warn { color: #dc7900; font-size: 0.85em; margin-left: 4px; cursor: help; }
         .pub-first-author { color: #1d4ed8; font-size: 0.8em; margin-left: 4px; cursor: help; }
+        .pub-venue-warning { color: #b45309; font-size: 0.8em; margin-left: 4px; font-style: italic; cursor: help; }
 
         /* Certifications in sidebar */
         .cert-item { margin-bottom: 0.5em; }
         .cert-name { display: block; font-size: 0.82em; font-weight: 600; color: var(--text-main); }
         .cert-issuer { display: block; font-size: 0.78em; color: var(--text-muted); }
+
+        /* Screen-only generation timestamp (hidden in print; print uses @page @bottom-left) */
+        .page-timestamp {
+            font-size: 0.68rem;
+            color: #ccc;
+            font-style: italic;
+            padding: 6px 16px 10px;
+            text-align: left;
+            background: white;
+        }
     </style>
 </head>
 <body>
     <div class="page-container">
-        <!-- PAGE ONE: Sidebar + Header, Summary, Achievements -->
-        <div id="page-one" class="page">
+        <!-- CV BODY: single div; both columns flow naturally across print pages -->
+        <div id="cv-body" class="page">
             <aside class="left-col">
                 <div class="contact-info">
                     <div class="sidebar-title">Contact</div>
                     {% if personal_info.contact.email | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fas fa-envelope"></i>
+                        <i class="fas fa-envelope" aria-hidden="true"></i>
                         <a href="mailto:{{ personal_info.contact.email }}">{{ personal_info.contact.email }}</a>
                     </div>
                     {% endif %}
                     {% if personal_info.contact.phone | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fas fa-phone"></i>
+                        <i class="fas fa-phone" aria-hidden="true"></i>
                         <span>{{ personal_info.contact.phone }}</span>
                     </div>
                     {% endif %}
                     {% if personal_info.contact.linkedin | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fab fa-linkedin"></i>
+                        <i class="fab fa-linkedin" aria-hidden="true"></i>
                         {% set linkedin_href = personal_info.contact.linkedin_href | default('') | safe_url %}
                         {% if linkedin_href %}
                         <a href="{{ linkedin_href }}">{{ personal_info.contact.linkedin | replace('https://','') }}</a>
@@ -545,7 +552,7 @@
                     {% endif %}
                     {% if personal_info.contact.website | default('') | trim %}
                     <div class="contact-item">
-                        <i class="fas fa-globe"></i>
+                        <i class="fas fa-globe" aria-hidden="true"></i>
                         {% set website_href = personal_info.contact.website_href | default('') | safe_url %}
                         {% if website_href %}
                         <a href="{{ website_href }}">{{ personal_info.contact.website | replace('https://','') }}</a>
@@ -600,58 +607,28 @@
                     </ul>
                 </div>
                 {% endif %}
-            </aside>
 
-            <main class="right-col">
-                <header class="header">
-                    <h1 class="name">{{ personal_info.name }}</h1>
-                    <div class="job-title">{{ template_metadata.job_title }}</div>
-                </header>
-
-                <section class="section">
-                    <h2 class="section-title"><i class="fas fa-user-circle"></i> Summary</h2>
-                    <p class="summary-text">
-                        {{ professional_summary }}
-                    </p>
-                </section>
-
-                {% if achievements %}
-                <section class="section">
-                    <h2 class="section-title"><i class="fas fa-trophy"></i> Selected Achievements</h2>
-                    <ul class="achievement-list">
-                        {% for ach in achievements %}
-                        <li>{{ (ach.text or ach.description or ach.summary or ach.title or ach.name) if ach is mapping else ach }}</li>
-                        {% endfor %}
-                    </ul>
-                </section>
-                {% endif %}
-            </main>
-        </div>
-
-        <!-- PAGE TWO: Skills + Experience (Continuation) -->
-        <div id="page-two" class="page">
-            <aside class="left-col">
                 {% if skills_by_category %}
                 <section class="section">
                           {# duckflow:
                               id: cv_render.templates_cv_template.L630
                               kind: artifact
-                              timestamp: "2026-03-27T02:31:32Z"
+                              timestamp: "2026-04-07T22:00:00Z"
                               status: live
                               reads:
                               - "artifact:human_skills_title"
                               writes:
-                              - artifact:page_two.skills_heading
-                              notes: Uses the resolved skills title for the visual skills heading in the rendered HTML template. #}
-                    <h2 class="section-title"><i class="fas fa-code"></i> {{ human_skills_title | default('Technical Skills') }}</h2>
+                              - artifact:cv_body.skills_heading
+                              notes: Skills section flows continuously after sidebar contact/edu/awards in the unified left column. #}
+                    <h2 class="section-title"><i class="fas fa-code" aria-hidden="true"></i> {{ human_skills_title | default('Technical Skills') }}</h2>
                     <div class="skills-grid">
                         {% for cat in skills_by_category %}
                         <div class="skill-group">
-                            <h4>{{ cat.category }}</h4>
+                            <h3>{{ cat.category }}</h3>
                             <ul class="skill-list">
-                                {% for skill in cat.skills %}
-                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
-                                {% endfor %}
+                                {% for skill in cat.skills %}{% if not skill.candidate_to_confirm %}
+                                <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years and template_metadata.skills_show_experience != 'never' and (template_metadata.skills_show_experience == 'always' or skill.show_experience != false) %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
+                                {% endif %}{% endfor %}
                             </ul>
                         </div>
                         {% endfor %}
@@ -661,13 +638,38 @@
             </aside>
 
             <main class="right-col">
+                <header class="header">
+                    <h1 class="name">{{ personal_info.name }}</h1>
+                    {% if template_metadata.applicant_tagline | default('') | trim %}
+                    <div class="job-title">{{ template_metadata.applicant_tagline }}</div>
+                    {% endif %}
+                </header>
+
+                <section class="section">
+                    <h2 class="section-title"><i class="fas fa-user-circle" aria-hidden="true"></i> Summary</h2>
+                    <p class="summary-text">
+                        {{ professional_summary }}
+                    </p>
+                </section>
+
+                {% if achievements %}
+                <section class="section">
+                    <h2 class="section-title"><i class="fas fa-trophy" aria-hidden="true"></i> Selected Achievements</h2>
+                    <ul class="achievement-list">
+                        {% for ach in achievements %}
+                        <li>{{ (ach.text or ach.description or ach.summary or ach.title or ach.name) if ach is mapping else ach }}</li>
+                        {% endfor %}
+                    </ul>
+                </section>
+                {% endif %}
+
                 {% if experiences %}
                 <section class="section">
-                    <h2 class="section-title"><i class="fas fa-briefcase"></i> Experience</h2>
+                    <h2 class="section-title"><i class="fas fa-briefcase" aria-hidden="true"></i> Experience</h2>
                     {% for exp in experiences %}
                     <div class="job-entry">
                         <div class="job-header">
-                            <div class="job-role">{{ exp.title }}</div>
+                            <h3 class="job-role">{{ exp.title }}</h3>
                             <div class="job-company">{{ exp.company }}</div>
                         </div>
                         <div class="job-dates">{{ exp.start_date }} – {{ exp.end_date }}</div>
@@ -683,11 +685,12 @@
                     {% endfor %}
                 </section>
                 {% endif %}
+
                 {% if publications %}
-                <section class="section pub-section">
-                    <h2 class="section-title"><i class="fas fa-file-alt"></i>
+                <section class="section pub-section{% if template_metadata.publications_start_new_page %} pub-start-new-page{% endif %}">
+                    <h2 class="section-title"><i class="fas fa-file-alt" aria-hidden="true"></i>
                         {% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}
-                        Selected Publications ({{ publications | length }})
+                        Selected Publications
                         {% else %}
                         Publications
                         {% endif %}
@@ -695,12 +698,19 @@
                     <ol class="pub-list">
                         {% for pub in publications %}
                         <li class="pub-item">
-                            <span class="pub-citation">{{ pub.formatted_citation }}</span>
+                            {% set pub_href = pub.publication_url | default('') | safe_url %}
+                            {% if pub_href and pub.citation_title | default('') | trim %}
+                            <span class="pub-citation">{{ pub.citation_prefix | citation_markdown_to_html }}<a class="pub-citation-link" href="{{ pub_href }}">{{ pub.citation_title | citation_markdown_to_html }}</a>{{ pub.citation_suffix | citation_markdown_to_html }}</span>
+                            {% elif pub_href %}
+                            <a class="pub-citation pub-citation-link" href="{{ pub_href }}">{{ pub.formatted_citation | citation_markdown_to_html }}</a>
+                            {% else %}
+                            <span class="pub-citation">{{ pub.formatted_citation | citation_markdown_to_html }}</span>
+                            {% endif %}
                             {% if pub.is_first_author %}
                             <span class="pub-first-author" title="First author">★</span>
                             {% endif %}
-                            {% if pub.venue_warning %}
-                            <span class="pub-venue-warn" title="{{ pub.venue_warning }}">⚠</span>
+                            {% if pub.venue_warning | default('') %}
+                            <span class="pub-venue-warning" title="{{ pub.venue_warning | e }}">⚠ [venue unavailable]</span>
                             {% endif %}
                         </li>
                         {% endfor %}
@@ -709,6 +719,7 @@
                 {% endif %}
             </main>
         </div>
+        <div class="page-timestamp">Generated: {{ template_metadata.generated_date[:10] }}</div>
     </div>
 
     <!-- ================================================================
@@ -719,7 +730,8 @@
     <section id="plaintext" style="display:none;visibility:hidden;" aria-hidden="true"><pre>
 ================================================================================
 {{ personal_info.name }}
-{{ template_metadata.job_title }}
+{% if template_metadata.applicant_tagline | default('') | trim %}{{ template_metadata.applicant_tagline }}
+{% endif %}
 ================================================================================
 {% if personal_info.contact.email %}Email: {{ personal_info.contact.email }}
 {% endif %}{% if personal_info.contact.phone %}Phone: {{ personal_info.contact.phone }}
@@ -766,7 +778,7 @@ EDUCATION
     notes: Emits the fixed ATS plain-text skills heading inside the hidden plaintext resume block. #}
 SKILLS
 --------------------------------------------------------------------------------
-{% for cat in skills_by_category %}{{ cat.category }}: {% for skill in cat.skills %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% for cat in skills_by_category %}{{ cat.category }}: {% set ns = namespace(first=true) %}{% for skill in cat.skills %}{% if not skill.candidate_to_confirm %}{% if not ns.first %}, {% endif %}{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% endif %}{% set ns.first = false %}{% endif %}{% endfor %}
 {% endfor %}{% endif %}
 {% if certifications %}
 --------------------------------------------------------------------------------
@@ -776,7 +788,7 @@ CERTIFICATIONS
 {% endfor %}{% endif %}
 {% if publications %}
 --------------------------------------------------------------------------------
-SELECTED PUBLICATIONS
+{% if template_metadata.total_publications_count and template_metadata.total_publications_count > (publications | length) %}SELECTED PUBLICATIONS{% else %}PUBLICATIONS{% endif %}
 --------------------------------------------------------------------------------
 {% for pub in publications %}{{ loop.index }}. {{ pub.formatted_citation }}
 {% endfor %}{% endif %}
@@ -803,7 +815,7 @@ SELECTED PUBLICATIONS
     }
 
     function run() {
-        var flowPage = document.getElementById('page-two');
+        var flowPage = document.getElementById('cv-body');
         if (flowPage) addMarkers(flowPage);
     }
 
@@ -812,6 +824,41 @@ SELECTED PUBLICATIONS
     } else {
         run();
     }
+})();
+</script>
+
+<script>
+/* Extend #cv-body to fill the bottom of the last page so the sidebar
+   gradient covers full page height even when content ends mid-page.
+   Runs on load (for Chromium headless --print-to-pdf) and on beforeprint
+   (for interactive browser printing). */
+(function () {
+    var PAGE_IN = 11;     // US Letter height in inches
+    var PX_PER_IN = 96;   // CSS reference pixels per inch
+
+    function fillLastPage() {
+        var el = document.getElementById('cv-body');
+        if (!el) return;
+
+        // Read --page-margin CSS variable (e.g. "0.5in"); default 0.5in
+        var marginStr = getComputedStyle(document.documentElement)
+            .getPropertyValue('--page-margin').trim();
+        var marginIn = parseFloat(marginStr) || 0.5;
+
+        var contentH = Math.round((PAGE_IN - 2 * marginIn) * PX_PER_IN);
+
+        el.style.minHeight = '';           // reset any prior extension
+        var h = el.offsetHeight;
+        var pages = Math.ceil(h / contentH) || 1;
+        el.style.minHeight = (pages * contentH) + 'px';
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fillLastPage);
+    } else {
+        fillLastPage();
+    }
+    window.addEventListener('beforeprint', fillLastPage);
 })();
 </script>
 </body>

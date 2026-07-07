@@ -23,6 +23,7 @@ const log = getLogger('skills-review');
 
 import { stateManager } from './state-manager.js';
 import { eyeSlashIcon } from './review-icons.js';
+import { CONFIDENCE_COLUMN_LEGEND } from './recommendation-helpers.js';
 
 // ── Years-from-experience helpers ─────────────────────────────────────────
 
@@ -277,6 +278,7 @@ async function saveSkillQualifierOverride(skillName, qualifiers) {
   const normalizedProficiency = String(qualifiers?.proficiency || '').trim();
   const normalizedSubskills = _normalizeSkillSubskills(qualifiers?.subskills);
   const normalizedParenthetical = String(qualifiers?.parenthetical || '').trim();
+  const normalizedSkillType = String(qualifiers?.skill_type || '').trim().toLowerCase() || null;
 
   const sk = (window._skillsOrdered || []).find(s => (typeof s === 'string' ? s : s.name || s) === normalizedSkill);
   if (sk && typeof sk === 'object') {
@@ -290,15 +292,20 @@ async function saveSkillQualifierOverride(skillName, qualifiers) {
     else delete sk.parenthetical;
   }
 
+  const payload = {
+    skill: normalizedSkill,
+    proficiency: normalizedProficiency,
+    subskills: normalizedSubskills,
+    parenthetical: normalizedParenthetical,
+  };
+  if ('skill_type' in (qualifiers || {})) {
+    payload.skill_type = normalizedSkillType;
+  }
+
   const response = await fetch('/api/review-skill-qualifiers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      skill: normalizedSkill,
-      proficiency: normalizedProficiency,
-      subskills: normalizedSubskills,
-      parenthetical: normalizedParenthetical,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -420,13 +427,34 @@ function _buildSkillCategoryManagerHtml() {
               aria-label="Rename skill category ${escapeHtml(category)}"
               style="flex:1;min-width:0;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;"
             />
-            <button class="icon-btn" data-action="category-up" data-category="${escapeHtml(category)}" title="Move category up" ${index === 0 ? 'disabled' : ''}>↑</button>
-            <button class="icon-btn" data-action="category-down" data-category="${escapeHtml(category)}" title="Move category down" ${index === categories.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="icon-btn" data-action="category-up" data-category="${escapeHtml(category)}" aria-label="Move ${escapeHtml(category)} category up" title="Move category up" ${index === 0 ? 'disabled' : ''}>↑</button>
+            <button class="icon-btn" data-action="category-down" data-category="${escapeHtml(category)}" aria-label="Move ${escapeHtml(category)} category down" title="Move category down" ${index === categories.length - 1 ? 'disabled' : ''}>↓</button>
           </div>
         `).join('')}
       </div>
     </div>
   `;
+}
+
+// ── Rerun snapshot (change badge for skills) ─────────────────────────────────
+function _skillSnapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `skill_snap_${sid}` : null;
+  } catch (_) { return null; }
+}
+function _saveSkillSnapshot(recommendedNames) {
+  const key = _skillSnapshotKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify([...recommendedNames])); } catch (_) {}
+}
+function _getSkillSnapshot() {
+  const key = _skillSnapshotKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch (_) { return null; }
 }
 
 // ── Build review table (fetch + initialise) ────────────────────────────────
@@ -449,6 +477,13 @@ async function buildSkillsReviewTable() {
     allSkills = statusData.all_skills || [];
     persistedExtraSkills = statusData.extra_skills || [];
     window._allExperiences = statusData.all_experiences || [];
+    const qualOverrides = statusData.skill_qualifier_overrides || {};
+    window._skillTypeOverrides = window._skillTypeOverrides || {};
+    for (const [skillName, overrides] of Object.entries(qualOverrides)) {
+      if (overrides && overrides.skill_type) {
+        window._skillTypeOverrides[skillName.toLowerCase()] = overrides.skill_type;
+      }
+    }
   } catch (error) {
     log.error('Error fetching all skills:', error);
     // Fallback to just recommended skills
@@ -495,14 +530,36 @@ async function buildSkillsReviewTable() {
   if (!window._skillsOrdered) {
     const recommendationOrder = { 'Emphasize': 0, 'Include': 1, 'De-emphasize': 2, 'Omit': 3 };
     const masterSkills  = allSkills.filter(s => !s._isNew);
+
+    // Role-aware category scoring: categories with more required/nice-to-have job skills rank higher
+    const categoryScores = {};
+    for (const skill of masterSkills) {
+      const cat  = typeof skill === 'object' ? (skill.category || '') : '';
+      const name = (typeof skill === 'string' ? skill : skill.name || skill).toLowerCase();
+      if (cat) {
+        categoryScores[cat] = (categoryScores[cat] || 0)
+          + (hardSkillSet.has(name) ? 2 : softSkillSet.has(name) ? 1 : 0);
+      }
+    }
+
     const sortedMaster  = masterSkills.slice().sort((a, b) => {
       const aName  = typeof a === 'string' ? a : a.name || a;
       const bName  = typeof b === 'string' ? b : b.name || b;
-      const aOrder = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
-      const bOrder = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
-      return aOrder - bOrder;
+      const aRec   = recommendationOrder[getSkillRecommendation(aName, data)] ?? 3;
+      const bRec   = recommendationOrder[getSkillRecommendation(bName, data)] ?? 3;
+      if (aRec !== bRec) return aRec - bRec;
+      // Within the same recommendation tier, surface role-relevant categories first
+      const aCat   = typeof a === 'object' ? (a.category || '') : '';
+      const bCat   = typeof b === 'object' ? (b.category || '') : '';
+      return (categoryScores[bCat] || 0) - (categoryScores[aCat] || 0);
     });
     window._skillsOrdered = [...allSkills.filter(s => s._isNew), ...sortedMaster];
+
+    // Apply job-analysis-derived category order from backend (GAP-86)
+    const backendOrder = (stateManager.getTabData('customizations') || {}).skill_category_order;
+    if (Array.isArray(backendOrder) && backendOrder.length > 0) {
+      window._skillCategoryOrder = backendOrder;
+    }
   } else {
     const knownNames = new Set(window._skillsOrdered.map(s => (typeof s === 'string' ? s : s.name || s)));
     for (const sk of allSkills) {
@@ -512,6 +569,13 @@ async function buildSkillsReviewTable() {
   }
 
   const recommendedSet = new Set(data.recommended_skills || []);
+
+  // Compute which recommendations are new since last render (rerun change badges)
+  const prevSkillSnap = _getSkillSnapshot();
+  const newRecommendedSkills = prevSkillSnap
+    ? new Set([...recommendedSet].filter(name => !prevSkillSnap.has(name)))
+    : new Set();
+  _saveSkillSnapshot(recommendedSet);
 
   // Initialise saved decisions
   const savedSkillDecs = window._savedDecisions?.skill_decisions || {};
@@ -529,12 +593,12 @@ async function buildSkillsReviewTable() {
     userSelections.skills[skillName] = savedSkillDecs[skillName] || defaultAction;
   }
 
-  _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet);
+  _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet, newRecommendedSkills);
 }
 
 // ── Render table HTML ──────────────────────────────────────────────────────
 
-function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet) {
+function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet, newRecommendedSkills = new Set()) {
   if (!container) container = document.getElementById('skills-table-container');
   if (!container) return;
   if (!recommendedSet) recommendedSet = new Set((window.pendingRecommendations?.recommended_skills) || []);
@@ -603,7 +667,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
           <th>Sub-skills</th>
           <th>Parenthetical</th>
           <th>Recommendation</th>
-          <th>Confidence</th>
+          <th title="${CONFIDENCE_COLUMN_LEGEND}">Confidence ⓘ</th>
           <th>Reasoning</th>
           <th>Matched Experiences</th>
           <th>Your Selection</th>
@@ -628,9 +692,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   };
 
   skills.forEach((skill, rowIdx) => {
-    const skillName      = typeof skill === 'string' ? skill : skill.name || skill;
-    const isNew          = (skill._isNew === true);
-    const isRecommended  = recommendedSet.has(skillName);
+    const skillName            = typeof skill === 'string' ? skill : skill.name || skill;
+    const isNew                = (skill._isNew === true);
+    const isCandidateToConfirm = typeof skill === 'object' && skill.candidate_to_confirm === true;
+    const isRecommended        = recommendedSet.has(skillName);
     const recommendation = getSkillRecommendation(skillName, data);
     const confidence     = getSkillConfidence(skillName, data);
     const reasoning      = getSkillReasoning(skillName, data);
@@ -659,14 +724,40 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
         ? '<span title="Added for this session only" style="margin-left:6px;font-size:10px;color:#0f766e;border:1px solid #0f766e;border-radius:3px;padding:1px 5px;cursor:help;">Session only</span>'
         : '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>')
       : '';
+    const _evidenceText = isCandidateToConfirm && typeof skill === 'object' ? String(skill.evidence || '').trim() : '';
+    const _evidenceFallback = 'Confirm this skill is genuinely demonstrated in your experience before including it.';
+    const _evidenceTip = _evidenceText ? `Weak evidence — ${_evidenceText}` : `Weak evidence — ${_evidenceFallback}`;
+    const candidateBadge = isCandidateToConfirm
+      ? `<span title="${escapeHtml(_evidenceTip)}" aria-label="${escapeHtml(_evidenceTip)}" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ ${_evidenceText ? 'Weak evidence' : 'Verify evidence'}</span>`
+      : '';
+    const evidenceNote = isCandidateToConfirm && _evidenceText
+      ? `<small style="display:block;margin-top:3px;font-size:0.78em;color:#9f1239;">${escapeHtml(_evidenceText)}</small>`
+      : '';
+    const rerunNewBadge = newRecommendedSkills.has(skillName)
+      ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
+      : '';
     const skillNameLower  = skillName.toLowerCase();
-    const skillTypeBadge  = hardSkillSet.has(skillNameLower)
-      ? '<span title="Required by job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:1px 5px;">Hard</span>'
-      : softSkillSet?.has(skillNameLower)
-        ? '<span title="Nice-to-have per job description" style="margin-left:5px;font-size:10px;font-weight:600;color:#6b21a8;background:#f3e8ff;border-radius:3px;padding:1px 5px;">Soft</span>'
-        : '';
+    const _typeOverride   = (window._skillTypeOverrides || {})[skillNameLower];
+    const _baseType       = hardSkillSet.has(skillNameLower) ? 'hard'
+      : softSkillSet?.has(skillNameLower) ? 'soft' : null;
+    const _effectiveType  = _typeOverride || _baseType;
+    const _isOverridden   = !!_typeOverride && _typeOverride !== _baseType;
+    const _toggleTarget   = _effectiveType === 'hard' ? 'soft'
+      : _effectiveType === 'soft' ? null : 'hard';
+    const _badgeTitle     = _isOverridden
+      ? `User override: ${_effectiveType} (original: ${_baseType || 'none'}) — click to cycle`
+      : _effectiveType
+        ? `${_effectiveType === 'hard' ? 'Required' : 'Nice-to-have'} per job description — click to override`
+        : 'Not classified — click to mark as Hard';
+    const _badgeStyle     = _effectiveType === 'hard'
+      ? `margin-left:5px;font-size:10px;font-weight:600;color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:1px 5px;cursor:pointer;${_isOverridden ? 'outline:2px solid #1d4ed8;outline-offset:1px;' : ''}`
+      : _effectiveType === 'soft'
+        ? `margin-left:5px;font-size:10px;font-weight:600;color:#6b21a8;background:#f3e8ff;border-radius:3px;padding:1px 5px;cursor:pointer;${_isOverridden ? 'outline:2px solid #6b21a8;outline-offset:1px;' : ''}`
+        : 'margin-left:5px;font-size:10px;font-weight:600;color:#6b7280;background:#f3f4f6;border-radius:3px;padding:1px 5px;cursor:pointer;border:1px dashed #9ca3af;';
+    const _badgeLabel     = _effectiveType ? (_effectiveType === 'hard' ? 'Hard' : 'Soft') : '+ Type';
+    const skillTypeBadge  = `<button type="button" class="skill-type-toggle" data-skill="${skillNameEsc}" data-toggle-to="${_toggleTarget || ''}" title="${_badgeTitle}" style="${_badgeStyle}" aria-label="Skill type: ${_effectiveType || 'unclassified'}, click to toggle">${_badgeLabel}</button>`;
     const recommendationText = recommendation || (skill._isUserCreated ? 'Include (session-added)' : (isNew ? 'Include (AI suggested)' : 'Omit'));
-    const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const confidenceBadge    = `<span class="confidence-badge confidence-${confidence.level}" title="${confidence.title || ''}">${confidence.text}</span>`;
     const reasoningText      = reasoning || (skill._isUserCreated
       ? 'You added this skill for the current CV session only.'
       : (isNew
@@ -695,7 +786,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
     tableHTML += `
       <tr data-skill="${skillNameEsc}" style="${rowStyle}">
-        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${newBadge}</td>
+        <td><strong>${skillNameEsc}</strong>${skillTypeBadge}${rerunNewBadge}${newBadge}${candidateBadge}${evidenceNote}</td>
         <td style="min-width:140px;">
           <input type="text" class="skill-category-input" data-skill="${skillNameEsc}"
             value="${escapeHtml(categoryKey)}"
@@ -761,10 +852,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
           /><span class="derived-years-hint" data-skill="${skillNameEsc}" title="Estimated years derived from matched experience entries" style="display:inline-block;margin-top:4px;font-size:0.8em;color:#6b7280;">${escapeHtml(yearsHint)}</span>` : '<span style="color:#9ca3af;">—</span>'}
         </td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      title="Include — standard listing">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
-          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    aria-pressed="${defaultAction === 'emphasize'}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      aria-pressed="${defaultAction === 'include'}"      title="Include — standard listing">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" aria-pressed="${defaultAction === 'de-emphasize'}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      aria-pressed="${defaultAction === 'exclude'}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
           <button class="icon-btn" data-action="row-up"   aria-label="Move ${skillNameEsc} earlier" title="Move up"   ${isFirst ? 'disabled' : ''}>↑</button>
           <button class="icon-btn" data-action="row-down" aria-label="Move ${skillNameEsc} later"   title="Move down" ${isLast  ? 'disabled' : ''}>↓</button>
         </td>
@@ -880,6 +971,30 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   });
 
   container.querySelector('#skills-review-table tbody')?.addEventListener('click', e => {
+    const typeToggle = e.target.closest('.skill-type-toggle');
+    if (typeToggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const skillName = typeToggle.dataset.skill;
+      const toggleTo = typeToggle.dataset.toggleTo || null;
+      window._skillTypeOverrides = window._skillTypeOverrides || {};
+      if (toggleTo) {
+        window._skillTypeOverrides[skillName.toLowerCase()] = toggleTo;
+      } else {
+        delete window._skillTypeOverrides[skillName.toLowerCase()];
+      }
+      saveSkillQualifierOverride(skillName, {
+        proficiency: container.querySelector(`.skill-proficiency-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
+        subskills: container.querySelector(`.skill-subskills-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
+        parenthetical: container.querySelector(`.skill-parenthetical-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
+        skill_type: toggleTo || '',
+      }).then(() => {
+        _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet);
+        scheduleAtsRefresh(); // keep ATS modal grouping current on skill-type change (GAP-373)
+      }).catch(() => showToast('Failed to save skill type override.', 'error'));
+      return;
+    }
+
     const aiBtn = e.target.closest('.skill-apply-ai');
     if (aiBtn) {
       e.preventDefault();
@@ -936,12 +1051,14 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
 
   const skillToolbar = document.createElement('div');
   skillToolbar.className = 'bulk-toolbar';
+  skillToolbar.id = 'skill-bulk-toolbar';
   skillToolbar.innerHTML = `
     <span>Bulk:</span>
     <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','skill')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','skill')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','skill')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','skill')">${eyeSlashIcon()} Exclude All</button>
+    <button class="bulk-btn bulk-undo-btn" style="display:none" onclick="undoBulkAction('skill')" title="Undo the last bulk action">↩ Undo</button>
   `;
   container.insertBefore(skillToolbar, container.firstChild);
 
@@ -1072,7 +1189,9 @@ async function submitSkillDecisions() {
 
     if (response.ok) {
       stateManager.markContentChanged();
-      const extraNote = extraSkills.length > 0 ? ` (${extraSkills.length} session-only skill(s) added for this CV only)` : '';
+      const extraNote = extraSkills.length > 0
+        ? ` (${extraSkills.length} new skill(s) added — available for write-back to master CV in the Harvest tab)`
+        : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
       scheduleAtsRefresh();
       // Persist saved decisions locally so the UI reflects them immediately

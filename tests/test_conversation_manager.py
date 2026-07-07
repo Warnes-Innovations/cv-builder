@@ -89,15 +89,6 @@ class TestStateSchema(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.cm  = _make_manager(self.tmp)
 
-    def test_pending_rewrites_initialised_to_none(self):
-        self.assertIsNone(self.cm.state['pending_rewrites'])
-
-    def test_approved_rewrites_initialised_to_empty_list(self):
-        self.assertEqual(self.cm.state['approved_rewrites'], [])
-
-    def test_rewrite_audit_initialised_to_empty_list(self):
-        self.assertEqual(self.cm.state['rewrite_audit'], [])
-
     def test_phase_comment_includes_rewrite_review(self):
         """Phase value must be one of the valid phases; rewrite_review is accepted without error."""
         self.cm.state['phase'] = 'rewrite_review'  # should just work
@@ -345,7 +336,7 @@ class TestGenerateCVSummarySelection(unittest.TestCase):
             'targeted': 'Targeted summary from session.',
         }
         self.cm.state['summary_focus_override'] = 'targeted'
-        self.cm.orchestrator.generate_cv.return_value = {
+        self.cm.orchestrator.generate_preview_html_only.return_value = {
             'output_dir': str(self.tmp),
             'files': [],
             'generation_progress': [],
@@ -354,7 +345,7 @@ class TestGenerateCVSummarySelection(unittest.TestCase):
     def test_generate_cv_materializes_summary_without_table_decisions(self):
         self.cm._execute_action({'action': 'generate_cv'})
 
-        _, customizations_arg = self.cm.orchestrator.generate_cv.call_args.args[:2]
+        _, customizations_arg = self.cm.orchestrator.generate_preview_html_only.call_args.args[:2]
         self.assertEqual(customizations_arg['summary_focus'], 'targeted')
         self.assertEqual(
             customizations_arg['selected_summary'],
@@ -611,37 +602,43 @@ class TestAnalyzeQuestionExtraction(unittest.TestCase):
             'must_have_requirements': ['Clinical research'],
         }
 
-    def test_extract_structured_questions_from_numbered_text(self):
-        text = (
-            'Great fit. Please answer these questions.\n\n'
-            '1. Which experiences should I emphasize for this role?\n'
-            '2. Should I prioritize leadership or hands-on execution?\n'
-            '3. Which domain-specific outcomes should I highlight?\n'
-        )
-        questions = self.cm._extract_structured_questions(text)
-        self.assertEqual(len(questions), 3)
-        self.assertEqual(questions[0]['type'], 'clarification_1')
-        self.assertIn('emphasize', questions[0]['question'])
+    def test_analyze_action_sets_job_analysis_phase(self):
+        """analyze_job must advance to JOB_ANALYSIS, not CUSTOMIZATION.
 
-    def test_extract_structured_questions_preserves_full_body_markdown(self):
-        long_body = (
-            '**Prioritization:** Please weigh these tradeoffs carefully.\n'
-            '- item one with context\n'
-            '- item two with additional detail\n\n'
-            'Could you clarify which direction to prioritize and why?'
-        )
-        text = f'1. {long_body}\n2. Short follow-up question?\n'
-        questions = self.cm._extract_structured_questions(text)
-        self.assertEqual(len(questions), 2)
-        self.assertIn('**Prioritization:**', questions[0]['question'])
-        self.assertIn('- item two with additional detail', questions[0]['question'])
-        self.assertIn('Could you clarify which direction to prioritize and why?', questions[0]['question'])
+        Jumping straight to CUSTOMIZATION is premature: the user hasn't yet
+        answered clarifying questions or run recommend_customizations. A backend
+        restart at this point would restore the session into the Customise tab
+        with no recommendations present.
+        """
+        self.cm.llm.chat.return_value = 'Any clarifying question?'
+        self.cm._execute_action({'action': 'analyze_job'})
+        self.assertEqual(self.cm.state['phase'], 'job_analysis')
+
+    def test_recommend_customizations_action_sets_customization_phase(self):
+        """recommend_customizations must set CUSTOMIZATION, not REWRITE_REVIEW.
+
+        The user reviews recommendations in the Customise tab before proceeding
+        to the Rewrite tab.  Premature REWRITE_REVIEW here means a restart
+        would drop the user into an empty Rewrite tab.
+        """
+        self.cm.state['job_analysis'] = {
+            'title': 'Senior Data Scientist', 'company': 'Acme',
+            'required_skills': [], 'must_have_requirements': [],
+        }
+        self.cm.llm.recommend_customizations.return_value = {
+            'recommended_experiences': [],
+            'recommended_skills': [],
+        }
+        self.cm._execute_action({'action': 'recommend_customizations'})
+        self.assertEqual(self.cm.state['phase'], 'customization')
 
     def test_analyze_action_includes_extracted_questions_in_context(self):
         self.cm.llm.chat.return_value = (
-            'Here are focused questions:\n\n'
-            '1. Which experiences should I emphasize most?\n'
-            '2. Should we emphasize technical depth or leadership scope?\n'
+            '{"intro": "Focus on data science and leadership for this role.", '
+            '"questions": ['
+            '{"type": "experience_emphasis", "question": "Which experiences should I emphasize most?", "choices": ["Data science", "Leadership"]},'
+            '{"type": "positioning", "question": "Should we emphasize technical depth or leadership scope?", "choices": ["Technical depth", "Leadership scope"]}'
+            ']}'
         )
 
         result = self.cm._execute_action({'action': 'analyze_job'})
@@ -654,6 +651,65 @@ class TestAnalyzeQuestionExtraction(unittest.TestCase):
             self.cm.state.get('post_analysis_questions'),
             context_data['post_analysis_questions']
         )
+
+
+class TestRecommendationPageBudgetIteration(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        self.cm.state['job_analysis'] = {
+            'title': 'Senior Data Scientist',
+            'company': 'Acme',
+            'ats_keywords': [],
+        }
+        self.cm.state['customizations'] = {
+            'max_cv_pages': 2,
+        }
+
+    def test_retries_when_estimated_body_pages_too_high(self):
+        self.cm.llm.recommend_customizations.side_effect = [
+            {'recommended_experiences': [], 'recommended_skills': []},
+            {'recommended_experiences': ['exp_001'], 'recommended_skills': []},
+        ]
+
+        with patch.object(self.cm, '_estimate_cv_body_pages', side_effect=[2.8, 1.9]):
+            with patch.object(self.cm, '_all_available_cv_content_included', return_value=False):
+                self.cm._handle_recommend_customizations({'action': 'recommend_customizations'})
+
+        self.assertEqual(self.cm.llm.recommend_customizations.call_count, 2)
+        retry_call = self.cm.llm.recommend_customizations.call_args_list[1]
+        retry_prefs = retry_call.kwargs.get('user_preferences', {})
+        self.assertIn('page_count_feedback', retry_prefs)
+        self.assertIn('bring the total within budget', retry_prefs['page_count_feedback'])
+
+    def test_retries_when_estimated_body_pages_too_low_and_content_remains(self):
+        self.cm.llm.recommend_customizations.side_effect = [
+            {'recommended_experiences': [], 'recommended_skills': []},
+            {'recommended_experiences': ['exp_001'], 'recommended_skills': []},
+        ]
+
+        with patch.object(self.cm, '_estimate_cv_body_pages', side_effect=[1.0, 1.8]):
+            with patch.object(self.cm, '_all_available_cv_content_included', return_value=False):
+                self.cm._handle_recommend_customizations({'action': 'recommend_customizations'})
+
+        self.assertEqual(self.cm.llm.recommend_customizations.call_count, 2)
+        retry_call = self.cm.llm.recommend_customizations.call_args_list[1]
+        retry_prefs = retry_call.kwargs.get('user_preferences', {})
+        self.assertIn('page_count_feedback', retry_prefs)
+        self.assertIn('include additional relevant content', retry_prefs['page_count_feedback'])
+
+    def test_does_not_retry_low_estimate_when_all_content_is_included(self):
+        self.cm.llm.recommend_customizations.return_value = {
+            'recommended_experiences': ['exp_001'],
+            'recommended_skills': ['Python'],
+        }
+
+        with patch.object(self.cm, '_estimate_cv_body_pages', return_value=1.0):
+            with patch.object(self.cm, '_all_available_cv_content_included', return_value=True):
+                self.cm._handle_recommend_customizations({'action': 'recommend_customizations'})
+
+        self.assertEqual(self.cm.llm.recommend_customizations.call_count, 1)
 
 
 class TestBuildDownstreamContext(unittest.TestCase):
@@ -728,7 +784,7 @@ class TestCompleteLayoutReview(unittest.TestCase):
 
     def test_phase_advances_to_refinement(self):
         self.cm.complete_layout_review([])
-        self.assertEqual(self.cm.state['phase'], 'refinement')
+        self.assertEqual(self.cm.state['phase'], 'final_generation')
 
     def test_empty_instructions_stored(self):
         self.cm.complete_layout_review([])
@@ -751,7 +807,7 @@ class TestCompleteLayoutReview(unittest.TestCase):
         ]
         result = self.cm.complete_layout_review(instructions)
         self.assertEqual(result['instructions_applied'], 2)
-        self.assertEqual(result['phase'], 'refinement')
+        self.assertEqual(result['phase'], 'final_generation')
 
     def test_none_instructions_treated_as_empty(self):
         self.cm.complete_layout_review(None)
@@ -763,6 +819,69 @@ class TestCompleteLayoutReview(unittest.TestCase):
         with patch.object(self.cm, '_save_session') as mock_save:
             self.cm.complete_layout_review([])
             mock_save.assert_called_once()
+
+
+class TestTerminologyConsistencyCheck(unittest.TestCase):
+    """Unit tests for GAP-233 batch terminology consistency check in run_persuasion_checks."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cm = _make_manager(self.tmp)
+        # Configure LLM mock to pass all per-bullet checks
+        for method in (
+            'check_strong_action_verb', 'check_passive_voice', 'check_word_count',
+            'check_has_result_clause', 'check_hedging_language',
+            'check_named_institution_position', 'check_car_structure',
+            'check_keyword_appended', 'check_positive_metric_framing',
+            'check_summary_generic_phrases',
+        ):
+            getattr(self.cm.llm, method).return_value = {'pass': True}
+
+    def _run(self, rewrites):
+        return self.cm.run_persuasion_checks(rewrites, {}, {})
+
+    @staticmethod
+    def _make_rewrites(texts):
+        return [
+            {'id': f'r{i}', 'type': 'bullet', 'location': f'exp_001.achievements[{i}]',
+             'original': 'old', 'proposed': t}
+            for i, t in enumerate(texts)
+        ]
+
+    def _consistency_warnings(self, texts):
+        rewrites = self._make_rewrites(texts)
+        return [w for w in self._run(rewrites)
+                if w.get('flag_type') == 'terminology_inconsistency']
+
+    def test_no_inconsistency_no_warning(self):
+        self.assertEqual(len(self._consistency_warnings(['Led ML projects', 'Built ML pipeline'])), 0)
+
+    def test_ml_inconsistency_detected(self):
+        warnings = self._consistency_warnings([
+            'Led ML model training',
+            'Applied machine learning techniques',
+        ])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('ML', warnings[0]['details'])
+        self.assertIn('machine learning', warnings[0]['details'])
+
+    def test_kubernetes_k8s_inconsistency_detected(self):
+        warnings = self._consistency_warnings([
+            'Deployed services to k8s clusters',
+            'Managed Kubernetes workloads',
+        ])
+        self.assertEqual(len(warnings), 1)
+
+    def test_empty_rewrites_returns_no_warnings(self):
+        self.assertEqual(self._consistency_warnings([]), [])
+
+    def test_single_form_used_consistently_no_warning(self):
+        warnings = self._consistency_warnings([
+            'Built API endpoints',
+            'Designed REST API',
+            'Secured API gateway',
+        ])
+        self.assertEqual(warnings, [])
 
 
 if __name__ == '__main__':

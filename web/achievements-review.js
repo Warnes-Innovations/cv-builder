@@ -44,12 +44,15 @@
 
 import { stateManager } from './state-manager.js';
 import { eyeSlashIcon } from './review-icons.js';
+import { CONFIDENCE_COLUMN_LEGEND } from './recommendation-helpers.js';
 
 // Module-level state
 let _rewriteSuggestionHistory = [];
 let _lastRewriteLogId = null;
 // Callbacks for the active rewrite modal: { experienceIndex, onAccept }
 let _rewriteCallbacks = null;
+// Tracks achievements that are newly recommended since the previous render (for 🆕 badges)
+let _newRecommendedAchs = new Set();
 
 function _normalizeAchievementEditEntry(entry) {
   if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
@@ -79,6 +82,7 @@ function _achievementEntryHidden(entry) {
 
 window.achievementDecisions = {};
 window._achievementsOrdered = null;
+let _achBulkUndoSnapshot = null; // single-level undo for bulkAchievementAction
 
 // Small fetch helper with timeout to avoid leaving loaders visible on hanging requests
 async function fetchJsonWithTimeout(url, opts = {}, timeout = 7000) {
@@ -95,11 +99,31 @@ async function fetchJsonWithTimeout(url, opts = {}, timeout = 7000) {
   }
 }
 
+function _achSnapshotKey() {
+  try {
+    const sid = new URLSearchParams(window.location.search).get('session');
+    return sid ? `ach_snap_${sid}` : null;
+  } catch (_) { return null; }
+}
+function _saveAchSnapshot(recommendedIds) {
+  const key = _achSnapshotKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify([...recommendedIds])); } catch (_) {}
+}
+function _getAchSnapshot() {
+  const key = _achSnapshotKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch (_) { return null; }
+}
+
 async function buildAchievementsReviewTable() {
   const container = document.getElementById('achievements-table-container');
   if (!container) return;
 
-  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading achievements…</p>';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Loading achievements…</span></div>';
 
   // Prefer session-aware status data so review-time overlays are reflected.
   let allAchievements = [];
@@ -172,6 +196,12 @@ async function buildAchievementsReviewTable() {
       if (!(s._suggId in window.achievementDecisions)) window.achievementDecisions[s._suggId] = 'include';
     });
 
+    const prevAchSnap = _getAchSnapshot();
+    _newRecommendedAchs = prevAchSnap
+      ? new Set([...recommendedSet].filter(id => !prevAchSnap.has(id)))
+      : new Set();
+    _saveAchSnapshot(recommendedSet);
+
     _renderAchievementsReviewTable(container);
   } catch (err) {
     /* eslint-disable-next-line no-console */
@@ -202,7 +232,7 @@ function _renderAchievementsReviewTable(container) {
         <tr>
           <th>Achievement</th>
           <th>Recommendation</th>
-          <th>Confidence</th>
+          <th title="${CONFIDENCE_COLUMN_LEGEND}">Confidence ⓘ</th>
           <th>Reasoning</th>
           <th>Selection</th>
         </tr>
@@ -218,7 +248,10 @@ function _renderAchievementsReviewTable(container) {
     const confidence     = getAchievementConfidence(id, data, ach.importance);
     const reasoning      = getAchievementReasoning(id, data, ach);
     const defaultAction  = window.achievementDecisions[id] || 'include';
-    const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}">${confidence.text}</span>`;
+    const confidenceBadge = `<span class="confidence-badge confidence-${confidence.level}" title="${confidence.title || ''}">${confidence.text}</span>`;
+    const rerunNewBadge = _newRecommendedAchs.has(id)
+      ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
+      : '';
     const isFirst = rowIdx === 0;
     const isLast  = rowIdx === orderedAchs.length - 1;
 
@@ -229,7 +262,7 @@ function _renderAchievementsReviewTable(container) {
             type="text" value="${escapeHtml(title)}"
             style="width:100%;font-weight:600;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;box-sizing:border-box;"
             onblur="saveTopLevelAchievementField('${escapeHtml(id)}', 'title', this.value)"
-            aria-label="Achievement title">
+            aria-label="Achievement title">${rerunNewBadge}
           <textarea id="ach-desc-${escapeHtml(id)}"
             rows="2"
             style="width:100%;margin-top:4px;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.85em;resize:vertical;box-sizing:border-box;"
@@ -260,6 +293,7 @@ function _renderAchievementsReviewTable(container) {
     const confRaw     = (sugg.confidence || 'Medium').toLowerCase();
     const confLevel   = confRaw.includes('high') ? 'high' : confRaw.includes('low') ? 'low' : 'medium';
     const confText    = sugg.confidence || 'Medium';
+    const confTitles  = { high: 'Strong alignment with the job requirements', medium: 'Moderate alignment — review this recommendation carefully', low: 'Weak alignment — include only if it strengthens your application' };
     const defaultAction = window.achievementDecisions[suggId] || 'include';
     const isFirst     = rowIdx === 0;
     const isLast      = rowIdx === suggestedAchs.length - 1;
@@ -282,7 +316,7 @@ function _renderAchievementsReviewTable(container) {
           ${sugg.experience_id ? `<small style="color:#9ca3af;">Experience: ${escapeHtml(sugg.experience_id)}</small>` : ''}
         </td>
         <td><strong>Add New</strong></td>
-        <td><span class="confidence-badge confidence-${confLevel}">${escapeHtml(confText)}</span></td>
+        <td><span class="confidence-badge confidence-${confLevel}" title="${confTitles[confLevel] || ''}">${escapeHtml(confText)}</span></td>
         <td style="max-width:200px;"><small>${escapeHtml(sugg.rationale || '')}</small></td>
         <td class="action-btns" style="white-space:nowrap;">
           <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize"    title="Emphasize — feature prominently"  style="color:#10b981;">➕</button>
@@ -304,12 +338,14 @@ function _renderAchievementsReviewTable(container) {
   // Bulk toolbar above the filter row
   const achToolbar = document.createElement('div');
   achToolbar.className = 'bulk-toolbar';
+  achToolbar.id = 'ach-bulk-toolbar';
   achToolbar.innerHTML = `
     <span>Bulk:</span>
     <button class="bulk-btn bulk-recommended" onclick="bulkAchievementAction('recommended')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAchievementAction('emphasize')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAchievementAction('include')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAchievementAction('exclude')">${eyeSlashIcon()} Exclude All</button>
+    <button class="bulk-btn bulk-undo-btn" style="display:none" onclick="undoBulkAchievementAction()" title="Undo the last bulk action">↩ Undo</button>
   `;
   container.insertBefore(achToolbar, container.firstChild);
 
@@ -325,6 +361,7 @@ function _renderAchievementsReviewTable(container) {
 }
 
 function bulkAchievementAction(action) {
+  _achBulkUndoSnapshot = { ...window.achievementDecisions };
   const data = window.pendingRecommendations || {};
   document.querySelectorAll('#achievements-review-table tbody tr[data-ach-id]').forEach(row => {
     if (row.style.display === 'none') return;   // respect filter
@@ -344,6 +381,26 @@ function bulkAchievementAction(action) {
     }
     handleAchievementAction(achId, resolvedAction);
   });
+  const undoBtn = document.getElementById('ach-bulk-toolbar')?.querySelector('.bulk-undo-btn');
+  if (undoBtn) undoBtn.style.display = '';
+}
+
+function undoBulkAchievementAction() {
+  if (!_achBulkUndoSnapshot) return;
+  const snap = _achBulkUndoSnapshot;
+  _achBulkUndoSnapshot = null;
+  window.achievementDecisions = { ...snap };
+  document.querySelectorAll('#achievements-review-table tbody tr[data-ach-id]').forEach(row => {
+    const achId = row.dataset.achId;
+    const restoredAction = snap[achId];
+    row.querySelectorAll('.icon-btn').forEach(btn => btn.classList.remove('active'));
+    if (restoredAction) {
+      const target = row.querySelector(`[data-action="${restoredAction}"]`);
+      if (target) target.classList.add('active');
+    }
+  });
+  const undoBtn = document.getElementById('ach-bulk-toolbar')?.querySelector('.bulk-undo-btn');
+  if (undoBtn) undoBtn.style.display = 'none';
 }
 
 function handleAchievementAction(achId, action) {
@@ -411,7 +468,7 @@ async function submitAchievementDecisions() {
         window._savedDecisions.accepted_suggested_achievements = acceptedSuggestions;
       }
       if (typeof updateInclusionCounts === 'function') updateInclusionCounts();
-      switchTab('summary-review');
+      switchTab('tagline-review');
     } else {
       const err = await response.json();
       showToast(`Error: ${err.error || 'Failed to save selections'}`, 'error');
@@ -444,7 +501,7 @@ async function buildAchievementsEditor() {
   const container = document.getElementById('document-content');
   if (!container) return;
 
-  container.innerHTML = '<p style="padding:20px;text-align:center;color:#6b7280;">Loading experience bullets editor…</p>';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:#6b7280;"><div class="loading-spinner" style="width:20px;height:20px;border-width:2px;flex-shrink:0;"></div><span>Loading experience bullets editor…</span></div>';
 
   // Fetch experiences + their achievements from master fields
   let experiences = [];
@@ -521,6 +578,34 @@ async function buildAchievementsEditor() {
   experiences.forEach((_, expIdx) => renderAchievementEditorRows(expIdx));
 }
 
+// Verbs that generate a weak-verb warning badge in the bullet editor.
+const _ACH_PASSIVE_STARTS = new Set(['was','were','is','are','been']);
+const _ACH_WEAK_VERBS = new Set([
+  'assisted','contributed','helped','participated','supported',
+  'supervised','worked','collaborated','cooperated',
+]);
+const _ACH_STRONG_VERBS = new Set([
+  'accelerated','achieved','architected','automated','built',
+  'championed','coined','conceived','conducted','consolidated',
+  'created','cut','delivered','demonstrated','deployed',
+  'designed','developed','directed','doubled','drove',
+  'enabled','established','expanded','founded','generated',
+  'grew','implemented','improved','increased','integrated',
+  'invented','launched','led','managed','optimized','pioneered',
+  'provided','published','raised','reduced','refactored','scaled',
+  'secured','shipped','spearheaded','streamlined','taught',
+  'transformed','translated','tripled',
+]);
+
+function _achVerbWarning(text) {
+  const firstWord = (text || '').trim().split(/[\s,.:;]/)[0].toLowerCase().replace(/[^a-z]/g, '');
+  if (!firstWord) return null;
+  if (_ACH_PASSIVE_STARTS.has(firstWord)) return { level: 'passive', word: firstWord };
+  if (_ACH_WEAK_VERBS.has(firstWord)) return { level: 'weak',    word: firstWord };
+  if (!_ACH_STRONG_VERBS.has(firstWord)) return { level: 'neutral', word: firstWord };
+  return null;
+}
+
 /**
  * Render the editable achievement rows for one experience.
  */
@@ -538,26 +623,41 @@ function renderAchievementEditorRows(expIdx) {
   listEl.innerHTML = achs.map((entry, achIdx) => {
     const text = _achievementEntryText(entry);
     const hidden = _achievementEntryHidden(entry);
+    const verbWarn = _achVerbWarning(text);
+    const verbBadge = verbWarn
+      ? (verbWarn.level === 'passive'
+          ? `<div style="font-size:0.78em;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:4px;padding:2px 6px;margin-top:3px;" title="Bullet opens with passive voice ('${verbWarn.word}') — rewrite with an active opening verb">⚠ Passive voice — rewrite with an active opening verb</div>`
+          : verbWarn.level === 'weak'
+          ? `<div style="font-size:0.78em;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:3px;" title="Opening verb '${verbWarn.word}' is weak — consider Led, Built, Drove, etc.">⚠ Weak opening verb — use a stronger action verb</div>`
+          : `<div style="font-size:0.78em;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:2px 6px;margin-top:3px;" title="'${verbWarn.word}' is not in the strong-verb list — verify it makes an impact statement">ℹ Opening verb not in strong-verb list</div>`
+        )
+      : '';
     return `
     <div id="ach-row-${expIdx}-${achIdx}" class="${hidden ? 'achievement-row-hidden' : ''}" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
       <div style="display:flex;flex-direction:column;gap:2px;padding-top:4px;">
-        <button class="icon-btn" title="Move up"   onclick="moveAchievement(${expIdx},${achIdx},-1)">▲</button>
-        <button class="icon-btn" title="Move down" onclick="moveAchievement(${expIdx},${achIdx},+1)">▼</button>
+        <button class="icon-btn" title="Move up"   aria-label="Move bullet up"   onclick="moveAchievement(${expIdx},${achIdx},-1)">▲</button>
+        <button class="icon-btn" title="Move down" aria-label="Move bullet down" onclick="moveAchievement(${expIdx},${achIdx},+1)">▼</button>
       </div>
+      <div style="flex:1;display:flex;flex-direction:column;">
       <textarea id="ach-text-${expIdx}-${achIdx}"
         rows="2"
-        style="flex:1;padding:6px 8px;border:1px solid ${hidden ? '#f59e0b' : '#d1d5db'};border-radius:6px;font-size:0.9em;resize:vertical;${hidden ? 'background:#fffbeb;color:#92400e;' : ''}"
+        style="width:100%;padding:6px 8px;border:1px solid ${hidden ? '#f59e0b' : verbWarn?.level === 'passive' ? '#fecdd3' : verbWarn?.level === 'weak' ? '#fde68a' : '#d1d5db'};border-radius:6px;font-size:0.9em;resize:vertical;box-sizing:border-box;${hidden ? 'background:#fffbeb;color:#92400e;' : ''}"
         onchange="updateAchievementText(${expIdx},${achIdx},this.value)"
         onblur="updateAchievementText(${expIdx},${achIdx},this.value)"
       >${escapeHtml(text)}</textarea>
+      ${verbBadge}
+      </div>
       <div style="display:flex;flex-direction:column;gap:4px;padding-top:2px;">
         <button class="icon-btn ${hidden ? 'active' : ''}" title="${hidden ? 'Show bullet in generated CV' : 'Hide bullet from generated CV'}"
+          aria-label="${hidden ? 'Show bullet in generated CV' : 'Hide bullet from generated CV'}" aria-pressed="${hidden}"
           onclick="toggleAchievementHidden(${expIdx},${achIdx})"
           style="color:${hidden ? '#b45309' : '#64748b'};">${eyeSlashIcon()}</button>
         <button class="icon-btn" title="Ask AI to rewrite"
+          aria-label="Ask AI to rewrite this bullet"
           onclick="rewriteAchievementWithLLM(${expIdx},${achIdx})"
           >✨</button>
         <button class="icon-btn" title="Delete"
+          aria-label="Delete this bullet"
           onclick="deleteAchievement(${expIdx},${achIdx})"
           style="color:#ef4444;">🗑</button>
       </div>
@@ -566,11 +666,26 @@ function renderAchievementEditorRows(expIdx) {
   }).join('');
 }
 
+// Debounce timer for auto-persisting achievement text edits.
+let _achPersistTimer = null;
+
 function updateAchievementText(expIdx, achIdx, value) {
   if (!window.achievementEdits[expIdx]) return;
   const existing = _normalizeAchievementEditEntry(window.achievementEdits[expIdx][achIdx]);
   existing.text = value;
   window.achievementEdits[expIdx][achIdx] = existing;
+
+  // Debounce-persist so edits survive tab navigation and status polling.
+  clearTimeout(_achPersistTimer);
+  _achPersistTimer = setTimeout(async () => {
+    try {
+      await fetch('/api/save-achievement-edits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edits: window.achievementEdits }),
+      });
+    } catch (_e) { /* silent — user still has in-memory state */ }
+  }, 500);
 }
 
 function toggleAchievementHidden(expIdx, achIdx) {
@@ -922,9 +1037,14 @@ async function saveAchievementEditsAndContinue() {
 
 export {
   fetchJsonWithTimeout,
+  _achVerbWarning,
+  _achSnapshotKey,
+  _saveAchSnapshot,
+  _getAchSnapshot,
   buildAchievementsReviewTable,
   _renderAchievementsReviewTable,
   bulkAchievementAction,
+  undoBulkAchievementAction,
   handleAchievementAction,
   submitAchievementDecisions,
   moveAchievementRow,

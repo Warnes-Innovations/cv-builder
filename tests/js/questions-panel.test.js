@@ -16,12 +16,15 @@ import {
   populateQuestionsTab,
   renderQuestionsPanel,
   selectQChip,
+  onQInputChange,
   updateQProgress,
   showDraftError,
   showNextQuestion,
   handleQuestionResponse,
   finishPostAnalysisQuestions,
   askPostAnalysisQuestions,
+  advanceQGroup,
+  jumpToQGroup,
 } from '../../web/questions-panel.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
 
@@ -168,6 +171,95 @@ describe('renderQuestionsPanel', () => {
     renderQuestionsPanel()
     expect(document.querySelectorAll('.questions-panel')).toHaveLength(1)
   })
+
+  it('does not render a group-nav strip when there is only one group', () => {
+    window.postAnalysisQuestions = [{ type: 't1', question: 'Q1?', choices: [] }]
+    renderQuestionsPanel()
+    expect(document.querySelectorAll('.q-group-nav')).toHaveLength(0)
+  })
+})
+
+// ── Question groups (jump-back, GAP-16 Part D) ───────────────────────────
+
+describe('question groups (jump-back)', () => {
+  beforeEach(() => {
+    buildContent()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
+    window.postAnalysisQuestions = [
+      { type: 't1', question: 'Q1?', choices: [] },
+      { type: 't2', question: 'Q2?', choices: [] },
+      { type: 't3', question: 'Q3?', choices: [] },
+      { type: 't4', question: 'Q4?', choices: [] },
+    ]
+  })
+
+  // _currentGroup is internal module state, not reset by the outer beforeEach —
+  // several tests here advance/jump groups, so reset it back to 0 afterward to
+  // avoid leaking group position into unrelated tests later in this file.
+  afterEach(() => {
+    jumpToQGroup(0)
+  })
+
+  it('renders one .q-group-dot button per group when >3 questions exist', () => {
+    renderQuestionsPanel()
+    // 4 questions / GROUP_SIZE=3 => 2 groups
+    expect(document.querySelectorAll('.q-group-dot')).toHaveLength(2)
+  })
+
+  it('marks the current group with aria-current="step" and no others', () => {
+    renderQuestionsPanel()
+    const dots = document.querySelectorAll('.q-group-dot')
+    expect(dots[0].getAttribute('aria-current')).toBe('step')
+    expect(dots[1].hasAttribute('aria-current')).toBe(false)
+  })
+
+  it('aria-label states the group is reviewable with no resubmission', () => {
+    renderQuestionsPanel()
+    const dots = document.querySelectorAll('.q-group-dot')
+    expect(dots[0].getAttribute('aria-label')).toMatch(/no resubmission/i)
+  })
+
+  it('.q-group-dot.done only appears for fully-answered groups', () => {
+    window.questionAnswers = { t1: 'answer 1', t2: 'answer 2' }
+    renderQuestionsPanel()
+    const dots = document.querySelectorAll('.q-group-dot')
+    // Group 0 (t1, t2, t3) is not fully answered (t3 missing) — active, not done.
+    expect(dots[0].classList.contains('done')).toBe(false)
+    advanceQGroup()
+    window.questionAnswers.t3 = 'answer 3'
+    jumpToQGroup(0)
+    // Now group 0 is fully answered but not active (we're viewing it, so it IS active again).
+    // Verify done-detection via group 1 instead, which remains unanswered.
+    const dotsAfter = document.querySelectorAll('.q-group-dot')
+    expect(dotsAfter[1].classList.contains('done')).toBe(false)
+  })
+
+  it('jumpToQGroup restores an earlier group and preserves the in-progress answer of the group navigated away from', () => {
+    renderQuestionsPanel()
+    document.getElementById('q-input-0').value = 'draft answer for q1'
+
+    jumpToQGroup(1)
+    // Group 1 (questions t4) should now be showing.
+    expect(document.getElementById('q-item-3')).not.toBeNull()
+    expect(document.getElementById('q-item-0')).toBeNull()
+    // The flushed answer from group 0 should have been persisted.
+    expect(window.questionAnswers.t1).toBe('draft answer for q1')
+
+    jumpToQGroup(0)
+    // Back on group 0 — the previously-typed answer should be restored.
+    expect(document.getElementById('q-input-0').value).toBe('draft answer for q1')
+  })
+
+  it('jumpToQGroup does not call the submit/action endpoint (no resubmission)', () => {
+    renderQuestionsPanel()
+    const fetchMock = fetch
+    jumpToQGroup(1)
+    // Only the passive post-analysis-responses persistence call should fire, not
+    // any action/submit endpoint.
+    fetchMock.mock.calls.forEach(([url]) => {
+      expect(url).not.toMatch(/\/api\/action/)
+    })
+  })
 })
 
 // ── updateQProgress ───────────────────────────────────────────────────────
@@ -230,6 +322,54 @@ describe('selectQChip', () => {
     const chip = document.querySelector('.q-chip')
     selectQChip(chip, 0)
     expect(document.getElementById('q-input-0').value).toBe('Option A')
+  })
+
+  it('saves chip text to window.questionAnswers for the matching question type', () => {
+    window.questionAnswers = {}
+    const chip = document.querySelector('.q-chip')
+    selectQChip(chip, 0)
+    expect(window.questionAnswers['t1']).toBe('Option A')
+  })
+
+  it('updates window.questionAnswers so answers survive tab navigation', () => {
+    window.questionAnswers = {}
+    const chips = document.querySelectorAll('.q-chip')
+    // Select first chip, then switch to second — final state should reflect last selection
+    selectQChip(chips[0], 0)
+    expect(window.questionAnswers['t1']).toBe('Option A')
+    selectQChip(chips[1], 0)
+    expect(window.questionAnswers['t1']).toBe('Option B')
+  })
+})
+
+// ── onQInputChange ────────────────────────────────────────────────────────
+
+describe('onQInputChange', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="q-item-0">
+        <textarea id="q-input-0">Typed answer</textarea>
+      </div>
+      <p id="q-progress"></p>
+      <button id="q-submit-btn" disabled></button>`
+    window.postAnalysisQuestions = [{ type: 't1', question: 'Q?', choices: [] }]
+    window.questionAnswers = {}
+  })
+
+  it('saves textarea value to window.questionAnswers for the matching question type', () => {
+    onQInputChange(0)
+    expect(window.questionAnswers['t1']).toBe('Typed answer')
+  })
+
+  it('updates the progress display', () => {
+    onQInputChange(0)
+    const progressEl = document.getElementById('q-progress')
+    expect(progressEl.textContent).toContain('1')
+  })
+
+  it('does nothing when question index is out of range', () => {
+    expect(() => onQInputChange(99)).not.toThrow()
+    expect(window.questionAnswers).toEqual({})
   })
 })
 

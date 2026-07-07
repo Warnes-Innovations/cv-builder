@@ -87,6 +87,7 @@ class _FakeConversationManager:
         self,
         output_dir,
         allow_llm_recommendations,
+        **kwargs,
     ):
         assert allow_llm_recommendations is False
         return self.orchestrator.generate_cv({}, {}, output_dir)
