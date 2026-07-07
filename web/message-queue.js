@@ -215,23 +215,30 @@ function appendFormattedAnalysis(result) {
 
       if (data.required_skills?.length) {
         html += '<h4>🎯 Required Skills:</h4><ul>';
-        data.required_skills.forEach(s => { html += `<li>${s}</li>`; });
+        data.required_skills.forEach(s => { html += `<li>${escapeHtml(s)}</li>`; });
+        html += '</ul>';
+      }
+      if (data.skill_gaps?.length) {
+        html += '<h4 style="color:#b45309;">⚠️ Skill Gaps</h4>';
+        html += '<p style="font-size:0.85em;color:#92400e;margin:0 0 4px;">Required skills not found in your Master CV profile — consider adding them before generating:</p>';
+        html += '<ul style="margin:0 0 8px;color:#92400e;">';
+        data.skill_gaps.forEach(s => { html += `<li>${escapeHtml(s)}</li>`; });
         html += '</ul>';
       }
       if (data.preferred_skills?.length) {
         html += '<h4>⭐ Preferred Skills:</h4><ul>';
-        data.preferred_skills.forEach(s => { html += `<li>${s}</li>`; });
+        data.preferred_skills.forEach(s => { html += `<li>${escapeHtml(s)}</li>`; });
         html += '</ul>';
       }
       if (data.nice_to_have_requirements?.length) {
         html += '<h4>✨ Nice to Have:</h4><ul>';
-        data.nice_to_have_requirements.forEach(r => { html += `<li>${r}</li>`; });
+        data.nice_to_have_requirements.forEach(r => { html += `<li>${escapeHtml(r)}</li>`; });
         html += '</ul>';
       }
       if (data.ats_keywords?.length) {
         html += '<h4>🔑 ATS Keywords:</h4><p style="line-height: 2;">';
         data.ats_keywords.forEach(kw => {
-          html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;margin:2px;font-size:0.85em;">${kw}</span>`;
+          html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;margin:2px;font-size:0.85em;">${escapeHtml(kw)}</span>`;
         });
         html += '</p>';
       }

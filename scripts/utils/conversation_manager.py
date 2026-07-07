@@ -666,6 +666,24 @@ IMPORTANT: Never echo or repeat the CV data JSON structure back to the user. Onl
         self.state['post_analysis_questions'] = []
         self.state['post_analysis_answers'] = {}
 
+        # Compute skill gaps: required skills absent from master CV profile (GAP-361).
+        _master_raw = self.orchestrator.master_data.get('skills') or []
+        if isinstance(_master_raw, dict):
+            _master_raw = list(_master_raw.values())
+        _master_names = {
+            str(s.get('name', '')).lower().strip()
+            for s in _master_raw if isinstance(s, dict)
+        }
+        _required = analysis.get('required_skills') or []
+        _gaps = [
+            s for s in _required
+            if not any(
+                m and (m in s.lower() or s.lower() in m)
+                for m in _master_names if m
+            )
+        ]
+        analysis['skill_gaps'] = _gaps
+
         # Rename the session directory now that company / role are known
         self._rename_session_dir(
             analysis.get('company', ''),

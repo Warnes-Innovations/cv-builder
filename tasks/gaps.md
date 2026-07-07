@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 97)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 98)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,16 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 98) Implementation Notes
+
+Cycle 98 addressed 1 gap:
+
+- GAP-361 (MEDIUM, PARTIAL→RESOLVED): Added skill-gap computation to `_handle_analyze_job()` in `conversation_manager.py`. After analysis, the required skills list is fuzzy-matched against master CV skill names (substring containment, case-insensitive). Unmatched skills are stored as `analysis['skill_gaps']` in the session state. `appendFormattedAnalysis()` in `message-queue.js` now renders a "⚠️ Skill Gaps" section (amber styling) when `data.skill_gaps` is non-empty. Also fixed unescaped HTML in all other forEach calls in the same function (required\_skills, preferred\_skills, nice\_to\_have\_requirements, ats\_keywords).
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
 
 ## 2026-07-07 (Cycle 97) Implementation Notes
 
@@ -96,7 +106,7 @@ Full 15-persona + heuristic review cycle (discovery only — no code fixes in th
 - **resume-expert** — No user-visible pre-generation page length estimate (GAP-358, MEDIUM)
 - **master-cv-curator** — experience `domain_relevance` field absent from Master CV CRUD modal (GAP-359, MEDIUM)
 - **hr-ats** — "Blocked formats reflect ATS validation failures" footer appears when nothing is blocked (GAP-360, MEDIUM, one-line fix)
-- **applicant** — Role-type/mismatch gap analysis computed but not shown in job analysis panel (GAP-361, MEDIUM)
+- **applicant** — Role-type/mismatch gap analysis computed but not shown in job analysis panel (GAP-361, MEDIUM) ✅ cycle 98
 - **applicant** — Prior-session clarification answers never pre-populated across sessions (GAP-362, MEDIUM)
 - **applicant** — Screening LLM call doesn't inject post-analysis clarification answers (GAP-363, MEDIUM)
 - **ux-expert** — Layout sub-phase has 4 sequential action buttons with no sub-step indicator (GAP-364, MEDIUM)
@@ -4380,7 +4390,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-361: Role-Type/Mismatch Gap Analysis Missing From Job Analysis Display
 
 **Priority:** MEDIUM
-**Status:** PARTIAL 2026-07-06 (cycle 95) — Added role_level display to appendFormattedAnalysis() in message-queue.js. Full skill-gap analysis (required vs. master CV) deferred — needs backend gap computation added to analysis result.
+**Status:** RESOLVED 2026-07-07 (cycle 98) — Added skill-gap computation in `conversation_manager.py:_handle_analyze_job()`: required skills fuzzy-matched against master CV skill names; gaps stored as `analysis['skill_gaps']`. `appendFormattedAnalysis()` in `message-queue.js` now renders an amber "⚠️ Skill Gaps" section listing unmatched required skills. role_level display was added in cycle 95.
 **Discovered:** 2026-07-06 (cycle 93) by applicant.
 **Description:** The backend computes `role_level` (IC vs. leadership, seniority) and has all data needed for apparent-mismatch surfacing, but `appendFormattedAnalysis` in `web/message-queue.js:199–249` renders only: position, domain, required skills, preferred skills, and ATS keywords. Neither the role-type inference nor any gap analysis ("Kubernetes is required but not in your master data") appears in the analysis panel. This is the most decision-critical part of US-A2 for an applicant.
 **Affected stories:** US-A2
@@ -4430,7 +4440,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-366: Publications and Rewrite Bulk Actions Lack Undo Path
 
 **Priority:** MEDIUM
-**Status:** RESOLVED 2026-07-06 (cycle 95) — Added _pubUndoSnapshot and undoBulkPubAction() to publications-review.js with pub-bulk-toolbar undo button; added _rwUndoSnapshot and undoBulkRewriteAction() to rewrite-review.js with rw-bulk-undo-btn in tally bar.
+**Status:** RESOLVED 2026-07-06 (cycle 95) — Added `_pubUndoSnapshot` and `undoBulkPubAction()` to publications-review.js with pub-bulk-toolbar undo button; added `_rwUndoSnapshot` and `undoBulkRewriteAction()` to rewrite-review.js with rw-bulk-undo-btn in tally bar.
 **Discovered:** 2026-07-06 (cycle 93) by power-user.
 **Description:** Experience, skills, and achievements all show an "↩ Undo" button immediately after any bulk action. Publications (`bulkPubAction` in `publications-review.js:295`) and the rewrite panel (`acceptAllRewrites`/`rejectAllRewrites` in `rewrite-review.js:680–695`) perform bulk operations without recording a snapshot — no undo button appears. Accidentally clicking "Reject All" on publications or "Accept All" on rewrites has no recovery path, which is a significant power-user penalty on large review sets.
 **Affected stories:** US-W2, US-A5
