@@ -179,7 +179,7 @@
             break-inside: avoid;
         }
 
-        .skill-group h4 {
+        .skill-group h3 {
             font-size: 0.95rem;
             font-weight: 700;
             color: var(--secondary-color);
@@ -624,7 +624,7 @@
                     <div class="skills-grid">
                         {% for cat in skills_by_category %}
                         <div class="skill-group">
-                            <h4>{{ cat.category }}</h4>
+                            <h3>{{ cat.category }}</h3>
                             <ul class="skill-list">
                                 {% for skill in cat.skills %}{% if not skill.candidate_to_confirm %}
                                 <li>{% if skill.group_display_names %}{{ skill.group_display_names|join(', ') }}{% elif skill.display_name %}{{ skill.display_name }}{% else %}{{ skill.name }}{% if skill.years and template_metadata.skills_show_experience != 'never' and (template_metadata.skills_show_experience == 'always' or skill.show_experience != false) %} ({{ skill.years }} yrs){% endif %}{% endif %}{% if not skill.group_display_names and skill.aliases %} <span class="skill-alias" title="Also known as: {{ skill.aliases|join(', ') }}">≡ {{ skill.aliases|join(', ') }}</span>{% endif %}</li>
@@ -669,7 +669,7 @@
                     {% for exp in experiences %}
                     <div class="job-entry">
                         <div class="job-header">
-                            <div class="job-role">{{ exp.title }}</div>
+                            <h3 class="job-role">{{ exp.title }}</h3>
                             <div class="job-company">{{ exp.company }}</div>
                         </div>
                         <div class="job-dates">{{ exp.start_date }} – {{ exp.end_date }}</div>

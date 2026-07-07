@@ -1688,7 +1688,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
             try:
                 response = llm_client_ref['value'].chat(
                     messages=[
-                        {'role': 'system', 'content': 'You write tailored, professional cover letters. Return only the letter body text.'},
+                        {'role': 'system', 'content': 'You write tailored, professional cover letters. Return only the letter body text. CRITICAL: Base every claim strictly on the candidate profile provided. Do not invent, embellish, or fabricate any achievement, metric, role, technology, or fact not present in the source material.'},
                         {'role': 'user',   'content': prompt},
                     ],
                     temperature=0.7,

@@ -988,8 +988,10 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
         subskills: container.querySelector(`.skill-subskills-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
         parenthetical: container.querySelector(`.skill-parenthetical-input[data-skill="${_cssEscape(skillName)}"]`)?.value || '',
         skill_type: toggleTo || '',
-      }).then(() => _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet))
-        .catch(() => showToast('Failed to save skill type override.', 'error'));
+      }).then(() => {
+        _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softSkillSet);
+        scheduleAtsRefresh(); // keep ATS modal grouping current on skill-type change (GAP-373)
+      }).catch(() => showToast('Failed to save skill type override.', 'error'));
       return;
     }
 

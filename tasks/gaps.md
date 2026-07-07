@@ -10,6 +10,22 @@
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
 
+## 2026-07-06 (Cycle 94) Implementation Notes
+
+Cycle 94 addressed 8 gaps (7 from cycle 93 discovery; GAP-350 and GAP-360 co-fixed):
+
+- GAP-342 (HIGH): Added `candidate_to_confirm` filter to human DOCX skills path in `cv_orchestrator.py:4938`
+- GAP-343 (HIGH): Added anti-fabrication clause to cover letter LLM system prompt in `master_data_routes.py:1691`
+- GAP-348 (HIGH): Added `tr.kb-focused` CSS rule to `styles.css` for DataTable row keyboard focus visibility
+- GAP-350 (HIGH) + GAP-360 (MEDIUM): Exported `_NON_BLOCKING_CHECKS` from `download-tab.js`; imported in `finalise.js`; both `_atsFails` computations now exclude advisory checks; "Blocked formats" footer now only shows when `blockingFails.length > 0`
+- GAP-354 (MEDIUM): Added `_initReviewSubtabKeyNav()` to `review-table-base.js` with ArrowLeft/ArrowRight handler and roving tabindex on review sub-tab container
+- GAP-355 (MEDIUM): Fixed `cv-template.html` heading hierarchy: skill group `<h4>` → `<h3>` (and `.skill-group h4` CSS → `.skill-group h3`); job-role `<div>` → `<h3 class="job-role">`
+- GAP-373 (LOW): Added `scheduleAtsRefresh()` in skill type toggle handler in `skills-review.js`
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
+
 ## 2026-07-06 (Cycle 93) Reconciliation Notes
 
 Full 15-persona + heuristic review cycle (discovery only — no code fixes in this cycle). Added GAP-341 through GAP-375 (35 new entries) from findings across all persona reviews and heuristic evaluation.
@@ -4128,9 +4144,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-342: `candidate_to_confirm` Skills Leak Into Human-Readable DOCX
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — Added `candidate_to_confirm` filter in `_generate_human_docx` at `cv_orchestrator.py:4938`: `skills_list = [s for s in cat.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]`.
 **Discovered:** 2026-07-06 (cycle 93) by resume-expert.
-**Description:** Three of four output paths correctly filter `candidate_to_confirm` (weak-evidence) skills. The human DOCX path (`_generate_human_docx`, `cv_orchestrator.py:4919–4944`) is the remaining gap — it reads `skills_by_category` without any `candidate_to_confirm` filter in the chain. ATS DOCX was fixed in GAP-326; HTML/PDF template uses `{% if not skill.candidate_to_confirm %}`. One-liner fix at `cv_orchestrator.py:4938`: `skills_list = [s for s in cat.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]`.
+**Description:** Three of four output paths correctly filter `candidate_to_confirm` (weak-evidence) skills. The human DOCX path (`_generate_human_docx`, `cv_orchestrator.py:4919–4944`) is the remaining gap — it reads `skills_by_category` without any `candidate_to_confirm` filter in the chain. ATS DOCX was fixed in GAP-326; HTML/PDF template uses `{% if not skill.candidate_to_confirm %}`.
 **Affected stories:** US-R5
 
 ---
@@ -4138,9 +4154,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-343: Cover Letter LLM System Prompt Has No Anti-Fabrication Clause
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — Added anti-fabrication clause to cover letter system message in `master_data_routes.py:1691`: "CRITICAL: Base every claim strictly on the candidate profile provided. Do not invent, embellish, or fabricate any achievement, metric, role, technology, or fact not present in the source material."
 **Discovered:** 2026-07-06 (cycle 93) by trust-compliance.
-**Description:** The cover letter LLM call (`scripts/routes/master_data_routes.py:1691`) uses a minimal system message (`'You write tailored, professional cover letters. Return only the letter body text.'`) with no prohibition on inventing claims. The main conversation system prompt's "CRITICAL — Data Integrity" clause (`conversation_manager.py:490–491`) and the rewrite-proposal constraint (`llm_client.py:1958`) do not apply to this code path. Since cover letters reach employers directly, a fabricated achievement or metric is the highest-consequence trust failure in the system. Fix: add an anti-fabrication grounding constraint to the cover letter system message.
+**Description:** The cover letter LLM call (`scripts/routes/master_data_routes.py:1691`) used a minimal system message with no prohibition on inventing claims. The main conversation system prompt's "CRITICAL — Data Integrity" clause (`conversation_manager.py:490–491`) and the rewrite-proposal constraint (`llm_client.py:1958`) did not apply to this code path.
 **Affected stories:** US-C1, US-C2
 
 ---
@@ -4188,9 +4204,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-348: `kb-focused` CSS Missing for DataTable Rows — Keyboard Nav Invisible
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — Added `tr.kb-focused` CSS rule in `styles.css` after the existing rewrite/spell-card rule: `tr.kb-focused { outline: 2px solid var(--cv-accent); outline-offset: -2px; background-color: rgba(59,130,246,0.06) !important; }`.
 **Discovered:** 2026-07-06 (cycle 93) by power-user.
-**Description:** Keyboard ↑/↓ navigation and A/R shortcuts are implemented for all customizations sub-tabs (experience, skills, achievements, publications) in `keyboard-shortcuts.js`. However, `styles.css` only defines a `.kb-focused` highlight rule for `.rewrite-card` and `.spell-card` (line 1413). When a DataTable `<tr>` receives the `kb-focused` class, there is no visual style applied — the user gets zero on-screen indication of which row is focused. A/R fire on the correct row, but the feature is effectively invisible in practice. Fix: add `.kb-focused` rule for `tr` elements.
+**Description:** Keyboard ↑/↓ navigation and A/R shortcuts are implemented for all customizations sub-tabs in `keyboard-shortcuts.js`. However, `styles.css` only defined `.kb-focused` for `.rewrite-card` and `.spell-card`. When a DataTable `<tr>` received the `kb-focused` class, there was no visual style applied.
 **Affected stories:** US-W3
 
 ---
@@ -4208,9 +4224,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-350: Advisory ATS Failures Counted as Blocking in Readiness Chip and Finalise Checklist
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — Exported `_NON_BLOCKING_CHECKS` from `download-tab.js`; imported it in `finalise.js`. Both `_atsFails` computations now exclude advisory check names. Also fixed the "Blocked formats" footer in `download-tab.js` to use `blockingFails.length > 0` instead of `summary.fail > 0` (GAP-360 co-fixed).
 **Discovered:** 2026-07-06 (cycle 93) by hr-ats.
-**Description:** Both `download-tab.js:414` and `finalise.js:175` compute their "ATS issues" count with `c.status === 'fail'` and no exclusion of the `_NON_BLOCKING_CHECKS` set. Nine checks are intentionally advisory (date format consistency, JSON-LD schema type, heading style, page size, etc.) and cannot block downloads — but because the backend returns `status: 'fail'` for them, both the readiness chip in the File Review tab header and the "ATS validation" row in the Finalise checklist go amber and report "ATS ⚠ N issues" when only advisory items failed. Fix: either use `warn` status on the backend for advisory checks, or filter `_atsFails` in both files to exclude `_NON_BLOCKING_CHECKS` names.
+**Description:** Both `download-tab.js:414` and `finalise.js:175` computed ATS issue counts without excluding `_NON_BLOCKING_CHECKS`, causing advisory failures to be counted as blocking in the readiness chip and finalise checklist.
 **Affected stories:** US-H3, US-H5
 
 ---
@@ -4248,9 +4264,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-354: Review Sub-Tabs Lack Arrow-Key Navigation and Roving Tabindex
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — Added `_initReviewSubtabKeyNav(container)` in `review-table-base.js`: wires ArrowLeft/ArrowRight handler on the tablist container (one-time, guarded by `dataset.keynavInit`), and updated `switchReviewSubtab()` to manage roving tabindex (active tab `tabindex="0"`, others `tabindex="-1"`). The `role="tablist"` is now set inside `_initReviewSubtabKeyNav` which is called from `switchReviewSubtab` on every invocation.
 **Discovered:** 2026-07-06 (cycle 93) by accessibility-specialist.
-**Description:** The Customise-phase sub-tabs (Experiences / Skills / Achievements / Summary / Publications) have `role="tab"` and `aria-selected` applied by `switchReviewSubtab()` in `review-table-base.js`, but no ArrowLeft/ArrowRight keyboard handler is wired on the tablist container, and `tabindex` is never managed (no roving 0/-1 pattern). The main tab bar (`#tab-bar`) implements this correctly in `ui-core.js:471–497`. Additionally, `role="tablist"` is set lazily on first call rather than on initial render.
+**Description:** The review sub-tabs had `role="tab"` and `aria-selected` but no ArrowLeft/ArrowRight keyboard handler and no roving tabindex.
 **Affected stories:** US-X2
 
 ---
@@ -4258,9 +4274,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-355: CV Template Heading Hierarchy Skips — Skills h2→h4, Job Role as div
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — In `templates/cv-template.html`: changed skill group heading from `<h4>` to `<h3>` (line 627) and updated `.skill-group h4` CSS selector to `.skill-group h3` (line 182); changed job-role from `<div class="job-role">` to `<h3 class="job-role">` (line 672).
 **Discovered:** 2026-07-06 (cycle 93) by accessibility-specialist.
-**Description:** Two structural issues in `templates/cv-template.html`: (1) Skills section uses `<h2 class="section-title">` then immediately `<h4>{{ cat.category }}</h4>` for skill group names, skipping h3 entirely; (2) Experience entries render the job title as `<div class="job-role">` rather than `<h3>`. Both break WCAG 1.3.1 (Info and Relationships, Level A). Fix: change skill group `<h4>` to `<h3>` and change job-role `<div>` to `<h3 class="job-role">`.
+**Description:** Skills section used `<h2>` then immediately `<h4>`, skipping h3; experience job title was a `<div>` not an `<h3>`. Both broke WCAG 1.3.1 Level A.
 **Affected stories:** US-X1, US-H4
 
 ---
@@ -4308,9 +4324,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-360: "Blocked Formats Reflect ATS Validation Failures" Footer Appears When Nothing Is Blocked
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — Co-fixed with GAP-350. Changed `summary.fail > 0` to `blockingFails.length > 0` in `download-tab.js` — the footer now only appears when a format is genuinely blocked.
 **Discovered:** 2026-07-06 (cycle 93) by hr-ats.
-**Description:** `download-tab.js:258` appends a footer sentence ("Blocked formats reflect ATS validation failures for the corresponding output types.") whenever `summary.fail > 0 && files.length`. `summary.fail` counts all `fail`-status checks including advisory ones. The sentence appears even when every download button is enabled and no format is actually blocked. One-line fix: replace `summary.fail > 0` with `blockingFails.length > 0` — `blockingFails` is already computed at line 110.
+**Description:** `download-tab.js:258` showed "Blocked formats reflect ATS validation failures" when only advisory checks had failed and no format was actually blocked.
 **Affected stories:** US-H5, US-U4
 
 ---
@@ -4438,9 +4454,9 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-373: Hard/Soft Skill Type Toggle Does Not Trigger ATS Refresh
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 94) — Added `scheduleAtsRefresh()` call in the `.then()` handler after `saveSkillQualifierOverride()` in `skills-review.js:991`. The ATS modal keyword grouping now stays current after skill type changes.
 **Discovered:** 2026-07-06 (cycle 93) by hr-ats.
-**Description:** The hard/soft skill type toggle (`skills-review.js:986–992` calls `saveSkillQualifierOverride()` then `.then(() => _renderSkillsTable(...))`) does not call `scheduleAtsRefresh()`. The ATS Report modal's keyword grouping (Hard Requirements vs. Preferred Skills) will not reflect a type override until the user performs another action that triggers a refresh. Low impact on scoring but the modal display becomes stale.
+**Description:** The hard/soft skill type toggle did not call `scheduleAtsRefresh()` after saving, leaving the ATS Report modal's keyword grouping stale.
 **Affected stories:** US-H6
 
 ---

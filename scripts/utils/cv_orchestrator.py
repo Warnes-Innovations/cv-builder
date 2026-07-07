@@ -3768,6 +3768,7 @@ Include one entry per candidate. Do not omit any candidate."""
 
         domain = job_analysis.get('domain', '')
         keywords = set(job_analysis.get('ats_keywords', []))
+        required_skills = set(job_analysis.get('required_skills', []))
 
         scored_pubs = []
         for key, pub in self.publications.items():
@@ -3795,12 +3796,16 @@ Include one entry per candidate. Do not omit any candidate."""
                 score += 20
                 reasons.append('conference paper')
 
-            # Keyword matches
+            # Keyword and required-skill matches (GAP-357)
             title_lower = pub['title'].lower()
             matches = sum(1 for kw in keywords if kw.lower() in title_lower)
             score += matches * 5
             if matches:
                 reasons.append(f'{matches} keyword match{"es" if matches > 1 else ""}')
+            req_matches = sum(1 for rs in required_skills if rs.lower() in title_lower)
+            score += req_matches * 8
+            if req_matches:
+                reasons.append(f'{req_matches} required-skill match{"es" if req_matches > 1 else ""}')
 
             # Domain-specific
             if domain == 'genomics' and any(
@@ -4935,7 +4940,8 @@ Include one entry per candidate. Do not omit any candidate."""
                 cat_run = p.add_run(f"{cat.get('category', '')}: ")
                 cat_run.bold = True
                 cat_run.font.size = Pt(10)
-                skills_list = cat.get('skills', [])
+                # Exclude weak-evidence (candidate_to_confirm) skills from human DOCX (GAP-342).
+                skills_list = [s for s in cat.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]
                 skills_text = ', '.join(
                     s.get('name', s) if isinstance(s, dict) else str(s)
                     for s in skills_list

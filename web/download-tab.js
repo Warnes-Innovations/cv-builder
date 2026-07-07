@@ -255,7 +255,8 @@ function _renderDownloadGrid(files, checks, summary, generatedAt = null, generat
   }
 
   html += '</div></div>';
-  if (summary.fail > 0 && files.length) {
+  // Only show "blocked formats" notice when something is genuinely blocked (GAP-360).
+  if (blockingFails.length > 0 && files.length) {
     html += '<p style="margin-top:12px;color:#6b7280;font-size:0.88em;">Blocked formats reflect ATS validation failures for the corresponding output types.</p>';
   }
   return html;
@@ -411,7 +412,8 @@ async function populateDownloadTab(cvData) {
   const _hasDocx   = _fileNames.some(n => n.endsWith('.docx') && !n.includes('coverletter') && !n.includes('cover_letter') && !n.includes('screening'));
   const _hasHtml   = _fileNames.some(n => n.endsWith('.html'));
   const _reqCount  = [_hasPdf, _hasDocx, _hasHtml].filter(Boolean).length;
-  const _atsFails  = (checks || []).filter(c => c.status === 'fail' || c.status === 'error').length;
+  // Count only blocking (non-advisory) failures for the readiness chip (GAP-350).
+  const _atsFails  = (checks || []).filter(c => (c.status === 'fail' || c.status === 'error') && !_NON_BLOCKING_CHECKS.has(c.name)).length;
   const _atsScanned = (checks || []).length > 0;
   const _chipColor = _reqCount === 3 && (_atsScanned ? _atsFails === 0 : true) ? '#065f46' : (_reqCount >= 2 ? '#92400e' : '#991b1b');
   const _chipBg    = _reqCount === 3 && (_atsScanned ? _atsFails === 0 : true) ? '#f0fdf4' : (_reqCount >= 2 ? '#fffbeb' : '#fef2f2');
@@ -524,4 +526,4 @@ async function populateDownloadTab(cvData) {
   content.innerHTML = html;
 }
 
-export { populateDownloadTab };
+export { populateDownloadTab, _NON_BLOCKING_CHECKS };

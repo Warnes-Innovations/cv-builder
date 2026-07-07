@@ -15,6 +15,7 @@
 
 import { getLogger } from './logger.js';
 import { formatAtsScoreSummary } from './ats-refinement.js';
+import { _NON_BLOCKING_CHECKS } from './download-tab.js';
 const log = getLogger('finalise');
 
 function _formatDuration(secs) {
@@ -172,7 +173,8 @@ function _renderReadinessChecklist(files, statusData) {
   const hasScr  = [...fileSet].some(f => f.includes('screening'));
 
   const atsChecks  = statusData?.ats_checks || [];
-  const atsFails   = (atsChecks).filter(c => c.status === 'fail' || c.status === 'error').length;
+  // Count only blocking (non-advisory) failures to avoid false urgency (GAP-350).
+  const atsFails   = (atsChecks).filter(c => (c.status === 'fail' || c.status === 'error') && !_NON_BLOCKING_CHECKS.has(c.name)).length;
   const atsScanned = atsChecks.length > 0;
 
   const layoutFresh = statusData?.layout_freshness !== 'stale';

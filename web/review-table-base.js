@@ -669,20 +669,46 @@ async function populateReviewTab(pane) {
 // Track which pane is currently active
 window._activeReviewPane = 'experiences';
 
+// Wire ArrowLeft/ArrowRight keyboard navigation on review sub-tab container (GAP-354).
+// Called once after the container is first rendered (re-calling is a no-op).
+function _initReviewSubtabKeyNav(container) {
+  if (!container || container.dataset.keynavInit) return;
+  container.dataset.keynavInit = '1';
+  container.setAttribute('role', 'tablist');
+  container.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const tabs = [...container.querySelectorAll('.review-subtab:not([disabled])')];
+    if (!tabs.length) return;
+    const current = tabs.findIndex(t => t.dataset.pane === window._activeReviewPane);
+    const next = e.key === 'ArrowRight'
+      ? tabs[(current + 1) % tabs.length]
+      : tabs[(current - 1 + tabs.length) % tabs.length];
+    if (next) {
+      next.focus();
+      switchReviewSubtab(next.dataset.pane);
+    }
+    e.preventDefault();
+  });
+}
+
 async function switchReviewSubtab(pane) {
-  // Ensure tablist role on the sub-tab container (one-time setup, GAP-303).
+  // Ensure tablist role and keyboard nav on the sub-tab container (GAP-303, GAP-354).
   const firstBtn = document.querySelector('.review-subtab');
-  if (firstBtn?.parentElement && !firstBtn.parentElement.getAttribute('role')) {
-    firstBtn.parentElement.setAttribute('role', 'tablist');
+  if (firstBtn?.parentElement) {
+    if (!firstBtn.parentElement.getAttribute('role')) {
+      firstBtn.parentElement.setAttribute('role', 'tablist');
+    }
+    _initReviewSubtabKeyNav(firstBtn.parentElement);
   }
 
-  // Update button states and ARIA attributes (GAP-303)
+  // Update button states, ARIA attributes, and roving tabindex (GAP-303, GAP-354).
   document.querySelectorAll('.review-subtab').forEach(btn => {
     const isActive = btn.dataset.pane === pane;
     btn.classList.toggle('active', isActive);
     if (!btn.getAttribute('role')) btn.setAttribute('role', 'tab');
     btn.setAttribute('aria-selected', String(isActive));
     btn.setAttribute('aria-controls', `review-pane-${btn.dataset.pane}`);
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
   });
 
   // Hide all panes, show the selected one; ensure tabpanel roles (GAP-303)
