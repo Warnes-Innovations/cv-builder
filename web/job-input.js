@@ -303,8 +303,10 @@ async function uploadJobFile() {
     } else {
       stateManager.setTabData('job', data.text);
       saveTabData();
-      appendMessage('assistant', `✅ Job description loaded from "${data.filename}" (${data.content_length.toLocaleString()} chars).`);
-      await analyzeJob();
+      appendMessage('assistant', `✅ Job description loaded from "${data.filename}" (${data.content_length.toLocaleString()} chars). Review the extracted details below, then click "🔍 Analyse Job" to continue.`);
+      setLoading(false);
+      switchTab('job');
+      await populateJobTab();
     }
   } catch (err) {
     errEl.textContent   = err.message;
@@ -401,14 +403,14 @@ async function submitJobText() {
       _clearFieldError('job-text-input', 'paste-error');
       stateManager.setTabData('job', jobText);
       saveTabData();
-      appendMessage('assistant', '✅ Job description submitted successfully.');
+      appendMessage('assistant', '✅ Job description submitted. Review the extracted details below, then click "🔍 Analyse Job" to continue.');
 
       if (typeof updateTabBarForStage === 'function') {
         updateTabBarForStage('job');
       }
       switchTab('job');
       setLoading(false);
-      await analyzeJob();
+      await populateJobTab();
       return;
     }
   } catch (error) {

@@ -173,7 +173,7 @@ describe('analyzeJob', () => {
       'system',
       "ℹ️ Content you submit is sent to the configured LLM provider for analysis. Review your provider's data policy for details.",
     )
-    expect(global.localStorage.setItem).toHaveBeenCalledWith('cv-builder-llm-disclosure-shown', '1')
+    expect(global.localStorage.setItem).toHaveBeenCalledWith('cv-builder-llm-disclosure-shown-unknown', '1')
   })
 
   it('suppresses the disclosure when the storage flag is already set', async () => {

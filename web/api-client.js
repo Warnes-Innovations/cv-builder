@@ -28,6 +28,11 @@ const StorageKeys = {
 
 const OWNER_TOKEN_KEY = 'cv-builder-owner-token';
 
+function disclosureKey(provider) {
+  const p = provider || 'unknown';
+  return `${StorageKeys.LLM_DISCLOSURE_SHOWN}-${p}`;
+}
+
 function getSessionIdFromURL() {
   if (typeof window === 'undefined' || !window.location) return null;
   return new URLSearchParams(window.location.search).get('session');
@@ -245,5 +250,6 @@ export {
   createSession,
   fetchStatus,
   fetchSettings, updateSettings,
+  disclosureKey,
 };
 

@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 89)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 90)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,10 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340.
+
+## 2026-07-06 (Cycle 90) Implementation Notes
+
+Cycle 90 addressed 3 gaps: GAP-330 (auto-analysis removed from file upload and paste submit paths in `web/job-input.js` — both now call `populateJobTab()` like the URL fetch path, so users review the extracted position name before clicking "🔍 Analyse Job"), GAP-333 (false positive — notes ARE rendered in the sessions modal via `notesPreview` at `session-switcher-ui.js:404–406`), GAP-335 (LLM disclosure flag now keyed by provider ID in `web/api-client.js` via `disclosureKey(provider)` helper; `analyzeJob()` in `web/job-analysis.js` reads the current provider from `StorageKeys.TAB_DATA` and uses the provider-scoped key, so the disclosure fires once per provider on first use).
 
 ## 2026-07-06 (Cycle 89) Implementation Notes
 
@@ -3951,11 +3955,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-330: No Extracted-Field Confirmation Before Job Analysis
 
 **Priority:** HIGH (UX — Fail)
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 90) — Removed the auto-call to `analyzeJob()` from both `uploadJobFile()` and `submitJobText()` in `web/job-input.js`. Both paths now call `populateJobTab()` (matching the URL fetch path), which shows the job description and extracted position name with a "🔍 Analyse Job" button. Users can review the extracted position name before triggering the expensive LLM analysis step.
 **Discovered:** 2026-07-06 (cycle 88) by ux-expert.
 **Description:** All three input paths (paste at `job-input.js:307`, URL at `job-input.js:385`, file upload at `job-input.js:495`) call `analyzeJob()` directly without a confirmation or editing step. If the LLM misparses company name, role title, or domain, the user has no way to correct it without restarting the entire job analysis step. The story requires an extracted-field preview with inline correction before analysis proceeds.
 **Affected stories:** US-U2.4, US-A1
-**Fix:** After extracting the job description text, display an inline preview card showing parsed company name, role title, and job type with an "Edit before analyzing" affordance. Proceed to `analyzeJob()` only after confirmation.
 
 ---
 
@@ -3982,11 +3985,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-333: Session Notes Field Not Displayed in Sessions Modal
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** FALSE POSITIVE 2026-07-06 (cycle 90) — Source-verified: notes ARE rendered in the sessions modal. `session-switcher-ui.js:404–406` renders `notesPreview` (truncated single-line with tooltip for non-empty notes). `session-switcher-ui.js:407–414` renders `notesEditWidget` (editable textarea for saved sessions). The `/api/sessions` endpoint returns the `notes` field at `session_routes.py:189`. No fix needed.
 **Discovered:** 2026-07-06 (cycle 88) by recruiter-ops.
-**Description:** The sessions archive stores up to 2000 characters of `notes` per session (`generation_routes.py:2183–2190`) and `application_status` is surfaced in the sessions list. However, the `notes` field does not appear to be rendered in the sessions modal UI, limiting cross-session tracking value for users managing multiple applications.
+**Description:** The sessions archive stores up to 2000 characters of `notes` per session. However, source verification confirmed notes are rendered — the gap description was incorrect.
 **Affected stories:** US-O2, US-S3
-**Fix:** Render the notes field (truncated with expand/collapse) in the sessions list entry in `session-switcher-ui.js`, at minimum showing whether notes exist with a preview.
 
 ---
 
@@ -4004,11 +4006,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-335: LLM Disclosure Flag Never Resets on Provider Switch
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 90) — Added `disclosureKey(provider)` helper to `web/api-client.js` that returns `cv-builder-llm-disclosure-shown-${provider}` (falling back to `unknown`). `analyzeJob()` in `web/job-analysis.js` now reads `currentModelProvider` from `StorageKeys.TAB_DATA` in localStorage and checks/sets the provider-scoped key. Each provider gets its own disclosure flag — switching providers causes the disclosure to fire again on first use of the new provider.
 **Discovered:** 2026-07-06 (cycle 88) by trust-compliance.
-**Description:** The one-time `LLM_DISCLOSURE_SHOWN` flag (stored in `localStorage`) is never cleared when the user switches LLM providers. If a user initially accepted a disclosure for a confidential provider (e.g., GitHub Copilot) and later switches to a non-confidential provider (e.g., Gemini free tier), the disclosure for the new provider never fires. The semantics of "data may be used for training" differ significantly between providers.
+**Description:** The one-time `LLM_DISCLOSURE_SHOWN` flag (stored in `localStorage`) was never cleared when the user switches LLM providers. If a user initially accepted a disclosure for a confidential provider (e.g., GitHub Copilot) and later switched to a non-confidential provider (e.g., Gemini free tier), the disclosure for the new provider never fired. The semantics of "data may be used for training" differ significantly between providers.
 **Affected stories:** US-C3, US-C5
-**Fix:** Key the disclosure flag by provider ID: `LLM_DISCLOSURE_SHOWN_${provider}` — or clear the flag on provider change so the disclosure fires once per provider.
 
 ---
 
