@@ -51,7 +51,7 @@
         title="Create a new session in a new tab">＋ New Session</button>
       <button id="model-selector-btn" onclick="openModelModal()"
         class="header-pill-btn">
-        <span style="opacity:0.7;">LLM:</span>
+        <span style="opacity:0.7;">AI Model:</span>
         <span id="model-current-label">Loading…</span>
         <span id="llm-status-pill" class="auth-badge unauthenticated" style="padding:2px 8px; font-size:0.75em; border-radius:999px;">
           <span id="llm-status-icon">&#x26A0;</span>
@@ -84,6 +84,9 @@
             style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.1em;padding:2px 4px;line-height:1;">✏️</button>
         </div>
         <div class="position-subtitle" id="position-company" style="display:none;"></div>
+        <div id="position-notes-indicator" role="note" style="display:none;font-size:0.82em;color:#64748b;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          <span aria-hidden="true">📝</span> <span id="position-notes-text"></span>
+        </div>
       </div>
     </div>
     <!-- Center + Right zones: metrics then action buttons -->
@@ -147,7 +150,7 @@
       <div class="arrow">→</div>
       <div class="step" id="step-finalise"       title="Finalise — mark the application ready to send and record its status" onclick="handleStepClick('finalise')"><span aria-hidden="true">✅</span> Finalise</div>
       <div class="arrow">→</div>
-      <div class="step" id="step-harvest"        title="Harvest improvements — save refined bullets, new skills, and summary variants back to your Master CV for future applications"       onclick="handleStepClick('harvest')"><span aria-hidden="true">🌾</span> Harvest</div>
+      <div class="step" id="step-harvest"        title="Update Master CV — save refined bullets, new skills, and summary variants back to your Master CV for future applications"       onclick="handleStepClick('harvest')"><span aria-hidden="true">🌾</span> Update Master CV</div>
     </div>
   </nav>
   <!-- Screen-reader-only live region for stage-change announcements (GAP-73) -->
@@ -164,7 +167,7 @@
       <div id="llm-busy-overlay">
         <div id="llm-busy-card">
           <div class="llm-busy-spinner"></div>
-          <div id="llm-busy-label" aria-live="polite" role="status">Reasoning…</div>
+          <div id="llm-busy-label" aria-live="polite" role="status">Working…</div>
           <div id="llm-busy-elapsed">0:00</div>
           <div id="llm-busy-state-badge">Taking longer than usual</div>
           <button id="llm-busy-stop" onclick="abortCurrentRequest()">■ Stop</button>
@@ -177,7 +180,7 @@
       
       <!-- LLM status bar: thinking indicator / stop button -->
       <div id="llm-status-bar" style="display:none">
-        <div id="llm-thinking" style="display:none"><span class="llm-dot">●</span> <span id="llm-step-label">Reasoning…</span><span id="llm-elapsed"></span></div>
+        <div id="llm-thinking" style="display:none"><span class="llm-dot">●</span> <span id="llm-step-label">Working…</span><span id="llm-elapsed"></span></div>
         <button id="llm-abort-btn" onclick="abortCurrentRequest()" title="Stop the current request" style="display:none">■ Stop</button>
       </div>
 
@@ -235,7 +238,7 @@
           <div class="tab"        id="tab-screening"      data-tab="screening"      role="tab" aria-selected="false" aria-controls="document-content" tabindex="-1"><span aria-hidden="true">📋</span> Screening</div>
           <div class="tab"        id="tab-interview-prep" data-tab="interview-prep" role="tab" aria-selected="false" aria-controls="document-content" tabindex="-1"><span aria-hidden="true">🎤</span> Interview Prep</div>
           <div class="tab"        id="tab-thank-you"      data-tab="thank-you"      role="tab" aria-selected="false" aria-controls="document-content" tabindex="-1"><span aria-hidden="true">🙏</span> Thank You</div>
-          <div class="tab"        id="tab-harvest"        data-tab="harvest"        role="tab" aria-selected="false" aria-controls="document-content" tabindex="-1"><span aria-hidden="true">🌾</span> Harvest</div>
+          <div class="tab"        id="tab-harvest"        data-tab="harvest"        role="tab" aria-selected="false" aria-controls="document-content" tabindex="-1"><span aria-hidden="true">🌾</span> Update Master CV</div>
         </div>
         <button class="tab-scroll-btn tab-scroll-right" id="tab-scroll-right" aria-label="Scroll tabs right" style="display:none">&#8250;</button>
       </div>
@@ -370,7 +373,7 @@
           <strong style="color: #1e293b;">Prerequisites:</strong>
           <ul style="margin: 4px 0 0; padding-left: 1.3em;">
             <li>A <code>Master_CV_Data.json</code> profile (the app will help you create one)</li>
-            <li>An LLM provider configured — use the <strong>⚙ LLM</strong> button in the header before your first session</li>
+            <li>An AI Model provider configured — use the <strong>AI Model</strong> button in the header before your first session</li>
           </ul>
         </div>
 
@@ -440,7 +443,7 @@
   <div class="modal-overlay" id="model-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="model-modal-title" onclick="if(event.target===this)closeModelModal()">
     <div class="modal" style="max-width: 1020px; width: 95%;">
       <div class="modal-header modal-header-split">
-        <h2 id="model-modal-title">LLM Configuration Wizard</h2>
+        <h2 id="model-modal-title">AI Model Configuration Wizard</h2>
         <button class="modal-close-btn" onclick="closeModelModal()" title="Close" aria-label="Close model selector">&times;</button>
       </div>
       <div class="modal-body model-wizard-body" style="padding: 0; position: relative;">
@@ -607,7 +610,7 @@
         <div id="settings-status-msg" aria-live="polite" style="display:none; margin:0 10px 12px; padding:8px 10px; border-radius:6px; font-size:0.9em;"></div>
 
         <div class="settings-card">
-          <h3 class="settings-card-title">LLM Defaults</h3>
+          <h3 class="settings-card-title">AI Model Defaults</h3>
           <div class="settings-card-grid">
             <label class="field-group">
               <span class="field-label-sm">Default Provider</span>
@@ -675,7 +678,7 @@
         </div>
 
         <div class="settings-card">
-          <h3 class="settings-card-title">LLM Retry Policy (Browser)</h3>
+          <h3 class="settings-card-title">AI Model Retry Policy (Browser)</h3>
           <div class="settings-card-grid">
             <label class="field-group">
               <span class="field-label-sm">Base Delay (ms)</span>
