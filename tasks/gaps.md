@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 92)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 93)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -8,7 +8,52 @@
 - independent heuristic UX evaluation (all cycles through 2026-07-06 cycle 82)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-06 (Cycle 93) Reconciliation Notes
+
+Full 15-persona + heuristic review cycle (discovery only — no code fixes in this cycle). Added GAP-341 through GAP-375 (35 new entries) from findings across all persona reviews and heuristic evaluation.
+
+- **recruiter-ops** — Finalise/archive tab structurally unreachable — 4 independent barriers: `display:none` in `index.html`, absent from `STAGE_TABS`, `updateActionButtons('finalise')` never called, no phase maps to `'finalise'` in `PHASE_TO_STEP` (GAP-341, CRITICAL)
+- **resume-expert** — `candidate_to_confirm` skills leak into human DOCX `_generate_human_docx` path — one-liner fix at `cv_orchestrator.py:4938` (GAP-342, HIGH)
+- **trust-compliance** — Cover letter LLM system prompt has no anti-fabrication clause (GAP-343, HIGH)
+- **persuasion-expert** — Only 3/10 persuasion checks applied to cover letter body (GAP-344, HIGH)
+- **persuasion-expert** — CAR structure check severity `'info'` — zero enforcement, invisible in UI (GAP-345, HIGH)
+- **accessibility** — No skip navigation link — WCAG 2.4.1 Level A violation (GAP-346, HIGH)
+- **master-cv-curator** — Publication edit modal silently drops non-hardcoded BibTeX fields on save (GAP-347, HIGH)
+- **power-user** — `kb-focused` CSS missing for DataTable rows — keyboard nav works but invisible (GAP-348, HIGH)
+- **power-user** — `?` header button opens welcome modal (wrong target); shortcut panel undiscoverable and outdated (GAP-349, HIGH)
+- **hr-ats** — Advisory ATS failures counted as blocking in readiness chip and finalise checklist (GAP-350, HIGH)
+- **first-time-user** — Customise stage exposes 9 sub-tabs simultaneously with no guidance (GAP-351, HIGH)
+- **returning-user** — Session notes invisible during active session workspace (GAP-352, MEDIUM)
+- **persuasion-expert** — Professional summary never post-validated after generation (GAP-353, MEDIUM)
+- **accessibility** — Review sub-tabs lack arrow-key navigation and roving tabindex (GAP-354, MEDIUM)
+- **accessibility** — CV template heading hierarchy skips: h2→h4 in skills, job-role as div not h3 (GAP-355, MEDIUM)
+- **hiring-manager** — Cover letter company-reference check passes without substance (GAP-356, MEDIUM)
+- **resume-expert** — Publication scoring over-weights recency, ignores required_skills; first-author 0-weight (GAP-357, MEDIUM)
+- **resume-expert** — No user-visible pre-generation page length estimate (GAP-358, MEDIUM)
+- **master-cv-curator** — experience `domain_relevance` field absent from Master CV CRUD modal (GAP-359, MEDIUM)
+- **hr-ats** — "Blocked formats reflect ATS validation failures" footer appears when nothing is blocked (GAP-360, MEDIUM, one-line fix)
+- **applicant** — Role-type/mismatch gap analysis computed but not shown in job analysis panel (GAP-361, MEDIUM)
+- **applicant** — Prior-session clarification answers never pre-populated across sessions (GAP-362, MEDIUM)
+- **applicant** — Screening LLM call doesn't inject post-analysis clarification answers (GAP-363, MEDIUM)
+- **ux-expert** — Layout sub-phase has 4 sequential action buttons with no sub-step indicator (GAP-364, MEDIUM)
+- **ux-expert** — `.intake-confirm-card` CSS exists but extracted-field confirmation is unwired (GAP-365, MEDIUM)
+- **power-user** — Publications and rewrite bulk actions lack undo path (GAP-366, MEDIUM)
+- **multi-persona** — "LLM" / developer jargon in header and status copy (GAP-367, LOW)
+- **multi-persona** — "Harvest" step label is an opaque metaphor for job seekers (GAP-368, LOW)
+- **returning-user** — Single-session auto-resume fires without explaining why user landed in that session (GAP-369, LOW)
+- **recruiter-ops** — Default archive status dropdown value is "queued" — wrong for a completed package (GAP-370, LOW)
+- **master-cv-curator** — Summary variant key exposed as display label, no display-name field (GAP-371, LOW)
+- **hiring-manager** — Executive/academic cover letter word count bounds possibly still below story spec (check GAP-338 resolution) (GAP-372, LOW)
+- **hr-ats** — Hard/soft skill type toggle in skills-review.js doesn't call scheduleAtsRefresh() (GAP-373, LOW)
+- **trust-compliance** — LLM disclosure fires only at analyzeJob(), not at cover letter/harvest/screening (GAP-374, LOW)
+- **hiring-manager** — `_validate_summary()` doesn't check for job title or years-of-experience mention (GAP-375, LOW)
+
+Confirmed still open: GAP-309–312 (master-cv.js OFF-LIMITS), GAP-319 (publication shortlist not proactive), GAP-325 (superseded by GAP-341).
+Confirmed resolved: GAP-323 (auto-resume), GAP-334 (readiness chip), GAP-335 (provider-scoped disclosure), GAP-336 (provenance badges), GAP-306/--cv-card-bg.
+
+---
 
 ## 2026-07-06 (Cycle 92) Implementation Notes
 
@@ -4067,3 +4112,353 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 **Discovered:** 2026-07-06 (cycle 88) by hr-ats.
 **Description:** The ATS Score modal rendered `Basis: review_checkpoint` / `Basis: post_generation` / `Basis: analysis` — internal enum values exposed as user-facing text. `ats-modals.js:240` used `escapeHtml(score.basis || 'review')` directly.
 **Affected stories:** US-H3, US-U4
+
+---
+
+## GAP-341: Finalise/Archive Tab Structurally Unreachable in Normal Workflow
+
+**Priority:** CRITICAL
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by recruiter-ops.
+**Description:** The archive tab (`web/finalise.js`) has a complete implementation (readiness checklist, status dropdown, notes textarea, archive button) but four independent structural barriers make it inaccessible: (1) `tab-finalise` is hardcoded `display:none` in `index.html:227` and absent from `STAGE_TABS`; (2) `finalise-action-btn` is hardcoded `display:none` in `index.html:198` and `updateActionButtons('finalise')` is never called; (3) no phase in `PHASE_TO_STEP` maps to `'finalise'`; (4) the File Review tab's only navigation button leads to Cover Letter, not Archive. The only signal to users is a chat message "You can now finalise your application" with no matching UI affordance.
+**Affected stories:** US-O1, US-O2, US-O5
+
+---
+
+## GAP-342: `candidate_to_confirm` Skills Leak Into Human-Readable DOCX
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by resume-expert.
+**Description:** Three of four output paths correctly filter `candidate_to_confirm` (weak-evidence) skills. The human DOCX path (`_generate_human_docx`, `cv_orchestrator.py:4919–4944`) is the remaining gap — it reads `skills_by_category` without any `candidate_to_confirm` filter in the chain. ATS DOCX was fixed in GAP-326; HTML/PDF template uses `{% if not skill.candidate_to_confirm %}`. One-liner fix at `cv_orchestrator.py:4938`: `skills_list = [s for s in cat.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]`.
+**Affected stories:** US-R5
+
+---
+
+## GAP-343: Cover Letter LLM System Prompt Has No Anti-Fabrication Clause
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by trust-compliance.
+**Description:** The cover letter LLM call (`scripts/routes/master_data_routes.py:1691`) uses a minimal system message (`'You write tailored, professional cover letters. Return only the letter body text.'`) with no prohibition on inventing claims. The main conversation system prompt's "CRITICAL — Data Integrity" clause (`conversation_manager.py:490–491`) and the rewrite-proposal constraint (`llm_client.py:1958`) do not apply to this code path. Since cover letters reach employers directly, a fabricated achievement or metric is the highest-consequence trust failure in the system. Fix: add an anti-fabrication grounding constraint to the cover letter system message.
+**Affected stories:** US-C1, US-C2
+
+---
+
+## GAP-344: Only 3/10 Persuasion Checks Applied to Cover Letter Body
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by persuasion-expert.
+**Description:** `cover_letter_generate` in `master_data_routes.py:1713–1715` applies only `check_passive_voice`, `check_hedging_language`, and `check_summary_generic_phrases` to the generated letter body. The other 7 checks — `check_strong_action_verb`, `check_has_result_clause`, `check_keyword_appended`, `check_positive_metric_framing`, `check_new_numeric_claims`, `check_named_institution_position`, `check_car_structure` — are never run on cover letters. A cover letter with fabricated metrics or weak passive voice passes through 7 unguarded checks.
+**Affected stories:** US-P5
+
+---
+
+## GAP-345: CAR Structure Check Has Zero Enforcement Weight
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by persuasion-expert.
+**Description:** `check_car_structure()` (`llm_client.py:1364–1407`) returns `severity: 'info'` for both pass and fail outcomes. In `renderRewritePanel()` (`rewrite-review.js`), only `severity: 'warn'` entries increment the warning count, appear in the blocking amber banner, and require user acknowledgement before submission. CAR failures silently appear as quiet info badges that users can ignore without any friction. Fix: escalate severity to `warn` and add a suggested CAR-structured rewrite to the flag details.
+**Affected stories:** US-P3
+
+---
+
+## GAP-346: No Skip Navigation Link — WCAG 2.4.1 Level A Violation
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by accessibility-specialist.
+**Description:** `index.html` has no "Skip to main content" bypass link. A keyboard user must Tab through the fixed header (5 buttons), the position/ATS metrics bar, and all 13 workflow-step pills before reaching the Conversation input or Tab panel on every page load. WCAG 2.4.1 (Bypass Blocks) is a Level A mandatory criterion. Fix: add `<a href="#document-content" class="sr-only">Skip to content</a>` as the first focusable element in `<body>`.
+**Affected stories:** US-X1
+
+---
+
+## GAP-347: Publication Edit Modal Silently Drops Non-Hardcoded BibTeX Fields on Save
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by master-cv-curator.
+**Description:** The publication CRUD modal hard-codes a "known" field set (`author`, `editor`, `title`, `year`, `journal`, `booktitle`, `doi`). All other standard BibTeX fields — `volume`, `pages`, `publisher`, `number`, `series`, `isbn`, `url`, etc. — go into a raw "Extra fields (key=value)" textarea. When a curator opens an existing entry and saves, any content in that textarea that they do not explicitly preserve is silently dropped from `publications.bib`. No warning, no diff, no "unchanged = safe" guard. This directly violates US-M4: "Round-trip editing through the UI preserves existing BibTeX information." Location: `web/master-cv.js:1519–1567` (OFF-LIMITS until GAP-01 resolves).
+**Affected stories:** US-M4
+
+---
+
+## GAP-348: `kb-focused` CSS Missing for DataTable Rows — Keyboard Nav Invisible
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by power-user.
+**Description:** Keyboard ↑/↓ navigation and A/R shortcuts are implemented for all customizations sub-tabs (experience, skills, achievements, publications) in `keyboard-shortcuts.js`. However, `styles.css` only defines a `.kb-focused` highlight rule for `.rewrite-card` and `.spell-card` (line 1413). When a DataTable `<tr>` receives the `kb-focused` class, there is no visual style applied — the user gets zero on-screen indication of which row is focused. A/R fire on the correct row, but the feature is effectively invisible in practice. Fix: add `.kb-focused` rule for `tr` elements.
+**Affected stories:** US-W3
+
+---
+
+## GAP-349: Keyboard Shortcut `?` Header Button Opens Wrong Modal
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by power-user.
+**Description:** The `?` key correctly opens a floating shortcuts panel, but the "? Help" header button (`index.html:63`) calls `showWelcomeModal()` — the onboarding wizard, not the shortcuts panel — so a user who investigates the `?` button is taken to the wrong place. Additionally, the shortcuts panel content says "A/R: Accept focused card (rewrite / spell)" without mentioning that A/R also works on all four customizations DataTable sub-tabs (added in GAP-332). The panel is undiscoverable for users who don't know the `?` key.
+**Affected stories:** US-W1
+
+---
+
+## GAP-350: Advisory ATS Failures Counted as Blocking in Readiness Chip and Finalise Checklist
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by hr-ats.
+**Description:** Both `download-tab.js:414` and `finalise.js:175` compute their "ATS issues" count with `c.status === 'fail'` and no exclusion of the `_NON_BLOCKING_CHECKS` set. Nine checks are intentionally advisory (date format consistency, JSON-LD schema type, heading style, page size, etc.) and cannot block downloads — but because the backend returns `status: 'fail'` for them, both the readiness chip in the File Review tab header and the "ATS validation" row in the Finalise checklist go amber and report "ATS ⚠ N issues" when only advisory items failed. Fix: either use `warn` status on the backend for advisory checks, or filter `_atsFails` in both files to exclude `_NON_BLOCKING_CHECKS` names.
+**Affected stories:** US-H3, US-H5
+
+---
+
+## GAP-351: Customise Stage Exposes 9 Sub-Tabs Simultaneously With No Guidance
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by first-time-user.
+**Description:** When the Customise step activates, 9 sub-tabs unlock at once (Goals, Questions, Experiences, Experience Bullets, Skills, Achievements, Tagline, Summary, Publications) with no ordering guidance, no required/optional distinction, and no visit-tracking progress indicator. A first-time user has no affordance for where to start or when they are done. Source: `ui-core.js` `STAGE_TABS.customizations`.
+**Affected stories:** US-F3, US-A3
+
+---
+
+## GAP-352: Session Notes Invisible During Active Session Workspace
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by returning-user.
+**Description:** Notes and application status are stored in a `metadata.json` sidecar file, not in the in-memory session. The `/api/sessions/active` endpoint (`session_routes.py:747–768`) never returns `notes`. `_normalizeSessionsForTable()` (`session-switcher-ui.js:238–280`) includes `notes` only for saved-type rows. `loadSessionFile()` does not read `metadata.json`. Result: a returning user who left themselves notes must open the Sessions modal to recall them — notes do not follow the user into the active workspace.
+**Affected stories:** US-S5 (proposed US-S8)
+
+---
+
+## GAP-353: Professional Summary Never Post-Validated After Generation
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by persuasion-expert.
+**Description:** The `generate_professional_summary()` prompt (`llm_client.py:882–903`) explicitly requires a value-identity opening and a forward-looking closing, and prohibits 19 generic filler phrases. None of these are verified on the actual output. `check_summary_generic_phrases()` fires only on rewrite proposals targeting `location == 'summary'`, not on the freshly generated text. A summary opening "Results-driven biostatistician with 10 years of experience seeking a challenging role…" passes the entire pipeline undetected.
+**Affected stories:** US-P1, US-P3
+
+---
+
+## GAP-354: Review Sub-Tabs Lack Arrow-Key Navigation and Roving Tabindex
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by accessibility-specialist.
+**Description:** The Customise-phase sub-tabs (Experiences / Skills / Achievements / Summary / Publications) have `role="tab"` and `aria-selected` applied by `switchReviewSubtab()` in `review-table-base.js`, but no ArrowLeft/ArrowRight keyboard handler is wired on the tablist container, and `tabindex` is never managed (no roving 0/-1 pattern). The main tab bar (`#tab-bar`) implements this correctly in `ui-core.js:471–497`. Additionally, `role="tablist"` is set lazily on first call rather than on initial render.
+**Affected stories:** US-X2
+
+---
+
+## GAP-355: CV Template Heading Hierarchy Skips — Skills h2→h4, Job Role as div
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by accessibility-specialist.
+**Description:** Two structural issues in `templates/cv-template.html`: (1) Skills section uses `<h2 class="section-title">` then immediately `<h4>{{ cat.category }}</h4>` for skill group names, skipping h3 entirely; (2) Experience entries render the job title as `<div class="job-role">` rather than `<h3>`. Both break WCAG 1.3.1 (Info and Relationships, Level A). Fix: change skill group `<h4>` to `<h3>` and change job-role `<div>` to `<h3 class="job-role">`.
+**Affected stories:** US-X1, US-H4
+
+---
+
+## GAP-356: Cover Letter Company-Reference Check Passes Without Company-Specific Substance
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by hiring-manager.
+**Description:** The `companyCheck` validation in `cover-letter.js:562–589` counts how many times the company name appears in the letter. Mentioning the company name twice counts as a pass. However, the prompt only injects company-specific context (initiatives, products, values) when the user fills in the optional `company_context` textarea (`master_data_routes.py:1640–1643`). When that field is empty (the common case), the letter will say "I'm excited about Acme Corp" twice and still pass the check, with no company-specific substance. US-M6 requires "at least one company-specific reference (recent initiative, product, or value)."
+**Affected stories:** US-M6
+
+---
+
+## GAP-357: Publication Scoring Over-Weights Recency, Ignores `required_skills`; First-Author 0-Weight
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by resume-expert. (Related to GAP-318, which added a first-author bonus detection but left its point value at 0.)
+**Description:** In `_select_publications()` (`cv_orchestrator.py:3764–3806`): Year ≥ 2020 yields +30 points; first-author status is detected but contributes 0 points; `required_skills` is not consulted (only `ats_keywords`). A 2022 paper on an unrelated topic scores the same as a 2014 paper with four required-skill matches. Fix: add `required_skills` bonus (+8 per match) and first-author bonus (+10, consistent with GAP-318 intent).
+**Affected stories:** US-R2
+
+---
+
+## GAP-358: No User-Visible Pre-Generation Page Length Estimate
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by resume-expert.
+**Description:** `_estimate_cv_body_pages()` and `_cap_cv_body_to_pages()` run internally during `_handle_recommend_customizations` but neither the estimate nor any intermediate warning is surfaced as a visible UI message to the user before generation is initiated. Page count warnings fire only after generation via `validate_ats_report`. US-R2 criterion 2.5 states "System warns if estimated CV length exceeds 3 pages or is under 1.5 pages" — this should be visible pre-generation.
+**Affected stories:** US-R2
+
+---
+
+## GAP-359: Experience `domain_relevance` Field Absent From Master CV CRUD Modal
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by master-cv-curator.
+**Description:** The `experience` entries support a `domain_relevance` array (e.g. `["pharma", "clinical"]`) that the backend correctly reads and persists (`master_data_routes.py:591, 614`). The add/edit experience modal exposes only title, company, location, dates, employment type, importance, and tags — `domain_relevance` has no UI field (`web/master-cv.js:519–585`, OFF-LIMITS). Curators must edit `Master_CV_Data.json` directly to set this field, silently degrading domain-specific AI recommendations.
+**Affected stories:** US-M3
+
+---
+
+## GAP-360: "Blocked Formats Reflect ATS Validation Failures" Footer Appears When Nothing Is Blocked
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by hr-ats.
+**Description:** `download-tab.js:258` appends a footer sentence ("Blocked formats reflect ATS validation failures for the corresponding output types.") whenever `summary.fail > 0 && files.length`. `summary.fail` counts all `fail`-status checks including advisory ones. The sentence appears even when every download button is enabled and no format is actually blocked. One-line fix: replace `summary.fail > 0` with `blockingFails.length > 0` — `blockingFails` is already computed at line 110.
+**Affected stories:** US-H5, US-U4
+
+---
+
+## GAP-361: Role-Type/Mismatch Gap Analysis Missing From Job Analysis Display
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by applicant.
+**Description:** The backend computes `role_level` (IC vs. leadership, seniority) and has all data needed for apparent-mismatch surfacing, but `appendFormattedAnalysis` in `web/message-queue.js:199–249` renders only: position, domain, required skills, preferred skills, and ATS keywords. Neither the role-type inference nor any gap analysis ("Kubernetes is required but not in your master data") appears in the analysis panel. This is the most decision-critical part of US-A2 for an applicant.
+**Affected stories:** US-A2
+
+---
+
+## GAP-362: Prior-Session Clarification Answers Not Pre-Populated Across Sessions
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by applicant.
+**Description:** US-A2 requires that if a prior session exists for the same role type, previous clarification answers are pre-filled as editable defaults. No code was found that loads prior `post_analysis_answers` across sessions. Every session forces the applicant to re-answer from scratch.
+**Affected stories:** US-A2
+
+---
+
+## GAP-363: Screening LLM Call Does Not Inject Post-Analysis Clarification Answers
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by applicant.
+**Description:** The `/api/screening/generate` endpoint (`master_data_routes.py:1922`) is a standalone LLM call that reads master data and selected experiences but does not pull `post_analysis_answers` from the active session state. Preferences the applicant already stated (e.g., "emphasise leadership") are silently absent from screening response generation, contrary to US-A8's requirement that screening responses leverage the established conversation context.
+**Affected stories:** US-A8
+
+---
+
+## GAP-364: Layout Sub-Phase Has 4 Sequential Action Buttons With No Sub-Step Indicator
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by ux-expert.
+**Description:** The layout phase exposes four sequentially-labeled primary action buttons — "Generate Preview →", "Open Layout Review →", "Confirm Layout", "Continue to File Review →" — without any sub-step indicator in the workflow nav bar. All four states map to the single "Layout Review" step pill. A returning user cannot tell from the nav which of the four substeps they are on. Source: `app.js:194–197`, `index.html:134`.
+**Affected stories:** US-U9, US-A6
+
+---
+
+## GAP-365: `.intake-confirm-card` CSS Exists But Extracted-Field Confirmation Is Unwired
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by ux-expert.
+**Description:** The `.intake-confirm-card` and `.intake-field-row` CSS classes exist in `styles.css:1781–1825`, indicating a designed extracted-field confirmation step. However, all three job-input paths (paste at `job-input.js:307`, URL fetch at `job-input.js:385`, file upload at `job-input.js:495`) route directly to analysis (or now to `populateJobTab()`) without rendering this confirmation UI. US-U2 criterion 4 explicitly requires extracted fields to be inline-editable before analysis runs. If the company name, role title, or date is misparsed, the user has no in-place correction path.
+**Affected stories:** US-U2, US-A2
+
+---
+
+## GAP-366: Publications and Rewrite Bulk Actions Lack Undo Path
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by power-user.
+**Description:** Experience, skills, and achievements all show an "↩ Undo" button immediately after any bulk action. Publications (`bulkPubAction` in `publications-review.js:295`) and the rewrite panel (`acceptAllRewrites`/`rejectAllRewrites` in `rewrite-review.js:680–695`) perform bulk operations without recording a snapshot — no undo button appears. Accidentally clicking "Reject All" on publications or "Accept All" on rewrites has no recovery path, which is a significant power-user penalty on large review sets.
+**Affected stories:** US-W2, US-A5
+
+---
+
+## GAP-367: "LLM" and Implementation-Centric Jargon Throughout Header and Status Copy
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by applicant, first-time-user, ux-expert, heuristic.
+**Description:** The header permanently displays "LLM: [provider] ⚠ Not ready" before setup. The onboarding modal directs the user to "use the ⚙ LLM button" but no button has that label. "LLM" is never spelled out anywhere. The busy overlay says "Reasoning…" — a technical AI term. The connection-status badge uses "auth-required", "rate-limited", "unconfigured" — vocabulary familiar to engineers but opaque to job seekers. Sources: `index.html:51–62`, `index.html:355`, `ui-core.js:776–810`. Suggested replacements: "LLM" → "AI Model", "Reasoning…" → "Working…", "auth-required" → "Sign in required".
+**Affected stories:** US-F1, US-A1, US-U1
+
+---
+
+## GAP-368: "Harvest" Step Label Is an Opaque Metaphor for Job Seekers
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by applicant, first-time-user.
+**Description:** The workflow step "🌾 Harvest" is an agricultural metaphor with no inline definition. An explanation exists only in a hover tooltip. This violates the US-F1 failure-mode guard: "Terms like rewrites, customisations, layout review, or harvest appearing without context." The meaning ("Save approved rewrites back to your master CV") would be immediately understood if the label were "Update Master CV". Source: `index.html:122–148`, `workflow-steps.js:196–208`.
+**Affected stories:** US-F1, US-A11
+
+---
+
+## GAP-369: Single-Session Auto-Resume Has No Explicit Notification
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by returning-user.
+**Description:** When auto-resume fires (GAP-323 fixed), the only messages are generic "🔄 Restoring session from file..." and "✅ Session restored: {name} ({phase})". There is no "Auto-resumed — only one active session found. Use Sessions to switch." Users who arrive expecting to choose a session may be confused about why they landed in a specific session.
+**Affected stories:** US-S1 (proposed US-S9)
+
+---
+
+## GAP-370: Default Archive Status Dropdown Value Is "queued" — Wrong for Completed Workflow
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by recruiter-ops.
+**Description:** The Finalise tab status dropdown (`finalise.js:102`) defaults to `queued` ("Queued — will apply soon"). At the moment of archiving a completed package, "queued" describes a pre-submission state — the default should be `ready` (or a neutral "unset"). Separately, the values `queued` and `parked` use informal jargon; plain-language equivalents ("Ready to Send", "On Hold") would improve clarity.
+**Affected stories:** US-O1, US-O2
+
+---
+
+## GAP-371: Summary Variant Key Exposed as Display Label — No Display-Name Field
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by master-cv-curator.
+**Description:** Professional summary variants are stored as `{ key: text }` pairs with `lowercase_underscore` keys. This key is the label shown in the Summary Focus picker during customisation — there is no separate display-name field. A curator creating variants for "Machine Learning Engineering" and "VP / Executive" roles must either accept that the workflow shows `ml_engineering` and `vp_executive` as picker labels, or encode long readable strings as keys with potential downstream handling issues. Location: `web/master-cv.js:807–811` (OFF-LIMITS).
+**Affected stories:** US-M2
+
+---
+
+## GAP-372: Executive/Academic Cover Letter Word Count Bounds Possibly Still Below Story Spec
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by hiring-manager. (Check against GAP-338 resolution from cycle 88.)
+**Description:** The hiring manager review found that executive word-count target is set at 350–450 words and academic at 400–500 words (`master_data_routes.py:118–120`; `cover-letter.js:621–625`), while the story spec requires 400–500 for executive and 500–600 for research/academic. GAP-338 was marked resolved in cycle 88 ("cover letter exec/academic word count ranges aligned to story spec") — either the fix was incomplete or the story spec numbers differ from what was implemented. Needs code verification.
+**Affected stories:** US-M6
+
+---
+
+## GAP-373: Hard/Soft Skill Type Toggle Does Not Trigger ATS Refresh
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by hr-ats.
+**Description:** The hard/soft skill type toggle (`skills-review.js:986–992` calls `saveSkillQualifierOverride()` then `.then(() => _renderSkillsTable(...))`) does not call `scheduleAtsRefresh()`. The ATS Report modal's keyword grouping (Hard Requirements vs. Preferred Skills) will not reflect a type override until the user performs another action that triggers a refresh. Low impact on scoring but the modal display becomes stale.
+**Affected stories:** US-H6
+
+---
+
+## GAP-374: LLM Disclosure Fires Only at analyzeJob() — Not at Cover Letter/Harvest/Screening
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by trust-compliance.
+**Description:** The provider-scoped LLM disclosure (`disclosureKey(provider)` in `api-client.js:31–34`) is implemented and correct, but it fires only when `analyzeJob()` runs in `web/job-analysis.js:99–108`. Cover letter generation, harvest analysis, and screening question generation are all LLM calls that do not trigger the disclosure. A user who navigates directly to cover letter generation without running job analysis would never see the disclosure.
+**Affected stories:** US-C3
+
+---
+
+## GAP-375: `_validate_summary()` Does Not Check for Job Title or Years-of-Experience Mention
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 93) by hiring-manager.
+**Description:** `_validate_summary()` in `cv_orchestrator.py:3607–3656` runs four checks (no "I" opener, word count, dense paragraph, top-3 skills) but never verifies that the summary mentions the target job title or quantifies years of experience. Both are US-M1 acceptance criteria. A hiring manager expects to read "10+ years in data science" and the specific role title in the opening paragraph — the current validator will pass a summary that omits both.
+**Affected stories:** US-M1

@@ -8,11 +8,11 @@
 
 # Graphical Designer Review Status
 
-**Last Updated:** 2026-07-06 17:30 ET
+**Last Updated:** 2026-07-06 (cycle 91)
 **Reviewed by:** Source-verified review cycle (Graphical Designer persona, US-G*)
 **Sources read:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, templates/cv-template.html, templates/cv-style.css
 
-**Executive Summary:** The application delivers a coherent, professionally-styled visual system anchored by a 95-property CSS token layer (`styles.css:18–126`), a consistent Slate-based neutral palette, and a semantic status language (green/amber/red/blue) applied uniformly across all stages. The generated CV template is typographically strong — Inter + Merriweather pairing with a configurable `base_font_size` is a well-designed output system. Persistent weaknesses are: (1) ~86 inline `style=""` attributes in `index.html` using raw hex literals that bypass the token system, particularly on position-bar buttons and modal close buttons; (2) no dark-mode support (`prefers-color-scheme: dark` is absent); (3) no typography or spacing tokens — font sizes and spacing are hard-coded per-component across 1,859 lines; (4) the tab bar (20+ tabs) and workflow bar (12 steps) create high cognitive density that reads as developer-grade rather than polished product. A previous finding of an undefined `--cv-card-bg` variable is a false positive — the token IS declared at `styles.css:29`.
+**Executive Summary:** The application delivers a coherent, professionally-styled visual system anchored by a 95-property CSS token layer (`styles.css:18–126`), a consistent Slate-based neutral palette, and a semantic status language (green/amber/red/blue) applied uniformly across all stages. The generated CV template is typographically strong — Inter + Merriweather pairing with a configurable `base_font_size` is a well-designed output system. Persistent weaknesses are: (1) **227** inline `style=""` attributes in `index.html` (re-counted in cycle 91; prior cycle estimated ~86) using raw hex literals that bypass the token system, particularly on position-bar buttons, modal close buttons, and the entire onboarding modal content; (2) no dark-mode support (`prefers-color-scheme: dark` is absent); (3) no typography or spacing tokens — font sizes and spacing are hard-coded per-component across 1,859 lines; (4) the tab bar (20+ tabs) and workflow bar (12 steps) create high cognitive density that reads as developer-grade rather than polished product. A previous finding of an undefined `--cv-card-bg` variable is a false positive — the token IS declared at `styles.css:29`. **New in cycle 91:** One raw hex color confirmed in `styles.css` rule body (`.question-item.answered { background: #f8fffe; }` at line 619) — should be tokenized.
 
 ---
 
@@ -195,7 +195,8 @@ Verified against `templates/cv-template.html` and `templates/cv-style.css`.
 | --- | ------ | -------- |
 | GAP-DESIGN-01: Icon language emoji-dominant; FA underused | OPEN | `index.html:23` — FA loaded; workflow/tabs use emoji only |
 | GAP-DESIGN-02: Inline style proliferation in modals/JS | OPEN | `index.html:257, 586, 703, 719; 106–110, 264` |
-| GAP-DESIGN-03: Inline styles in index.html (~86 occurrences) | OPEN (deferred, pending GAP-01) | `index.html` — 86+ inline `style=""` with raw hex |
+| GAP-DESIGN-03: Inline styles in index.html (227 occurrences per cycle-91 recount) | OPEN (deferred, pending GAP-01) | `index.html` — 227 inline `style=""` attributes; subset have raw hex |
+| GAP-DESIGN-13: `.question-item.answered` uses raw `#f8fffe` hex (styles.css:619) | OPEN | `styles.css:619` — only remaining bare hex in a CSS rule body; token `--cv-answered-bg` missing |
 | GAP-DESIGN-04: Duplicate @keyframes spin | RESOLVED | Single definition at `styles.css:1060` |
 | GAP-DESIGN-05: Main two-panel layout has no responsive breakpoint | OPEN | `styles.css:450, 453–463, 495` — no collapse at <900px |
 | GAP-DESIGN-06: CV font choice | RESOLVED | Inter + Merriweather via Google Fonts `cv-template.html:22` |

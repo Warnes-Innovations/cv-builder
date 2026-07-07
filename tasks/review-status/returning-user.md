@@ -8,7 +8,17 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-07-06 17:00 ET (source-verified cycle 87)
+**Last Updated:** 2026-07-06 (source-verified cycle 91)
+
+**Executive Summary (cycle 91, 2026-07-06):** Full fresh source re-read spanning: `web/index.html`, `web/app.js`, `web/ui-core.js`, `web/state-manager.js`, `web/styles.css`, `web/session-manager.js`, `web/session-switcher-ui.js`, `web/workflow-steps.js`, `scripts/web_app.py`, `scripts/utils/conversation_manager.py`, and `scripts/routes/session_routes.py`. All nine US-S* pass criteria confirmed intact. Two new gaps added:
+
+1. **GAP-RU-C91-A (MEDIUM)** — Session notes are invisible during active session work. Notes and application status written to `metadata.json` are only surfaced in the Sessions modal; neither the position bar nor the header shows them while the session is open. Active-session API response (`/api/sessions/active`) does not include the `notes` field. A returning user who left themselves context notes must open the modal to recall them.
+
+2. **GAP-RU-C91-B (LOW)** — Single-session auto-resume (GAP-323) fires silently with no explicit notification that the session was chosen automatically. The user sees "✅ Session restored: {name}" but not "Auto-resumed — only one session was found." Users who arrive expecting to choose a session may be unaware that auto-selection occurred or how to override it.
+
+No regressions found. GAP-RU-C82-B (file timestamps in Generated Files tab) remains open. GAP-RU-C82-A (welcome modal for init-phase sessions) remains partial.
+
+---
 
 **Executive Summary (cycle 87, 2026-07-06):** Full fresh source re-read against all three US-S* stories. All nine pass criteria continue to hold. Two cycle-82 open gaps have improved:
 
@@ -223,6 +233,39 @@ Multi-session users still see the modal. The sessions modal itself has a "recent
 - **"Parked"** application status badge (`session-switcher-ui.js:375`) has no tooltip or glossary definition in the UI. A returning user scanning their sessions cannot distinguish "Parked = deferred intentionally" from the common sense of "dead end."
 - **"Active Sessions" vs "Saved Sessions"** in the Sessions modal are developer-centric terms. "Open (in memory)" and "Saved (on disk)" would map better to a user's mental model.
 - **Header session pill phase label** shows abbreviated internal phase names (e.g., `"rewrite rev"`, `"custom"`) despite `SESSION_PHASE_LABELS_SHORT` improvements. The abbreviations are still opaque to users unfamiliar with the internal phase vocabulary.
+
+---
+
+## Cycle 91 New Observations (2026-07-06)
+
+### GAP-RU-C91-A (MEDIUM) — Session notes are invisible during active session work
+
+**Evidence:**
+
+- `/api/sessions/active` response schema (`session_routes.py:747–768`) returns `session_id`, `position_name`, `phase`, `created`, `last_modified`, `claimed`, `owned_by_requester` — no `notes` field.
+- `_normalizeSessionsForTable()` (`session-switcher-ui.js:238–280`) populates `notes: s.notes || ''` for saved-type rows but has no `notes` property for active-type rows.
+- `notesPreview` and `notesEditWidget` HTML elements are only rendered inside `_renderSessionTableRow()` (`session-switcher-ui.js:403–424`) for `row.type === 'saved'`.
+- The position bar (`index.html:78–112`) and header subtitle (`index.html:41`) have no note display slot.
+- Notes are stored in `metadata.json` (a sidecar file adjacent to the session JSON on disk). Loading a session via `loadSessionFile()` (`session-manager.js:760–877`) does not read `metadata.json` and does not inject notes into any in-memory or displayed state.
+
+**Impact:** A returning user who wrote notes before archiving (e.g., "Interviewed 2025-03-10, awaiting callback") must open the Sessions modal to see them. Notes do not follow the user into their active workspace. For users with many saved sessions, the notes-as-context pattern is undermined if the notes are only accessible from outside the current session.
+
+**Proposed story — US-S8:** "As a returning user, I want any notes I have written for a session to be visible at a glance in the main workspace (e.g., in the position bar or a collapsible side-note area), so I can recall my context without opening the Sessions modal."
+
+---
+
+### GAP-RU-C91-B (LOW) — Single-session auto-resume provides no explicit auto-selection notification
+
+**Evidence:**
+
+- `ensureSessionContext()` (`session-manager.js:465–487`) silently calls `loadSessionFile(activeSessions[0].path)` when exactly one active session exists, bypassing the modal.
+- The only user-facing messages are "🔄 Restoring session from file..." (from `appendMessage` in `loadSessionFile`, line 762) and "✅ Session restored: {name} ({phase})" (line 871).
+- No message says "Auto-resumed — only one active session found" or "To switch sessions, use the Sessions button."
+- Users arriving at the root URL who expect to choose a session will land directly in a session without knowing why.
+
+**Impact:** Low severity because the header Sessions button is always visible and the position bar/title make the active session identity clear. However, multi-session workflows may occasionally leave only one session in memory (e.g., after evicting completed sessions), causing unexpected auto-resumes. The lack of explicit notification makes it harder for users to distinguish intentional selection from automatic selection.
+
+**Proposed story — US-S9:** "As a returning user whose session was auto-resumed, I want a brief transient notification ('Auto-resumed your most recent session — click Sessions to switch') so I know the session was selected automatically and how to choose a different one."
 
 ---
 

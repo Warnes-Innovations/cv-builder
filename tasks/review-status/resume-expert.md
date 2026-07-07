@@ -5,9 +5,9 @@
 
 # Resume Expert Review Status
 
-**Last Updated:** 2026-07-06 16:15 ET
+**Last Updated:** 2026-07-06 (cycle 91 — corrected US-R5 gap attribution)
 
-**Executive Summary:** Source-verified resume expert persona review against user-story-resume-expert.md. All seven stories evaluated with file:line evidence. Key gaps: (1) ATS DOCX generation does not filter `candidate_to_confirm` skills — these can leak into the ATS DOCX output despite being blocked from HTML/PDF templates; (2) US-R2 publication shortlist is only available via tab navigation rather than proactively surfaced; (3) US-R4 summary hook structure and line count lack programmatic enforcement. US-R6 and US-R7 fully pass all acceptance criteria.
+**Executive Summary:** Source-verified resume expert persona review against user-story-resume-expert.md. All seven stories evaluated with file:line evidence. Key gaps: (1) Human-readable DOCX generation does not filter `candidate_to_confirm` skills — unverified skills can appear in the human DOCX despite being correctly blocked from HTML/PDF (via cv-template.html Jinja2 filter) and ATS DOCX (GAP-326 resolved: cv_orchestrator.py:3919); (2) US-R2 publication shortlist is only available via tab navigation rather than proactively surfaced; (3) US-R4 summary hook structure and line count lack programmatic enforcement. US-R6 and US-R7 fully pass all acceptance criteria.
 
 ---
 
@@ -94,15 +94,15 @@
 | No fabrication | ✅ Pass | Only skills from `Master_CV_Data.json` via `SessionDataView.normalized_skills()` or explicitly approved extra skills enter the pipeline. `candidate_to_confirm` marks unverified additions. |
 | Grouping logic | ✅ Pass | `_sort_categories()` applies template-variant-specific priority orders. `_rank_skill_categories_by_relevance()` derives a session-specific category order from ATS keyword overlap. `cv_orchestrator.py:586–595`. |
 | Density without redundancy | ✅ Pass | `_deduplicate_skills()` merges synonym entries. `_group_inline_skills()` combines skills sharing a `group` key into a single inline entry. |
-| Candidate-to-confirm handling | ⚠️ Partial | Amber "⚠ Weak evidence" / "⚠ Verify evidence" badge in review UI (`skills-review.js:730–731`). HTML/PDF templates filter unconfirmed skills via `{% if not skill.candidate_to_confirm %}` at `cv-template.html:629, 781`. **Gap:** `_generate_ats_docx()` calls `_optimize_skills_for_ats(content['skills'], job_analysis)` at `cv_orchestrator.py:3918` without filtering `candidate_to_confirm`. Unverified skills can appear in ATS DOCX output. |
+| Candidate-to-confirm handling | ⚠️ Partial | Amber "⚠ Weak evidence" / "⚠ Verify evidence" badge in review UI (`skills-review.js:730–731`). HTML/PDF templates filter unconfirmed skills via `{% if not skill.candidate_to_confirm %}` at `cv-template.html:629, 781`. ATS DOCX also filters (fixed in GAP-326): `ats_skills = [s for s in content['skills'] if not s.get('candidate_to_confirm')]` at `cv_orchestrator.py:3919`. **Gap:** `_generate_human_docx()` uses `skills_by_category = content.get('skills_by_category', [])` at `cv_orchestrator.py:4919`, where `skills_by_category` is prepared by `_prepare_cv_data_for_template()` → `_organize_skills_by_category(selected_content.get('skills', []), ...)` at lines 210–215 — no `candidate_to_confirm` filter applied. Unverified skills appear in the human-readable DOCX. |
 
 **US-R5 Acceptance Criteria Check:**
 - Only master CV skills or approved additions appear in output: YES.
 - Skills ordered by relevance within category: YES.
 - Approved additions session-state only until Harvest: YES.
-- Candidate-to-confirm items flagged in review UI and NEVER in generated documents: PARTIAL FAIL — HTML/PDF templates correctly filter them (`cv-template.html:629`); ATS DOCX does not. `_optimize_skills_for_ats` (cv_orchestrator.py:3918) passes all skills including those with `candidate_to_confirm=True`.
+- Candidate-to-confirm items flagged in review UI and NEVER in generated documents: PARTIAL FAIL — HTML/PDF template correctly filters them (cv-template.html:629, 781); ATS DOCX correctly filters them (cv_orchestrator.py:3919, GAP-326 resolved); human DOCX does not filter (cv_orchestrator.py:4919–4944).
 
-**Open gap (US-R5-ATS-DOCX):** `_generate_ats_docx` must pre-filter `candidate_to_confirm` skills before calling `_optimize_skills_for_ats`. Fix: add `skills = [s for s in content['skills'] if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]` before line 3918.
+**Open gap (US-R5-HUMAN-DOCX):** `_generate_human_docx` must pre-filter `candidate_to_confirm` skills. Since it reads from `content['skills_by_category']` which is already organized, the cleanest fix is to add a filter in `_organize_skills_by_category` before processing, or filter inline at `cv_orchestrator.py:4938`: `skills_list = [s for s in cat.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]`.
 
 ---
 
@@ -145,13 +145,17 @@ The publications review tab exists and exposes `relevance_score` and `rationale`
 
 **Gap:** The acceptance criterion states "a ranked publication shortlist is presented with per-item relevance scores and rationale; it is never silently omitted or silently included in full." The system meets the "never silently included in full" requirement via the publications-gate question. However, the ranked shortlist with scores/rationale is not presented to the user before they enter the publications review tab — there is no proactive summary message like "I have ranked your 12 publications; the top 4 recommended for this role are X, Y, Z…" The ranked table is there but only accessible by navigation.
 
-### Candidate-to-Confirm Skills in ATS DOCX — US-R5 Open Gap (NEW)
+### Candidate-to-Confirm Skills in Human DOCX — US-R5 Open Gap
 
-The HTML/PDF template filter `{% if not skill.candidate_to_confirm %}` (`cv-template.html:629, 781`) is confirmed and correctly excludes unconfirmed skills from the human-readable PDF and HTML outputs.
+Three of four output paths correctly filter `candidate_to_confirm` skills:
 
-**However**, the ATS DOCX generation path (`_generate_ats_docx`, cv_orchestrator.py:3918) calls `_optimize_skills_for_ats(content['skills'], ...)` without pre-filtering `candidate_to_confirm=True` entries. If a user accepts a weak-evidence `skill_add` rewrite but does not explicitly omit it, the skill can appear in the ATS DOCX output, violating the US-R5 acceptance criterion that states "all generated PDF, DOCX, and HTML files must contain only clean, unmarked text."
+- **HTML/PDF template** (`cv-template.html:629, 781`): Jinja2 `{% if not skill.candidate_to_confirm %}` filter — ✅ PASS
+- **ATS DOCX** (`cv_orchestrator.py:3919`): explicit Python filter `ats_skills = [s for s in content['skills'] if not s.get('candidate_to_confirm')]` — ✅ PASS (GAP-326 resolved)
 
-**Required fix location:** `cv_orchestrator.py:3918` — add a pre-filter before `_optimize_skills_for_ats` is called.
+**Remaining gap**: The **human DOCX** generation path (`_generate_human_docx`, lines 4919–4944) reads `skills_by_category` from the template-prep dict and iterates each category's skills list with no `candidate_to_confirm` filter. A user who accepts a weak-evidence `skill_add` rewrite but does not explicitly omit it will see that skill appear in the human-readable DOCX, violating the acceptance criterion.
+
+**Required fix location:** `cv_orchestrator.py:4938` — filter inline:
+`skills_list = [s for s in cat.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]`
 
 ### Summary Hook Structure — US-R4
 

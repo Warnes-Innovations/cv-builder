@@ -5,9 +5,15 @@
 
 # UX Expert Review Status
 
-**Last Updated:** 2026-07-06 20:00 ET
+**Last Updated:** 2026-07-06 (Cycle 92 source-first update)
 
 **Executive Summary:** The application has a solid structural foundation — the workflow step bar with three-way visual state, inline word-level rewrite diffs, comprehensive focus-trap management, and job-input panel with named protected-site guidance are all well-executed. However, several interaction-quality gaps remain: session restoration lacks an orientation card (job/stage/last-active timestamp), clarifying questions are presented as a single wall rather than paginated groups, the inline preview before download is HTML-only (no PDF), and the layout-review proceed flow uses two sequential button labels ("Confirm Layout" then "Generate Final Files") rather than a single unambiguous action.
+
+**Top 3 Findings (Source-First, Cycle 92):**
+
+1. **US-U9 single-proceed action (HIGH):** The layout phase exposes four sequentially-labeled primary buttons ("Generate Preview →", "🎨 Open Layout Review →", "✅ Confirm Layout", "📥 Continue to File Review →") with no sub-step indicator in the workflow nav — all map to "Layout Review." Source: `app.js:194–197`, `index.html:134`.
+2. **US-U2 extracted-field confirmation (HIGH):** All three job-input paths submit directly to `analyzeJob()` with no confirmation step. If the LLM misparses company, role, or date, the only recovery is restarting the full job analysis. Source: `job-input.js:307, 385, 495`.
+3. **Terminology: "LLM" header is implementation-centric (MEDIUM):** The header pill reads "LLM: [provider]·[model]" and the status badge uses states "unconfigured", "rate-limited", "auth-required" — vocabulary that suits AI practitioners, not typical job-seekers. The "⚠ Non-confidential" badge is also ambiguous. Source: `index.html:53–60`, `ui-core.js:776–810`.
 
 ---
 
@@ -152,6 +158,26 @@
 | ATS score with interpretable scale label | ⚠️ Partial | ATS score badge shows numeric value + "ATS" label + tooltip (index.html:92). Colour-coded by class (score-high/medium/low, styles.css:217-219) but no secondary text tier label (e.g., "Strong / Moderate / Low") — colour-only for tier interpretation. |
 | Rewrite inline diff clarity | ✅ Pass | Word-level `<del>` / `<ins>` diff rendered for all rewrite proposals. Red strikethrough and green highlight are semantically tagged, not just visual. |
 | Content protection through layout instructions | ✅ Pass | Scope label explicitly states text is finalised. Layout step cannot alter approved rewrite text per implementation. |
+
+---
+
+## Terminology and Copy Audit
+
+Flagged user-facing copy issues found during source-first review. All items grounded in `index.html` and `ui-core.js` source.
+
+| Location | Current label | Issue | Severity |
+| --- | --- | --- | --- |
+| Header pill | `LLM: [provider] · [model]` | Implementation-centric acronym. Typical job-seekers do not know what "LLM" means. Suggest "AI Model:" or "AI:". | Medium |
+| Header pill | `⚠ Non-confidential` | Ambiguous — users cannot tell whether their CV data is stored, shared, or processed. Suggest "Cloud AI (data shared)" or "Data leaves device". Source: `index.html:59`. | Medium |
+| LLM status badge states | `unconfigured`, `rate-limited`, `auth-required` | Mix of technical and user-friendly vocabulary. `rate-limited` → "Too many requests — wait". `auth-required` → "Sign in required". `unconfigured` → "Not set up". Source: `ui-core.js:787–790`. | Low |
+| Action button | `📦 Archive Application` | "Archive" implies permanent storage or inactivation. Users may fear it deletes work. Renamed from "Package Application Files" (app.js:159) — the rename moved in the wrong direction. Suggest "Save & Archive" with descriptive tooltip. Source: `app.js:159–161`. | Low |
+| Action button | `✅ Confirm Layout` | Sounds like confirming a preference, not triggering final file generation. Mismatches user expectation of "what happens next." Source: `index.html:196`. | Medium |
+| Workflow step | "Spell Check" | Noun phrase; all other steps are verb phrases (Analyse, Customise, Rewrites) or gerunds. Also: the primary action button in this step reads "Generate Preview →" — entirely different from "Spell Check". The step label and the action are mismatched. Source: `index.html:132`, `app.js:194`. | Medium |
+| Workflow step | "Customise" | British spelling while `analyzeJob()` and `analyze-btn` use American spelling. Choose one locale consistently. Source: `index.html:129`, `app.js:124`. | Low |
+| Tab labels | "📄 Generated Files" + "⬇️ File Review" | Two adjacent tabs in the download stage with overlapping scope. Users cannot distinguish their purposes without clicking both. Source: `index.html:225–226`. | Medium |
+| Step label | "Rewrites" | Plural noun; mismatches "Rewrite Review" phase name used in backend and conversation manager. Slight inconsistency in vocabulary across UI vs. system. | Low |
+| Settings section | "LLM Retry Policy (Browser)" | Highly technical. Suggest "Auto-Retry Settings". Source: `index.html:661`. | Low |
+| Onboarding | `Master_CV_Data.json` | A code filename in the onboarding wizard visible to all users. Non-technical users may be alarmed. The file path is shown verbatim in the wizard. Source: `index.html:337`. | Low |
 
 ---
 

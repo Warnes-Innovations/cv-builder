@@ -8,9 +8,18 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Power User Review Status
 
-**Last Updated:** 2026-07-06 17:15 ET
+**Last Updated:** 2026-07-06
+**Cycle:** Source-first review (cycle 92+)
+**Branch:** feature/multi-user-deployment
 
-**Executive Summary:** Source-verified power user persona review against US-W1, US-W2, and US-W3 criteria. Keyboard shortcuts, bulk actions with single-level undo, re-run affordances, and session management are all genuinely implemented. GAP-324 (cycle 87) extended DataTable keyboard navigation (↑/↓/A/R) to cover the Experiences, Skills, and Achievements customisation sub-tabs — a major throughput gain resolved since the prior review. Remaining gaps: single-level bulk undo only, publications tab lacks keyboard card navigation, sessions always require opening the full modal (no quick-access path), and the compact/density mode applies to Rewrites only.
+**Executive Summary:** Source-verified review against US-W1, US-W2, and US-W3. Keyboard A/R
+shortcuts now cover all customizations sub-tabs including publications (confirmed via
+keyboard-shortcuts.js GAP-332). Bulk actions with single-level undo are implemented for
+experience, skills, and achievements. Four gaps remain: (1) `kb-focused` CSS is missing for
+DataTable rows so keyboard focus in customizations tables has no visual indicator; (2) the
+keyboard shortcut help panel is undiscoverable and its text omits customizations A/R support;
+(3) publications bulk actions lack undo unlike the other three sub-tabs; (4) rewrite
+"Accept All"/"Reject All" also have no undo.
 
 ---
 
@@ -20,20 +29,18 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Criterion | Status | Evidence |
 | --------- | ------ | -------- |
-| W1-1: Frequent actions available without excessive pointer travel | ✅ Pass | Header pill buttons (Sessions, New Session, LLM, Settings) at top-right. Action buttons in `.actions` div at bottom of chat panel (web/index.html:189–200). Primary action varies by step (analyze-btn, generate-btn, etc.) |
-| W1-2: Repetitive review work supports efficient sequential progression | ✅ Pass | keyboard-shortcuts.js: ↑/↓ navigate cards, A accepts, R rejects on Rewrites and Spell Check tabs (keyboard-shortcuts.js:62–125). Compact mode toggle on Rewrites: `⊞ Compact` button collapses cards to single-line for rapid scan |
-| W1-3: Multi-item review screens avoid unnecessary navigation churn | ⚠️ Partial | Bulk actions present for experiences, skills, achievements, publications, rewrites (experience-review.js:289–296, achievements-review.js:344–348, rewrite-review.js:293–294, publications-review.js:98–102). Single-level bulk undo exists (review-table-base.js:38, `_bulkUndoSnapshot`) but only one undo step is stored — a power user bulk-accepting then reconsidering must re-run the phase |
-| W1-4: Card keyboard navigation on DataTable review tabs | ✅ Pass | GAP-324 (cycle 87): `_getCards()` now handles `tab === 'customizations'` with pane detection — returns DataTable rows for Experiences (`#experience-review-table tbody tr[data-exp-id]`), Skills (`#skills-review-table tbody tr[data-skill]`), and Achievements (`#achievements-review-table tbody tr[data-ach-id]`) (keyboard-shortcuts.js:65–76). A/R dispatch to `handleActionClick(..., 'include'/'exclude', ...)` implemented (keyboard-shortcuts.js:122–174) |
-| W1-5: Ctrl+Enter triggers primary action on current step | ✅ Pass | keyboard-shortcuts.js:40–60: `_TAB_ACTION_BTN` maps tab IDs to button IDs; Ctrl+Enter clicks the mapped button |
-| W1-6: Show-only-changed filter after re-runs | ✅ Pass | workflow-steps.js:526–629: injects "Show only changed (N)" toggle on customisation tabs and rewrite tally bar after a re-run. Badge highlighting via `data-changed` attribute |
-| W1-7: Token/context window usage visible | ✅ Pass | `_refreshContextStats()` updates `#llm-token-count` element (index.html:171) with `~estK / winK (pct%)` |
+| W1-1: Frequent actions available without excessive pointer travel | ✅ Pass | Header pill buttons (Sessions, New Session, LLM, Settings) at top-right. Action buttons in `.actions` div at bottom of chat panel (index.html:189–200). |
+| W1-2: Repetitive review work supports efficient sequential progression | ✅ Pass | keyboard-shortcuts.js: ↑/↓ navigate cards, A accepts, R rejects on Rewrites, Spell Check, and all customizations sub-tabs (lines 62–182). Auto-scroll to next pending rewrite card after each decision (`_scrollToNextPendingRewrite`, rewrite-review.js:521–532). |
+| W1-3: Multi-item review screens avoid unnecessary navigation churn | ⚠️ Partial | Bulk actions present on all review sub-tabs and rewrite panel. Single-level bulk undo exists for experience, skills, achievements but NOT publications and NOT rewrite Accept All/Reject All. |
+| W1-4: Keyboard A/R on DataTable customizations tabs — experience, skills, achievements | ✅ Pass | `_getCards()` returns DataTable rows for all three panes when `tab === 'customizations'`; A/R dispatch to `handleActionClick` with correct type (keyboard-shortcuts.js:64–182). |
+| W1-5: Keyboard A/R on publications sub-tab | ✅ Pass | GAP-332: `if (pane === 'publications') return [...document.querySelectorAll('#publications-review-table tbody tr[data-cite-key]:not(.pub-divider-row)')...]` (keyboard-shortcuts.js:76). A dispatches `handlePubAction(citeKey, true)`, R dispatches `handlePubAction(citeKey, false)` (lines 136–138, 173–176). |
+| W1-6: Visual feedback when keyboard-navigating DataTable rows | ❌ Fail | **GAP-PU-A**: `styles.css` defines `.rewrite-card.kb-focused` and `.spell-card.kb-focused` (line 1413) but has no rule for `tr.kb-focused`. When ↑/↓ adds `kb-focused` to a DataTable row (experience, skills, achievements, publications), there is zero visual highlight. A/R fire on the right row but the user cannot see which row is focused. |
+| W1-7: Ctrl+Enter triggers primary action on current step | ✅ Pass | `_TAB_ACTION_BTN` maps tab IDs to button IDs; Ctrl+Enter clicks the mapped button (keyboard-shortcuts.js:40–60). |
+| W1-8: Compact mode for rapid review | ✅ Pass | Rewrites panel: `⊞ Compact` toggle (`toggleRewriteCompactMode`, rewrite-review.js:697–708) collapses cards to single-line view. |
+| W1-9: Tally bar for review progress visibility | ✅ Pass | Rewrite tally bar shows accepted/rejected/pending counts live (rewrite-review.js:289–292, `updateRewriteTally`). |
+| W1-10: J/K vim-style navigation | ⚠️ Not Impl | No J/K key handling in `_onKeyDown` switch. Only ↑/↓ arrows are mapped for card/row navigation. This is a common power-user expectation noted in the story spec. |
 
-**Additional efficiency observations:**
-
-- **Compact mode scope is Rewrites-only.** The compact toggle applies only to the Rewrites tab. The Experiences and Skills DataTables show full descriptive rows with no compact option — power users reviewing dozens of experience bullets cannot collapse them similarly.
-- **Abort/stop is available.** `■ Stop` button at LLM busy overlay (index.html:166). Ctrl+Enter always triggers even during loading (keyboard-shortcuts.js:237–241) — benign since the button's `disabled` state blocks double-submission.
-- **Tally bar** on Rewrites shows accepted/rejected/pending counts live (rewrite-review.js) — good for throughput awareness.
-- **Publications keyboard navigation gap**: `_getCards()` returns empty for `tab === 'publications-review'` (keyboard-shortcuts.js:65–76 — no branch for that tab ID). Power users reviewing publications cannot use A/R shortcuts.
+**Observation — Compact mode scope is Rewrites-only.** Experiences and Skills DataTables have no compact row option. Power users reviewing dozens of experience bullets cannot collapse them.
 
 ---
 
@@ -41,13 +48,11 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Criterion | Status | Evidence |
 | --------- | ------ | -------- |
-| W2-1: Sessions easy to distinguish in the switching UI | ✅ Pass | Session modal shows: position name (bold), phase label, created timestamp, last modified timestamp, status pill (Current / Saved / Parked) with colour-coded dot (session-switcher-ui.js:46–65, 99–119). DataTable in modal also shows company column |
-| W2-2: Creating, opening, or renaming sessions has no ambiguity | ✅ Pass | Inline rename input in modal row (session-switcher-ui.js:107–110). Rename button also in position bar (index.html:83 — pencil icon ✏️). Ownership conflict dialog with "Current", "Take Over", "Load Different", "New Session" options (index.html:411–418). Amber banner for session conflict with retry countdown (index.html:115–119) |
-| W2-3: Active session context remains visible while working | ✅ Pass | Header subtitle `#header-session-name` shows "Current session: name" (session-switcher-ui.js). Position bar shows position title + company (index.html:80–86). Session age indicator shows "Last edited Xh ago" (session-actions.js) |
-| W2-4: Session search and filtering in modal | ✅ Pass | session-switcher-ui.js: filter input searches by name, company, phase. Sort by name/phase/last-modified with persisted sort preference in localStorage |
-| W2-5: Quick session access without full modal | ⚠️ Partial | Header "📂 Sessions" pill always opens the full 980px modal (index.html:45–47). There is no popover, hover-preview, or keyboard shortcut to switch sessions. Power users managing 10+ active applications must open the modal on every context switch |
-| W2-6: New session in new tab | ✅ Pass | `createNewSessionInNewTab()` wired to "＋ New Session" header button (index.html:48–50) |
-| W2-7: Parked session status distinguishable | ✅ Pass | Session-switcher-ui.js: parked sessions shown with orange pill |
+| W2-1: Sessions easy to distinguish in the switching UI | ✅ Pass | Sessions modal shows position name, phase label, timestamps, and status pills. Session name shown in `#header-session-name` and position bar (index.html:41, 79–86). |
+| W2-2: Creating, opening, renaming sessions — no ambiguity | ✅ Pass | Rename button (✏️) in position bar (index.html:83). Sessions modal inline rename. Ownership conflict dialog with Take Over / Load Different / New Session options (index.html:405–419). Amber banner with retry countdown for conflicts. |
+| W2-3: Active session context remains visible throughout workflow | ✅ Pass | Header subtitle and position bar (job title + company) persist across all workflow stages. |
+| W2-4: Quick session access without full modal | ⚠️ Partial | The "📂 Sessions" header button always opens the full 980px modal (index.html:45–47). No popover, hover-preview, or keyboard shortcut switches sessions directly. Power users managing 10+ active applications must open the modal on every context switch. |
+| W2-5: New session in new tab | ✅ Pass | `createNewSessionInNewTab()` wired to "＋ New Session" header button (index.html:48–50). |
 
 ---
 
@@ -55,14 +60,24 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Criterion | Status | Evidence |
 | --------- | ------ | -------- |
-| W3-1: Re-run affordances discoverable for supported stages | ✅ Pass | workflow-steps.js: completed steps that support re-run get `↻` inline button. Step tooltip includes "Click ↻ to rerun from here" |
-| W3-2: Ctrl+Shift+R keyboard shortcut for re-run | ✅ Pass | keyboard-shortcuts.js:244–253: `Ctrl+Shift+R` triggers `confirmReRunPhase(step)` for the active step |
-| W3-3: Downstream impact communicated before re-run | ✅ Pass | workflow-steps.js:133–191: `_showReRunConfirmModal()` shows a modal with the step name and downstream impact text. Stale step pills highlighted amber/red (`.step.stale`, `.step.stale-critical` CSS classes in styles.css) |
-| W3-4: Analysis re-run preserves and allows amending clarification answers | ✅ Pass | workflow-steps.js: `_showAnalysisClarificationAmendModal()` is intercepted before analysis re-run, allowing user to update or keep prior answers |
-| W3-5: Changed items highlighted after re-run | ✅ Pass | Items changed between prior and new re-run outputs get `data-changed` attribute. New rerun badge rendered in experience-review.js, skills-review.js, achievements-review.js |
-| W3-6: Layout undo stack | ✅ Pass | layout-instruction.js: `_layoutUndoStack` supports sequential undo of layout instructions. Sequential-only limitation disclosed in tooltip |
-| W3-7: Forward-skip navigation to prior completed step | ✅ Pass | workflow-steps.js: steps previously completed but above current phase get `forward-skip` class with ⏩ badge and `clickable` class |
-| W3-8: Re-entry preserves useful downstream context | ✅ Pass | conversation_manager.py:1653–1686: `back_to_phase()` preserves all prior decisions; `re_run_phase()` (line 1688) augments LLM prompts with prior choices so re-runs improve on the last pass |
+| W3-1: Re-run affordances discoverable | ✅ Pass | Completed steps get a re-run affordance in the workflow nav. `confirmReRunPhase` is triggered from workflow-steps.js and from `Ctrl+Shift+R`. |
+| W3-2: Ctrl+Shift+R keyboard shortcut for re-run | ✅ Pass | keyboard-shortcuts.js:244–253: `Ctrl+Shift+R` triggers `confirmReRunPhase(step)` for the active step. |
+| W3-3: Keyboard shortcut discoverability | ❌ Fail | **GAP-PU-D**: The `?` key toggles the shortcut help panel (`showKeyboardShortcutsPanel`, keyboard-shortcuts.js:188), but there is no visible hint anywhere in the UI that `?` opens it. The "? Help" header button opens the onboarding wizard — not shortcuts — which creates false expectations. Additionally, the panel's table still reads "A: Accept focused card (rewrite / spell)" and "R: Reject focused card (rewrite / spell)" — this is incomplete since A/R also work on all four customizations sub-tabs since GAP-332. A user reading the panel would not know A/R are available there. |
+| W3-4: Re-entry into earlier stages preserves context | ✅ Pass | Rewrite decisions persisted in localStorage (keyed by session ID) and restored on reload (`_restoreDecisions`, rewrite-review.js:59–100). Backend `back_to_phase()` preserves all prior decisions. |
+| W3-5: App minimizes redundant work during iteration | ✅ Pass | Change-status badges ("🆕 New" / "↻ Updated") in rewrite cards flag what changed since the previous run. Rewrite audit log available for review history. |
+| W3-6: Layout undo stack | ✅ Pass | layout-instruction.js: sequential undo of layout instructions via `_layoutUndoStack`. |
+
+---
+
+## Bulk Undo Coverage Matrix
+
+| Sub-tab / context | Bulk actions present | Undo present | Status |
+| --- | --- | --- | --- |
+| Experience review | ✅ Yes | ✅ Yes — `undoBulkAction('experience')` (review-table-base.js:915) | Pass |
+| Skills review | ✅ Yes | ✅ Yes — `undoBulkAction('skill')` (review-table-base.js:915) | Pass |
+| Achievements review | ✅ Yes | ✅ Yes — `undoBulkAchievementAction()` (achievements-review.js:388) | Pass |
+| Publications review | ✅ Yes — Accept Recommended, Accept All, Reject All | ❌ No undo button; `bulkPubAction()` takes no snapshot | **GAP-PU-E** |
+| Rewrite panel | ✅ Yes — Accept All, Reject All | ❌ No undo; `acceptAllRewrites()`/`rejectAllRewrites()` take no snapshot | **GAP-PU-C** |
 
 ---
 
@@ -70,76 +85,66 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Aspect | Status | Evidence |
 | ------ | ------ | -------- |
-| Output format control (ATS DOCX / Human PDF / Human DOCX) | ✅ Pass | Settings modal checkboxes (index.html:642–646). All three format flags wired to `_collectSettingsPayloadFromForm()` (ui-core.js:131–143) |
-| Skills limit, achievements limit, publications limit configurable | ✅ Pass | Settings modal numeric inputs (index.html:622–635). Max Skills, Max Achievements, Max Publications all editable |
-| Page count visibility during layout review | ✅ Pass | layout-instruction.js: page count badge with ⚠ icon when outside recommended range |
-| Page count gate / multi-page advisory | ✅ Pass | `pageWarning` boolean from backend drives `warn` CSS class on badge. Soft-gate advisory for page count exceeded |
-| Harvest: opt-in improvement capture back to Master CV | ✅ Pass | harvest.js: all harvest items start unchecked — Master CV updates are opt-in only |
-| Weak-bullet advisory / skill evidence tooltip | ✅ Pass | skills-review.js: `⚠ Weak evidence` badge with hover tooltip showing evidence text |
-| AI-attribution disclosure control | ✅ Pass | Settings modal checkbox for "Add AI-assistance disclosure" (index.html:647–649). Per-session state (ui-core.js:141) |
+| Output format control (ATS DOCX / Human PDF / Human DOCX) | ✅ Pass | Settings modal checkboxes (index.html:642–646) wired to `_collectSettingsPayloadFromForm()` (ui-core.js:131–143). |
+| Skills / achievements / publications limits configurable | ✅ Pass | Settings modal numeric inputs (index.html:622–635). |
+| Page count visible during layout review | ✅ Pass | layout-instruction.js: page count badge with ⚠ when outside recommended range. |
+| Harvest: opt-in improvement capture | ✅ Pass | harvest.js: all items start unchecked — Master CV updates are opt-in. |
+| Weak-bullet / skill evidence advisory | ✅ Pass | skills-review.js: `⚠ Weak evidence` badge. Rewrite cards show `⚠ Weak evidence` for skill-add rewrites with weak evidence (rewrite-review.js:396–399). |
+| AI attribution disclosure control | ✅ Pass | Settings modal checkbox (index.html:647–649). |
 
 ---
 
 ## Terminology Audit
 
-| Term | Assessment | Recommendation |
-| ---- | ---------- | -------------- |
-| "Harvest Improvements" | ✅ Distinctive and memorable once explained. Welcome modal explains it (index.html:345–348) | Keep; brief tooltip on the tab step would reinforce the concept |
-| "Customise" (step label) vs "Customizations" (API/phase) | ⚠️ Inconsistent spelling — British in workflow bar (index.html:128), American in PHASES/API | Normalise to one spelling in all user-visible labels |
-| "ATS" acronym in position bar | ⚠️ ATS badge tooltip does expand the acronym (index.html:92 title attr). Session modal column heading is just "ATS" | "ATS Score" in all column headers for clarity |
-| "LLM: Loading…" / "LLM: Not ready" | ⚠️ "LLM" is developer vocabulary. Status badge shows "Not ready" with ⚠ but no call-to-action | Consider "AI: Not configured — click to set up" |
-| "Re-run" vs "Rerun" | ⚠️ "Re-run" in step tooltips (workflow-steps.js), "rerun" in DOM IDs and JS variable names | Normalise to "Re-run" in all user-visible labels |
-| "Analyse Job" button (British) vs "analyze" in placeholder | ⚠️ Mixed British/American across two adjacent elements (index.html:185, 190) | Pick one spelling project-wide for verbs |
-| "Parked" session | ✅ Clear: "Parked — on hold" is self-explanatory | Keep |
-| "Layout current / Layout outdated / Files outdated" freshness chip | ✅ Clear, escalating severity language | Good |
-| "↻ Amend Clarification Answers" modal title | ⚠️ "Amend" is less familiar than "Update" for general audiences | "Update Clarification Answers" aligns with the subtitle already used |
+| Term | Assessment |
+| ---- | ---------- |
+| "Harvest Improvements" | Distinctive once explained; welcome modal covers it. |
+| "Customise" (step label) vs "Customizations" (phase/API) | Mixed British/American spelling across the UI. |
+| "LLM: Not ready" header status | Developer vocabulary; "AI: Not configured" would be clearer for non-technical users. |
+| "Analyse Job" button (British) vs "analyze" placeholder | Mixed spellings on adjacent elements (index.html:185, 190). |
 
 ---
 
-## Additional Story Gaps / Proposed Story Items
+## Gap Summary
 
-**US-W4 (resolved): Keyboard card navigation on DataTable customisation review tabs**
-Fixed in GAP-324 (cycle 87). `_getCards()` now returns DataTable rows for Experiences, Skills, and Achievements when `tab === 'customizations'` and the appropriate `window._activeReviewPane` is set. A/R dispatch works via `handleActionClick()`. However, the **Publications** tab (`tab === 'publications-review'`) is still not covered — `_getCards()` has no branch for that tab. Power users reviewing publications must still use the mouse per row.
-
-**US-W5 (open): Multi-step bulk undo**
-`_bulkUndoSnapshot` stores only one state snapshot (review-table-base.js:38). After a bulk-accept, a second bulk-action replaces the prior snapshot. A power user who accidentally bulk-accepts then bulk-rejects cannot undo both steps. Proposed criterion: "At least 3 levels of undo are available for bulk actions on review tabs."
-Evidence: `review-table-base.js:38, 860–915`
-
-**US-W6 (open): Session header quick-access path without full modal**
-Switching sessions always requires opening the full 980px modal (index.html:253–272). A power user managing 10 active applications needs a faster path — a popover or mini-list from the header pill. Proposed criterion: "Session switching is achievable in ≤2 clicks without opening a full modal overlay."
-Evidence: `index.html:45–47` (`onclick="openSessionsModal()"`)
-
-**US-W7 (open): Compact/density toggle on customisation DataTables**
-Only Rewrites has compact mode. Experiences and Skills DataTables show full descriptive rows with no compact option. Proposed criterion: "A compact row mode is available on all DataTable review tabs to reduce scroll depth."
-
-**US-W8 (open): Keyboard shortcut for compact/density toggle**
-No keyboard shortcut toggles compact mode on the Rewrites tab. Power users switching view density during rapid review must click with the mouse. Proposed criterion: "A keyboard shortcut (e.g., C) toggles compact mode on review tabs that support it."
-
-**US-W9 (verification needed): Spell Check A/R selector accuracy**
-keyboard-shortcuts.js:120–122 uses `.spell-keep-btn` and `.spell-apply-btn` selectors within the focused spell card. If these selectors don't match the actual DOM elements rendered by spell-check.js, A/R shortcuts silently do nothing on the Spell Check tab. Recommend verifying selector strings match spell-check.js's rendered button classes before treating W1-2 as fully confirmed.
+| ID | Description | Severity | Status |
+| ---- | ----------- | -------- | ------ |
+| GAP-PU-A | `kb-focused` CSS missing for DataTable rows — no visual indicator when ↑/↓ navigate customizations tables (experience, skills, achievements, publications) | HIGH | OPEN |
+| GAP-PU-B | J/K vim-style navigation not implemented; only ↑/↓ arrows work | LOW | OPEN |
+| GAP-PU-C | Rewrite "Accept All" / "Reject All" have no undo (unlike experience/skills/achievements) | MEDIUM | OPEN |
+| GAP-PU-D | Shortcut help panel undiscoverable (no hint in UI); panel text omits customizations A/R support; "? Help" header button opens wrong destination | HIGH | OPEN |
+| GAP-PU-E | Publications bulk actions lack undo — inconsistent with experience, skills, and achievements sub-tabs | MEDIUM | OPEN |
+| US-W6 (prior) | Session switching always requires opening full 980px modal — no quick-access path | LOW | OPEN |
+| US-W7 (prior) | Compact/density mode applies to Rewrites only; no compact option for DataTable tabs | LOW | OPEN |
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/keyboard-shortcuts.js
+## Overall Assessment
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-| ----- | ------- | --------- | ------ | ---------- | ----- |
-| US-W1 | 6 | 1 | 0 | 0 | 0 |
-| US-W2 | 5 | 2 | 0 | 0 | 0 |
-| US-W3 | 8 | 0 | 0 | 0 | 0 |
-| Generated Materials | 7 | 0 | 0 | 0 | 0 |
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl |
+| ----- | ------- | --------- | ------ | ---------- |
+| US-W1 | 7 | 1 | 1 | 1 |
+| US-W2 | 4 | 1 | 0 | 0 |
+| US-W3 | 4 | 0 | 1 | 0 |
+| Generated Materials | 6 | 0 | 0 | 0 |
+
+The core power-user efficiency layer is substantially complete: keyboard A/R shortcuts now
+work on all five review contexts (rewrite, spell, experience, skills, achievements,
+publications — GAP-332 confirmed by source). Bulk actions are present everywhere. Session
+management supports multi-application parallel work.
+
+The two HIGH-severity gaps are: (1) no visual CSS for keyboard focus on DataTable rows
+(A/R fire correctly but the user cannot see which row is focused), and (2) the shortcut
+help panel is hidden behind an undiscoverable keypress and contains outdated text. Both
+are low-effort fixes with high power-user impact.
 
 **Key evidence references:**
 
-- US-W1 (keyboard shortcuts): `initKeyboardShortcuts()` → web/keyboard-shortcuts.js:293; `_getCards()` DataTable extension → keyboard-shortcuts.js:64–76
-- US-W1 (bulk actions): `bulkAction()` → web/review-table-base.js:860; `bulkAchievementAction()` → web/achievements-review.js:363; `undoBulkAction()` → web/review-table-base.js:915
-- US-W1 (single-level undo limitation): `_bulkUndoSnapshot` → web/review-table-base.js:38
-- US-W1 (show-only-changed): workflow-steps.js:526–629
-- US-W2 (session modal render): `_renderSessionSwitcherSections()` → web/session-switcher-ui.js:123–145
-- US-W2 (no quick-access path): `onclick="openSessionsModal()"` → web/index.html:46
-- US-W3 (re-run confirmation modal): `_showReRunConfirmModal()` → web/workflow-steps.js:133–191
-- US-W3 (Ctrl+Shift+R): `_onKeyDown` → web/keyboard-shortcuts.js:244–253
-- US-W3 (re-run backend with context preservation): `re_run_phase()` → scripts/utils/conversation_manager.py:1688
-- US-W3 (back-to-phase downstream preservation): `back_to_phase()` → scripts/utils/conversation_manager.py:1653
-
-**Evidence standard:** Every conclusion supported by file:line evidence from direct source reads.
+- A/R on publications: `keyboard-shortcuts.js:76, 136–138, 173–176`
+- `kb-focused` CSS gap: `styles.css:1413` (only rewrite/spell cards defined)
+- Bulk undo for experience/skills: `review-table-base.js:38, 915`
+- Bulk undo for achievements: `achievements-review.js:85, 388`
+- Publications bulk — no undo: `publications-review.js:295–320`
+- Rewrite bulk — no undo: `rewrite-review.js:680–695`
+- Shortcut panel text: `keyboard-shortcuts.js:204–214`
+- "? Help" button destination: `index.html:63–66` (`onclick="showWelcomeModal()"`)
