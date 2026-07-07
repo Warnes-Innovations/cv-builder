@@ -34,14 +34,15 @@ let _coverLetterPriorSessions = [];
 
 /** Survives tab navigation: form inputs and the generated letter body. */
 let _coverLetterFormState = {
-  tone:           '',
-  openingStyle:   '',
-  hiringManager:  '',
-  companyAddress: '',
-  highlight:      '',
-  companyContext: '',
-  letterText:     '',
-  letterVisible:  false,
+  tone:              '',
+  openingStyle:      '',
+  hiringManager:     '',
+  companyAddress:    '',
+  highlight:         '',
+  companyContext:    '',
+  letterText:        '',
+  letterVisible:     false,
+  persuasionWarnings: [],
 };
 
 // ── Populate cover letter tab ─────────────────────────────────────────────────
@@ -279,6 +280,7 @@ async function generateCoverLetter() {
       const resultSection = document.getElementById('cl-result-section');
       const textarea      = document.getElementById('cl-letter-textarea');
       if (resultSection) resultSection.style.display = 'block';
+      _coverLetterFormState.persuasionWarnings = Array.isArray(data.persuasion_warnings) ? data.persuasion_warnings : [];
       if (textarea) {
         textarea.value = data.text;
         _validateCoverLetter(textarea.value);
@@ -714,8 +716,20 @@ function _validateCoverLetter(text) {
       : `Generic phrase${foundFill.length > 1 ? 's' : ''} detected: ${foundFill.slice(0, 3).map(p => `“${p}”`).join(', ')}${foundFill.length > 3 ? '…' : ''} — replace with specific value claims.`,
   };
 
+  // ── Append backend persuasion warnings (GAP-339) ─────────────
+  const _persuasionFlagLabels = {
+    passive_voice:   'Passive voice',
+    hedging:         'Hedging language',
+    generic_phrases: 'Generic phrases',
+  };
+  const backendChecks = (_coverLetterFormState.persuasionWarnings || []).map(w => ({
+    warn: w.severity !== 'info',
+    label: _persuasionFlagLabels[w.flag_type] || w.flag_type,
+    detail: w.details || 'Consider revising this section.',
+  }));
+
   // ── Render ─────────────────────────────────────────────────────
-  const checks = [openingCheck, iFirstCheck, companyCheck, para1Check, wordCountCheck, ctaCheck, achievementCheck, fillerCheck];
+  const checks = [openingCheck, iFirstCheck, companyCheck, para1Check, wordCountCheck, ctaCheck, achievementCheck, fillerCheck, ...backendChecks];
   container.innerHTML = checks.map(c => {
     const state = c.pass ? 'pass' : c.warn ? 'warn' : 'fail';
     return `<div class="cl-check ${state}">

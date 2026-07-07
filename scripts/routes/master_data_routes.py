@@ -19,7 +19,7 @@ from utils.bibtex_parser import (
     parse_bibtex_file,
     serialize_publications_to_bibtex,
 )
-from utils.llm_client import LLMError
+from utils.llm_client import LLMClient, LLMError
 
 
 logger = logging.getLogger(__name__)
@@ -1705,8 +1705,30 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                 'company_address': company_address, 'highlight': highlight,
                 'company_context': company_context,
             }
+
+            # Run persuasion quality checks on the generated body (GAP-339)
+            body_text = response.strip()
+            cl_persuasion: list = []
+            for check_fn, flag in [
+                (LLMClient.check_passive_voice,          'passive_voice'),
+                (LLMClient.check_hedging_language,       'hedging'),
+                (LLMClient.check_summary_generic_phrases,'generic_phrases'),
+            ]:
+                try:
+                    result = check_fn(body_text)
+                    if not result.get('pass', True):
+                        cl_persuasion.append({
+                            'flag_type': result.get('flag_type', flag),
+                            'severity':  result.get('severity', 'warn'),
+                            'details':   result.get('details', ''),
+                        })
+                except Exception:
+                    logger.warning("Persuasion check %s failed on cover letter", flag, exc_info=True)
+            conversation.state['cover_letter_persuasion_warnings'] = cl_persuasion
+
         session_registry.touch(sid)
-        return jsonify({'ok': True, 'text': letter_text})
+        return jsonify({'ok': True, 'text': letter_text,
+                        'persuasion_warnings': conversation.state.get('cover_letter_persuasion_warnings', [])})
 
     @bp.post("/api/cover-letter/save")
     def cover_letter_save():

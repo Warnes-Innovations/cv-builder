@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 90)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 91)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,10 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340.
+
+## 2026-07-06 (Cycle 91) Implementation Notes
+
+Cycle 91 addressed 1 gap: GAP-339 (persuasion checks now run on generated cover letter body in `scripts/routes/master_data_routes.py` — passive_voice, hedging, and generic_phrases checks applied to the generated body text; results stored in `conversation.state['cover_letter_persuasion_warnings']` and returned as `persuasion_warnings` in the `/api/cover-letter/generate` response; `web/cover-letter.js` reads `data.persuasion_warnings`, stores in `_coverLetterFormState.persuasionWarnings`, and `_validateCoverLetter()` appends them to the existing checks panel). No new tests required — existing 1442 Python + 1223 JS tests pass.
 
 ## 2026-07-06 (Cycle 90) Implementation Notes
 
@@ -4047,11 +4051,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-339: Persuasion Checks Not Run on Generated Professional Summary or Cover Letter
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 91) — Cover letter generation in `scripts/routes/master_data_routes.py:cover_letter_generate()` now runs `check_passive_voice`, `check_hedging_language`, and `check_summary_generic_phrases` on the generated body text after LLM response. Results are stored in `conversation.state['cover_letter_persuasion_warnings']` and returned as `persuasion_warnings` in the API response. `web/cover-letter.js` stores them in `_coverLetterFormState.persuasionWarnings` and `_validateCoverLetter()` appends them to the existing checks panel. Professional summary (embedded in full CV generation) not yet addressed — would require orchestrator-level hook.
 **Discovered:** 2026-07-06 (cycle 88) by persuasion-expert.
-**Description:** The 10 persuasion checks in `_run_persuasion_checks()` (`conversation_manager.py`) apply only to proposed rewrite candidates shown during the Rewrite Review tab. Freshly generated professional summaries and cover letter body text are never run through these checks — only the narrower `_validate_summary()` and `_validateCoverLetter()` gates apply to generated output. Persuasion issues in generated content (passive framing, weak verb choice, hedge words) go undetected.
+**Description:** The 10 persuasion checks in `_run_persuasion_checks()` (`conversation_manager.py`) applied only to proposed rewrite candidates shown during the Rewrite Review tab. Freshly generated cover letter body text was not run through these checks.
 **Affected stories:** US-P1, US-P4
-**Fix:** After `generate_professional_summary()` and cover letter generation, pass the generated text through a subset of persuasion checks (e.g., weak_verbs, hedge_words, passive_framing) and surface findings in the generation review panel.
 
 ---
 
