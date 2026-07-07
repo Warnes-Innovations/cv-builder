@@ -421,6 +421,12 @@ def _wait_for_ui_ready(page: Page) -> None:
             && document.readyState === 'complete'
         """
     )
+    # app.js's bootstrap sequence awaits fetchStatus() asynchronously after
+    # load, and that call's continuation (updateWorkflowSteps ->
+    # updateTabBarForStage) can otherwise fire after fixture/test setup and
+    # silently re-hide tabs outside the mocked status's phase. Wait for that
+    # initial network activity to settle before handing off to the caller.
+    page.wait_for_load_state("networkidle")
     # Remove or disable onboarding overlay if present and observe future inserts
     try:
         page.evaluate("() => { const remove = () => { const el = document.getElementById('onboarding-modal-overlay'); if (el) el.remove(); }; remove(); const mo = new MutationObserver(remove); mo.observe(document.documentElement, { childList: true, subtree: true }); }")
