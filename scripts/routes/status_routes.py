@@ -24,7 +24,6 @@ import yaml
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.config import get_config
-from utils.conversation_manager import Phase
 from utils.llm_client import PROVIDER_MODELS
 from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
@@ -466,7 +465,7 @@ def create_blueprint(deps):
 
         try:
             validated_updates = _validate_settings_update(normalized_updates)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception("Settings validation failed")
             return jsonify({'ok': False, 'error': 'Settings validation failed'}), 400
 
@@ -664,7 +663,6 @@ def create_blueprint(deps):
         #     - "response:GET /api/status.max_skills"
         #     - "response:GET /api/status.skills_section_title"
         #   notes: "Returns the current generation-settings values in the session status payload."
-        from pathlib import Path
         entry = _get_session(required=False)
         _provider_name = _provider_name_ref['value']
         _current_model = _current_model_ref['value']
@@ -752,6 +750,8 @@ def create_blueprint(deps):
             achievement_decisions=conversation.state.get("achievement_decisions")   or {},
             publication_decisions=conversation.state.get("publication_decisions")   or {},
             summary_focus_override=conversation.state.get("summary_focus_override"),
+            tagline_override=conversation.state.get("tagline_override"),
+            decisions_confirmed=conversation.state.get("decisions_confirmed") or {},
             extra_skills=conversation.state.get("extra_skills")            or [],
             extra_skill_matches=conversation.state.get("extra_skill_matches") or {},
             session_file=str(getattr(conversation, "session_file", "") or ""),
@@ -759,6 +759,19 @@ def create_blueprint(deps):
             skills_section_title=conversation.state.get("skills_section_title") or "Skills",
             achievement_edits=conversation.state.get("achievement_edits")       or {},
             intake=conversation.state.get("intake")                             or {},
+            stale_steps=list(conversation.state.get("stale_steps") or []),
+            job_url=conversation.state.get("job_url"),
+            generation_goals=conversation.state.get("generation_goals") or None,
+            skill_qualifier_overrides=conversation.state.get("skill_qualifier_overrides") or {},
+            ai_attribution=bool(conversation.state.get("ai_attribution", get_config().ai_attribution_default)),
+            highest_phase=conversation.state.get("highest_phase") or None,
+            session_last_modified=entry.last_modified.isoformat() if entry.last_modified else None,
+            ats_checks=(
+                (conversation.state.get("generated_files") or {})
+                .get("metadata", {})
+                .get("ats_validation", {})
+                .get("checks") or []
+            ) or None,
         )))
 
     @bp.get("/api/context-stats")
@@ -859,13 +872,36 @@ def create_blueprint(deps):
                     return jsonify({"error": "skills_section_title must not be empty"}), 400
                 conversation.state["skills_section_title"] = raw
                 customizations["skills_section_title"] = raw
+            if "ai_attribution" in data:
+                attr_val = bool(data["ai_attribution"])
+                conversation.state["ai_attribution"] = attr_val
+                customizations["ai_attribution"] = attr_val
+                # Persist as global default so new sessions inherit the preference (GAP-321).
+                config_path = _resolve_config_yaml_path()
+                try:
+                    with _SETTINGS_WRITE_LOCK:
+                        config_doc: dict = {}
+                        if config_path.exists():
+                            try:
+                                config_doc = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+                            except Exception:
+                                pass
+                        _deep_set(config_doc, 'generation.ai_attribution_default', attr_val)
+                        tmp = config_path.with_suffix('.yaml.tmp')
+                        tmp.write_text(yaml.safe_dump(config_doc, sort_keys=False, default_flow_style=False), encoding='utf-8')
+                        tmp.replace(config_path)
+                    get_config(reload=True)
+                except Exception:
+                    logger.warning("Failed to persist ai_attribution_default to config.yaml", exc_info=True)
             conversation._save_session()
         session_registry.touch(sid)
-        cfg_default = get_config().get("generation.max_skills", 20)
+        cfg = get_config()
+        cfg_default = cfg.get("generation.max_skills", 20)
         return jsonify({
             "ok": True,
             "max_skills": int(conversation.state.get("max_skills") or cfg_default),
             "skills_section_title": conversation.state.get("skills_section_title") or "Skills",
+            "ai_attribution": bool(conversation.state.get("ai_attribution", cfg.ai_attribution_default)),
         })
 
     @bp.post("/api/post-analysis-responses")
@@ -967,7 +1003,6 @@ def create_blueprint(deps):
         try:
             body          = request.get_json(force=True) or {}
             question      = (body.get('question') or '').strip()
-            question_type = (body.get('question_type') or '').strip()
             analysis      = body.get('analysis') or {}
 
             if not question:
@@ -1133,7 +1168,7 @@ def create_blueprint(deps):
                     if len(matches) >= limit:
                         break
                 except Exception:
-                    pass
+                    logger.debug("Skipping unreadable session during prior clarification search", exc_info=True)
             return jsonify({'found': len(matches) > 0, 'matches': matches})
         except Exception:
             logger.exception("Error searching for prior clarifications")

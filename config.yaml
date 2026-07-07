@@ -3,8 +3,8 @@ data:
   publications: ~/CV/publications.bib
   output_dir: ~/CV/cv-builder
 llm:
-  default_provider: github
-  default_model: claude-sonnet-4-6
+  default_provider: copilot-sdk
+  default_model: gpt-5-mini
   temperature: 0.7
   max_tokens: null
   request_timeout_seconds: 300
@@ -20,6 +20,8 @@ generation:
   max_skills: 20
   max_achievements: 5
   max_publications: 10
+  max_publication_pages: null          # page-based cap; overrides count limit when set
+  publication_chars_per_page: 1500     # calibration: ~10 citations ≈ 4 pages
   page_margin: 0.5in
   page_count:
     warn_single: true
@@ -43,3 +45,16 @@ logging:
   level: DEBUG
   file: cv-builder.log
   log_dir: ~/CV/cv-builder/logs
+error_reporting:
+  enabled: true
+  developer_email: greg@warnes-innovations.com
+  smtp:
+    host: localhost
+    port: 25
+    use_tls: false
+    username: ""
+    password: ""
+  rate_limit_minutes: 60          # min interval between reports for the same error fingerprint
+  create_dump: true               # write full reproduction zip to dump_dir on each error
+  dump_dir: ~/CV/cv-builder/error_dumps
+  email_attach_dump: false        # attach the dump zip to the email (may be large)

@@ -17,13 +17,25 @@ Supports:
 """
 
 import asyncio
+import functools
 import logging
 import os
 import json
-from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Any, Type, TypeVar
 from abc import ABC, abstractmethod
 
+from pydantic import BaseModel, ValidationError
+
+from .llm_response_models import (
+    JobAnalysisResponse,
+    CustomizationResult,
+    PublicationRankingItem,
+)
+
 logger = logging.getLogger(__name__)
+
+_M = TypeVar("_M", bound=BaseModel)
 
 
 # ── Typed LLM error hierarchy ─────────────────────────────────────────────────
@@ -183,6 +195,33 @@ def _anthropic_messages_payload(
     return system_blocks, payload_messages
 
 
+_POSITION_STYLE_CONTEXT_MSGS: Dict[str, str] = {
+    'academic': (
+        'Academic / Research — no upper page limit; emphasise research impact, '
+        'domain expertise, methodology depth, and scholarly contributions. '
+        'Publications, grants, and teaching credentials are valued differentiators.'
+    ),
+    'government': (
+        'Government / Federal — comprehensive documentation is valued; use precise '
+        'program/agency terminology and quantify impact in mission or compliance terms.'
+    ),
+    'industry': (
+        'Industry / Corporate — target 2–3 pages; prioritise quantified business '
+        'impact, ROI, and concise transferable skills.'
+    ),
+}
+
+
+def _position_style_context(domain: str) -> str:
+    """Return a one-line position-style framing clause for injection into LLM prompts."""
+    try:
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        style_key, _ = _get_config().get_position_style_for_domain(domain or '')
+    except Exception:
+        style_key = 'industry'
+    return _POSITION_STYLE_CONTEXT_MSGS.get(style_key, _POSITION_STYLE_CONTEXT_MSGS['industry'])
+
+
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
 
@@ -191,16 +230,76 @@ class LLMClient(ABC):
     # Anthropic: .input_tokens/.output_tokens
     last_usage: Any = None
 
+    # Trivial probe patterns to exclude from the interaction log.
+    _TRIVIAL_PATTERNS: List[str] = [
+        'reply with one word',
+        'respond with only the word',
+        'reply only with',
+    ]
+
+    @classmethod
+    def _is_trivial_messages(cls, messages: List[Dict]) -> bool:
+        """Return True when messages represent a trivial heartbeat/probe call."""
+        for msg in messages:
+            content = (msg.get('content') or '').lower()
+            if any(p in content for p in cls._TRIVIAL_PATTERNS):
+                return True
+        return False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if 'chat' in cls.__dict__ and not getattr(cls.__dict__['chat'], '__isabstractmethod__', False):
+            original_chat = cls.__dict__['chat']
+
+            @functools.wraps(original_chat)
+            def _logged_chat(self, messages, *args, **kw):  # type: ignore[override]
+                response = original_chat(self, messages, *args, **kw)
+                self._record_interaction(messages, response)
+                return response
+
+            cls.chat = _logged_chat
+
+    def _record_interaction(self, messages: List[Dict], response: str) -> None:
+        """Append a logged interaction unless it is a trivial probe call."""
+        if self._is_trivial_messages(messages):
+            return
+        if not hasattr(self, '_interaction_log'):
+            self._interaction_log: List[Dict] = []
+        self._interaction_log.append({
+            'messages': messages,
+            'response': response,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+        })
+
+    def get_interaction_log(self, since: int = 0) -> List[Dict]:
+        """Return logged interactions starting from index *since*."""
+        return getattr(self, '_interaction_log', [])[since:]
+
+    def get_interaction_log_length(self) -> int:
+        """Return the total number of logged interactions."""
+        return len(getattr(self, '_interaction_log', []))
+
     @abstractmethod
     def chat(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
-        """Send messages and get response."""
+        """Send messages and get response.
+
+        Args:
+            messages:    Conversation messages in OpenAI role/content format.
+            temperature: Sampling temperature.
+            max_tokens:  Token limit (None = provider default).
+            json_mode:   When True, instruct the provider to constrain output to
+                         valid JSON.  Providers that support a native API param
+                         (OpenAI, GitHub Models) set ``response_format`` on the
+                         request; others rely on the prompt wording alone.
+        """
         pass
-    
+
     def analyze_job_description(self, job_text: str, master_data: Dict) -> Dict:
         """Analyze job description using the LLM.
 
@@ -212,7 +311,7 @@ class LLMClient(ABC):
 3. Domain focus (data science, biostatistics, ML engineering, etc.)
 4. Role level (IC, senior IC, staff, principal, leadership)
 5. Company culture indicators
-6. Top 10 keywords for ATS optimization
+6. Top 10 keywords for ATS optimization — rank by: (1) frequency of occurrence in the JD (a keyword appearing 5× outweighs one appearing 1×), then (2) positional prominence (job title / requirements section keywords outrank body-text mentions)
 
 IMPORTANT: The text may begin with a recruiter email or cover note (greeting, pleasantries,
 pay/contract details, etc.) followed by the actual job posting. Ignore any email preamble,
@@ -228,6 +327,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
   "title":                   "...",   // formal job title; not email subject line
   "company":                 "...",   // hiring employer, not recruiter agency; "" if unknown
   "domain":                  "...",   // e.g. "biostatistics", "ML engineering", "data science"
+  "domain_confidence":       0.9,     // float 0.0–1.0: how confident are you in the domain classification? Use <0.7 when the JD spans multiple domains or is ambiguous.
   "role_level":              "...",   // one of: IC / Senior IC / Staff / Principal / Leadership
   "required_skills":         ["..."], // must-have skills and technologies
   "preferred_skills":        ["..."], // nice-to-have skills
@@ -241,8 +341,14 @@ Return ONLY a JSON object — no prose, no markdown fences:
             {"role": "system", "content": "You are an expert at analyzing job descriptions for CV optimization."},
             {"role": "user", "content": prompt},
         ]
-        response = self.chat(messages, temperature=0.3)
-        return self._parse_json_response(response)
+        response = self.chat(messages, temperature=0.3, json_mode=True)
+        data = self._parse_json_response(response)
+        try:
+            validated = self._validate_with_repair(data, JobAnalysisResponse, messages, temperature=0.3)
+            return validated.model_dump()
+        except ValidationError as exc:
+            logger.warning("analyze_job_description: validation failed after repair: %s", exc)
+            return data if isinstance(data, dict) else {}
 
     def recommend_customizations(
         self,
@@ -250,6 +356,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
         master_data: Dict,
         user_preferences: Dict = None,
         conversation_history: List[Dict] = None,
+        page_budget: Dict = None,
     ) -> Dict:
         """Recommend CV customisations for a specific job using the LLM.
 
@@ -284,6 +391,38 @@ Return ONLY a JSON object — no prose, no markdown fences:
                 "=" * 72 + "\n",
             ]
             prefs_block = "\n".join(lines) + "\n\n"
+
+        # ── Page budget block ─────────────────────────────────────────────────
+        page_budget_block = ""
+        if page_budget:
+            cv_pages  = page_budget.get('max_cv_pages')
+            pub_pages = page_budget.get('max_publication_pages')
+            if cv_pages or pub_pages:
+                lines = ["PAGE BUDGET (hard constraints — calibrate Include/Emphasize count accordingly):"]
+                if cv_pages:
+                    lines.append(
+                        f"  • CV body (summary, experiences, achievements, skills, education): "
+                        f"{cv_pages} pages"
+                    )
+                if pub_pages:
+                    lines.append(
+                        f"  • Publications section: {pub_pages} pages"
+                    )
+                if cv_pages and pub_pages:
+                    lines.append(f"  • Total: {int(cv_pages) + int(pub_pages)} pages")
+                lines += [
+                    "",
+                    "Calibration (letter paper, 0.5\" margins, 13 pt font):",
+                    "  • One experience with 3-4 bullets ≈ 0.3 pages",
+                    "  • One selected achievement ≈ 0.1 pages",
+                    "  • Skills + Education sections ≈ 0.5 pages combined",
+                    "  • Summary paragraph ≈ 0.15 pages",
+                    "",
+                    "Adjust your Include/Emphasize mix so total estimated content fits the budget.",
+                    "Prefer fewer, stronger inclusions over padding to the limit.",
+                    "",
+                ]
+                page_budget_block = "\n".join(lines) + "\n\n"
 
         # ── Conversation history block ─────────────────────────────────────────
         history_block = ""
@@ -369,7 +508,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
         n_ach = len(master_data.get('selected_achievements', []))
         n_skills = len(skill_lines_list)
 
-        prompt = f"""{prefs_block}{history_block}Job Analysis:
+        prompt = f"""{prefs_block}{page_budget_block}{history_block}Job Analysis:
 {json.dumps(job_summary, indent=2)}
 
 Available Experiences ({n_exp} total):
@@ -478,6 +617,7 @@ Return ONLY a JSON object — no prose, no markdown fences:
     }}
   ],
   "summary_focus": "What to emphasise in the professional summary (incorporate culture_indicators where relevant)",
+  "applicant_tagline": "One-line professional summary of the applicant tailored to this role (NOT the job title; describes who the applicant is, e.g. 'Senior Data Scientist specialising in biostatistics and ML')",
   "reasoning":     "Overall CV customisation strategy for this role"
 }}
 
@@ -497,7 +637,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             {"role": "user", "content": prompt},
         ]
 
-        response = self.chat(messages, temperature=0.4)
+        response = self.chat(messages, temperature=0.4, json_mode=True)
 
         try:
             result = self._parse_json_response(response)
@@ -505,6 +645,17 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             logger.warning("recommend_customizations failed to parse response: %s", e)
             logger.debug("Response preview: %s", response[:500])
             result = {}
+
+        if result:
+            try:
+                validated = self._validate_with_repair(
+                    result, CustomizationResult, messages, temperature=0.4
+                )
+                result = validated.model_dump()
+            except ValidationError as exc:
+                logger.warning(
+                    "recommend_customizations: validation failed after repair: %s", exc
+                )
 
         # Populate recommended_experiences from experience_recommendations for
         # backwards compatibility with callers that read the flat ID list.
@@ -523,6 +674,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             "recommended_achievements":    [],
             "suggested_achievements":      [],
             "summary_focus":               "general",
+            "applicant_tagline":           "",
             "reasoning":                   "Failed to parse LLM response",
         }
 
@@ -634,6 +786,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         selected_experiences: List[Dict] = None,
         refinement_prompt: str = None,
         previous_summary: str = None,
+        post_analysis_answers: Dict = None,
     ) -> str:
         """Generate a custom professional summary tailored to a specific job.
 
@@ -699,6 +852,13 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         domain      = job_analysis.get('domain', '')
         role_level  = job_analysis.get('role_level', '')
 
+        # Build candidate clarification context block (from post-analysis Q&A)
+        answers_block = ''
+        if post_analysis_answers:
+            lines = [f"- {q}: {a}" for q, a in list(post_analysis_answers.items())[:6]]
+            if lines:
+                answers_block = "CANDIDATE CONTEXT (from interview Q&A — use to personalise):\n" + "\n".join(lines) + "\n\n"
+
         # Build the prompt
         if refinement_prompt and previous_summary:
             prompt = (
@@ -715,6 +875,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 + (f" | Domain: {domain}" if domain else "")
                 + (f" | Level: {role_level}" if role_level else "") + "\n"
                 f"KEY KEYWORDS: {', '.join(keywords[:20])}\n\n"
+                + answers_block +
                 "Return ONLY the refined summary text — no labels, no bullet points, no preamble."
             )
         else:
@@ -723,11 +884,12 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 "professional summary for a CV application.\n\n"
                 "REQUIREMENTS:\n"
                 "- 3–5 sentences (≈80–150 words)\n"
-                "- Open with a strong positioning statement (title + years of experience)\n"
+                "- Open with a value-identity statement: strong verb + differentiating value claim (e.g. 'Drives 3× revenue growth…', 'Builds ML pipelines that…') — NOT a title + years-of-experience formula\n"
                 "- Weave in 3–5 of the provided ATS keywords naturally\n"
                 "- Reference 1–2 specific, quantified achievements from the experience list\n"
                 "- Close with a forward-looking statement aligned to the target role\n"
                 "- No generic filler (e.g. 'hard-working', 'passionate', 'results-driven')\n\n"
+                f"POSITION STYLE: {_position_style_context(domain)}\n\n"
                 f"CANDIDATE: {candidate_name}\n"
                 f"TARGET JOB: {job_title}"
                 + (f" at {job_company}" if job_company else "")
@@ -736,6 +898,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 f"KEY ATS KEYWORDS: {', '.join(keywords[:20])}\n\n"
                 f"RELEVANT EXPERIENCE:\n" + ("\n".join(exp_lines) or "(none)") + "\n\n"
                 f"KEY SKILLS: {', '.join(skill_names[:25])}\n\n"
+                + answers_block +
                 "Return ONLY the summary text — no labels, no bullet points, no preamble."
             )
 
@@ -759,7 +922,8 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         prompt: str,
         system_prompt: str = "",
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Call LLM with a single user prompt and optional system prompt.
 
@@ -771,6 +935,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             system_prompt: Optional system/instruction prompt.
             temperature:   Sampling temperature passed to :meth:`chat`.
             max_tokens:    Token limit passed to :meth:`chat` (None = provider default).
+            json_mode:     Passed through to :meth:`chat`; see that method for details.
 
         Returns:
             The model's response as a plain string.
@@ -779,7 +944,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        return self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        return self.chat(messages, temperature=temperature, max_tokens=max_tokens, json_mode=json_mode)
 
     # ── Concrete helpers shared by all provider implementations ──────────────
 
@@ -935,6 +1100,21 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
     }
 
     @staticmethod
+    def _strip_intro_phrase(text: str) -> str:
+        """Strip a leading 'Label: ' intro phrase from a bullet.
+
+        Some bullets open with a named category or keyword followed by a
+        colon (e.g. 'Category Compass: Led the team to …').  Persuasion
+        checks should evaluate the substantive content after the colon, not
+        the label itself.  Only strips when the prefix is 1–5 words so
+        genuine sentence-initial colons (e.g. job titles with colons) are
+        left intact.
+        """
+        import re
+        m = re.match(r'^(?:\w+\s*){1,5}:\s+(.+)', text, re.DOTALL)
+        return m.group(1) if m else text
+
+    @staticmethod
     def check_strong_action_verb(text: str) -> Dict[str, Any]:
         """Check if bullet point opens with a strong action verb.
 
@@ -953,6 +1133,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         if not text or not text.strip():
             return {'pass': True, 'flag_type': 'strong_action_verb', 'severity': 'info', 'details': ''}
 
+        text = LLMClient._strip_intro_phrase(text)
         # Extract first word
         words = re.findall(r'\b[a-zA-Z]+\b', text)
         if not words:
@@ -1007,7 +1188,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                     'pass': False,
                     'flag_type': 'passive_voice',
                     'severity': 'warn',
-                    'details': f"Detected passive voice or hedging language. Rewrite in active voice focusing on what YOU did."
+                    'details': "Detected passive voice or hedging language. Rewrite in active voice focusing on what YOU did."
                 }
 
         return {'pass': True, 'flag_type': 'passive_voice', 'severity': 'info', 'details': ''}
@@ -1031,6 +1212,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         if not text or not text.strip():
             return {'pass': True, 'flag_type': 'word_count', 'severity': 'info', 'details': ''}
 
+        text = LLMClient._strip_intro_phrase(text)
         word_count = len(text.split())
         if word_count <= max_words:
             return {'pass': True, 'flag_type': 'word_count', 'severity': 'info', 'details': ''}
@@ -1075,8 +1257,8 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         return {
             'pass': False,
             'flag_type': 'has_result',
-            'severity': 'info',
-            'details': f"No quantified result or outcome detected. Add metrics or impact (e.g., 'improved by 40%', 'enabled 3M users')."
+            'severity': 'warn',
+            'details': "No quantified result or outcome detected. Add metrics or impact (e.g., 'improved by 40%', 'enabled 3M users')."
         }
 
     @staticmethod
@@ -1117,7 +1299,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                     'pass': False,
                     'flag_type': 'hedging',
                     'severity': 'warn',
-                    'details': f"Detected hedging language. Replace with assertive framing: 'Led', 'Drove', 'Delivered' instead of 'helped', 'contributed', 'worked on'."
+                    'details': "Detected hedging language. Replace with assertive framing: 'Led', 'Drove', 'Delivered' instead of 'helped', 'contributed', 'worked on'."
                 }
 
         return {'pass': True, 'flag_type': 'hedging', 'severity': 'info', 'details': ''}
@@ -1138,7 +1320,6 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
                 'details': message or empty string.
             }
         """
-        import re
         if not text or not text.strip():
             return {'pass': True, 'flag_type': 'institution_placement', 'severity': 'info', 'details': ''}
 
@@ -1193,7 +1374,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             {
                 'pass': bool,
                 'flag_type': 'car_structure',
-                'severity': 'info' (never 'warn'),
+                'severity': 'info' on pass, 'warn' on fail,
                 'details': message or empty string.
             }
         """
@@ -1220,7 +1401,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             return {
                 'pass': False,
                 'flag_type': 'car_structure',
-                'severity': 'info',
+                'severity': 'warn',
                 'details': 'Consider adding Challenge-Action-Result (CAR) structure: "Faced [problem], [Action], resulting in [Result]".'
             }
 
@@ -1258,6 +1439,162 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             'severity': severity,
             'details': f"Found {len(found_phrases)} generic filler phrase(s): {', '.join(found_phrases)}. Rewrite with specific value claims."
         }
+
+    @staticmethod
+    def check_keyword_appended(proposed: str, original: str, ats_keywords: List[str]) -> Dict[str, Any]:
+        """Check whether ATS keywords were appended to the end of a rewritten bullet rather than woven in.
+
+        Flags when the final 3 tokens of *proposed* contain an ATS keyword that was absent from
+        *original* — a sign that the LLM tacked keywords on rather than integrating them naturally.
+        """
+        if not proposed or not ats_keywords:
+            return {'pass': True, 'flag_type': 'keyword_appended', 'severity': 'info', 'details': ''}
+
+        words = proposed.split()
+        tail  = ' '.join(words[-3:]).lower()
+        orig_lower = original.lower()
+        kw_lower   = [kw.lower() for kw in ats_keywords]
+
+        appended = [kw for kw in kw_lower if kw in tail and kw not in orig_lower]
+        if not appended:
+            return {'pass': True, 'flag_type': 'keyword_appended', 'severity': 'info', 'details': ''}
+
+        return {
+            'pass': False,
+            'flag_type': 'keyword_appended',
+            'severity': 'warn',
+            'details': (
+                f"Keyword(s) may be appended at end of bullet rather than woven in: "
+                f"{', '.join(appended)}. Consider integrating mid-sentence for natural flow."
+            ),
+        }
+
+    @staticmethod
+    def check_positive_metric_framing(text: str) -> Dict[str, Any]:
+        """Check whether quantified metrics use positive-sum framing.
+
+        Negative-framing verbs (reduced, cut, eliminated) before a numeric result
+        can create an unfavourable impression even for genuine achievements.  Flags
+        bullets that pair a negative-framing verb with a percentage or number so the
+        writer can consider reframing in additive terms (e.g. 'freed up 30%' instead
+        of 'cut costs by 30%').
+        """
+        import re
+        if not text or not text.strip():
+            return {'pass': True, 'flag_type': 'negative_metric_framing', 'severity': 'info', 'details': ''}
+
+        negative_verbs = r'\b(?:cut|cuts|cutting|reduce[sd]?|reducing|reduction|eliminat(?:ed|ing|e)|decreas(?:ed|ing|e)|shrunk|shrank|shrink(?:ing)?|slash(?:ed|ing)?|trim(?:med|ming)?)\b'
+        has_metric     = bool(re.search(r'\d+\s*%|\d+\s*x\b|\$\s*\d|\d+\s*(?:million|billion|thousand|k\b)', text, re.IGNORECASE))
+
+        if has_metric and re.search(negative_verbs, text, re.IGNORECASE):
+            return {
+                'pass': False,
+                'flag_type': 'negative_metric_framing',
+                'severity': 'info',
+                'details': (
+                    'Metric uses negative-sum framing (e.g. "reduced by 30%"). '
+                    'Consider positive-sum reframing: "freed up 30%", "reclaimed", '
+                    '"improved efficiency by 30%", or "delivered a 30% saving".'
+                ),
+            }
+        return {'pass': True, 'flag_type': 'negative_metric_framing', 'severity': 'info', 'details': ''}
+
+    @staticmethod
+    def check_new_numeric_claims(original: str, proposed: str) -> Dict[str, Any]:
+        """Flag when the proposed rewrite introduces numeric tokens not in the original (GAP-300b).
+
+        New specific numbers, percentages, or dollar amounts that were not in the
+        original text may represent fabricated metrics.  Flags as a warning so the
+        writer can verify any new quantified claims before including them.
+        """
+        import re
+        _NUM_PATTERN = re.compile(
+            r'\b\d[\d,]*(?:\.\d+)?'           # plain integers / decimals
+            r'(?:\s*%|\s*x\b|\s*×)?'          # optionally a percent or multiplier
+            r'|\$\s*\d[\d,]*(?:\.\d+)?'       # dollar amounts
+            r'|\b\d+\s*(?:million|billion|thousand|k)\b',  # magnitude words
+            re.IGNORECASE
+        )
+        if not original or not proposed:
+            return {'pass': True, 'flag_type': 'new_numeric_claim', 'severity': 'warn', 'details': ''}
+
+        def _normalise_tokens(text: str) -> set:
+            return {re.sub(r'[\s,]', '', m.lower()) for m in _NUM_PATTERN.findall(text)}
+
+        orig_nums = _normalise_tokens(original)
+        prop_nums = _normalise_tokens(proposed)
+        new_nums = prop_nums - orig_nums
+        if new_nums:
+            sample = ', '.join(sorted(new_nums)[:3])
+            return {
+                'pass': False,
+                'flag_type': 'new_numeric_claim',
+                'severity': 'warn',
+                'details': (
+                    f'Rewrite introduces new numeric claim(s) not in the original: {sample}. '
+                    'Verify these figures are accurate before including them.'
+                ),
+            }
+        return {'pass': True, 'flag_type': 'new_numeric_claim', 'severity': 'warn', 'details': ''}
+
+    def _validate_with_repair(
+        self,
+        data: Any,
+        model: Type[_M],
+        original_messages: List[Dict[str, str]],
+        temperature: float,
+    ) -> _M:
+        """Validate *data* against *model*, retrying once with a repair prompt.
+
+        If ``model.model_validate(data)`` succeeds on the first attempt the
+        result is returned immediately.  On ``ValidationError`` a concise repair
+        message is appended to *original_messages* and a single follow-up
+        ``chat()`` call is made; the repaired response is then parsed and
+        re-validated.  If validation still fails the ``ValidationError`` is
+        re-raised so the caller can decide how to handle it.
+
+        Args:
+            data:              The already-parsed Python object (dict or list)
+                               to validate.
+            model:             The Pydantic ``BaseModel`` subclass to validate
+                               against.
+            original_messages: The messages used in the original ``chat()``
+                               call (used to build the repair context).
+            temperature:       Temperature forwarded to the repair ``chat()``
+                               call; should match the original call's value.
+
+        Returns:
+            A validated *model* instance.
+
+        Raises:
+            ValidationError: If the repaired response also fails validation.
+        """
+        try:
+            return model.model_validate(data)
+        except ValidationError as exc:
+            missing = [".".join(str(loc) for loc in err["loc"]) for err in exc.errors()]
+            logger.warning(
+                "_validate_with_repair: %s missing/invalid fields %s — issuing repair prompt",
+                model.__name__,
+                missing,
+            )
+            repair_messages = list(original_messages) + [
+                {
+                    "role": "assistant",
+                    "content": json.dumps(data) if not isinstance(data, str) else data,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous response was missing or had invalid fields: "
+                        f"{missing}. Return a corrected, complete JSON object with "
+                        "all required fields present and valid."
+                    ),
+                },
+            ]
+            repaired_response = self.chat(repair_messages, temperature=temperature, json_mode=True)
+            repaired_data = self._parse_json_response(repaired_response)
+            return model.model_validate(repaired_data)
 
     def _parse_json_response(self, response: str) -> Any:
         """Parse a JSON value from an LLM response, tolerating markdown fences.
@@ -1408,17 +1745,33 @@ Return ONLY a JSON array — no prose, no markdown fences.
   }}
 ]
 """
+        pub_messages = [
+            {
+                "role": "system",
+                "content": "You are an expert academic CV advisor. Select and rank publications by relevance to a target job. Return only valid JSON — a bare array, no markdown fences.",
+            },
+            {"role": "user", "content": prompt},
+        ]
         try:
-            response = self.chat(
-                messages=[
-                    {"role": "system", "content": "You are an expert academic CV advisor. Select and rank publications by relevance to a target job. Return only valid JSON — a bare array, no markdown fences."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-            )
+            response = self.chat(pub_messages, temperature=0.3, json_mode=True)
             ranked_raw = self._parse_json_response(response)
             if not isinstance(ranked_raw, list):
                 return []
+            validated_items = []
+            for item in ranked_raw:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    validated_items.append(
+                        self._validate_with_repair(
+                            item, PublicationRankingItem, pub_messages, temperature=0.3
+                        ).model_dump()
+                    )
+                except ValidationError as exc:
+                    logger.warning(
+                        "rank_publications_for_job: item validation failed: %s", exc
+                    )
+            ranked_raw = validated_items
         except Exception as exc:
             import warnings
             warnings.warn(f"rank_publications_for_job: LLM call failed ({exc}); returning empty list")
@@ -1443,7 +1796,8 @@ Return ONLY a JSON array — no prose, no markdown fences.
             elif pub.get('booktitle'):
                 authority_signals.append(f"conference: {pub['booktitle']}")
             # Venue warning
-            has_venue = bool(pub.get('journal') or pub.get('booktitle'))
+            is_software = pub.get('fields', {}).get('type') == 'software'
+            has_venue = bool(pub.get('journal') or pub.get('booktitle') or is_software)
             venue_warning = '' if has_venue else 'No journal or conference name found in BibTeX entry'
             # Formatted citation (use bibtex_parser if available, else basic)
             try:
@@ -1587,9 +1941,13 @@ Return ONLY a JSON array — no prose, no markdown fences.
                 history_section += f"{role}: {content_text}\n\n"
             history_section += "-" * 60 + "\n\n"
 
+        domain = job_analysis.get('domain', '')
+        style_ctx = _position_style_context(domain)
+
         prompt = (
             f"{prefs_section}"
             f"{history_section}"
+            f"POSITION STYLE: {style_ctx}\n\n"
             "Propose targeted text rewrites so the CV uses terminology from the job description.\n\n"
             "CONSTRAINTS — every proposal MUST:\n"
             '1. Preserve all numbers, metrics, and percentages '
@@ -1599,6 +1957,14 @@ Return ONLY a JSON array — no prose, no markdown fences.
             "4. Only substitute terminology — do NOT fabricate experience, "
             "achievements, or roles\n"
             "5. Keep rewrites concise and professional\n\n"
+            "QUALITY CRITERIA — the proposed text should satisfy as many of these as possible:\n"
+            "- Open with a strong action verb (e.g. 'Developed', 'Led', 'Delivered') — "
+            "not 'Responsible for', 'Helped', 'Assisted', or 'Worked on'\n"
+            "- Use active voice — avoid 'was responsible for', 'were involved in'\n"
+            "- Include a quantified result or metric where the original already has one "
+            "(preserve it) or where one can be naturally inferred\n"
+            "- Avoid hedging language ('tried to', 'helped with', 'contributed to')\n"
+            "- Keep bullet text under 30 words\n\n"
             f"JOB KEYWORDS TO INTRODUCE: {keywords_str}\n\n"
             f"PROFESSIONAL SUMMARY:\n{summary or '(none)'}\n\n"
             f"EXPERIENCE BULLETS (id.achievements[index]: text):\n{bullets_section}\n\n"
@@ -1616,7 +1982,10 @@ Return ONLY a JSON array — no prose, no markdown fences.
             '  "keywords_introduced": ["<kw1>", "<kw2>"],\n'
             '  "evidence":            "<comma-separated exp IDs, skill_add only>",\n'
             '  "evidence_strength":   "strong" | "weak",\n'
-            '  "rationale":           "<one sentence explaining the ATS improvement>"\n'
+            '  "rationale":           "<one sentence covering: (1) the ATS keyword(s) '
+            'introduced and (2) how the proposed wording satisfies or trades off the '
+            'quality criteria above — e.g. \'Replaces passive phrase with active verb '
+            '\\\"Led\\\"; introduces keyword \\\"bioinformatics\\\">"\n'
             '}\n\n'
             'Only propose rewrites where keyword alignment genuinely improves ATS '
             'scoring.  Return [] if no meaningful changes are needed.\n'
@@ -1636,7 +2005,7 @@ Return ONLY a JSON array — no prose, no markdown fences.
         ]
 
         try:
-            response = self.chat(messages, temperature=0.3)
+            response = self.chat(messages, temperature=0.3, json_mode=True)
             raw = self._parse_json_response(response)
             if not isinstance(raw, list):
                 raw = raw.get('rewrites') or raw.get('proposals') or []
@@ -1661,17 +2030,17 @@ Return ONLY a JSON array — no prose, no markdown fences.
 
 class OpenAIClient(LLMClient):
     """OpenAI GPT client."""
-    
+
     def __init__(self, model: str = "gpt-4", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "OpenAI API key not found. Set OPENAI_API_KEY environment variable "
                 "or pass api_key parameter."
             )
-        
+
         try:
             from openai import OpenAI
             self.client = OpenAI(api_key=self.api_key)
@@ -1679,26 +2048,34 @@ class OpenAIClient(LLMClient):
             raise ImportError(
                 "OpenAI package not installed. Run: pip install openai"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to OpenAI."""
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        timeout_secs = _get_config().llm_request_timeout
+        kwargs: Dict[str, Any] = dict(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        if timeout_secs is not None:
+            kwargs["timeout"] = timeout_secs
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            response = self.client.chat.completions.create(**kwargs)
             self.last_usage = response.usage
             return response.choices[0].message.content
         except Exception as exc:
             raise _classify_llm_error(exc, provider='OpenAI') from exc
-    
+
     def semantic_match(
         self,
         content: str,
@@ -1711,24 +2088,24 @@ class OpenAIClient(LLMClient):
                 model="text-embedding-3-small",
                 input=content
             ).data[0].embedding
-            
+
             req_text = " ".join(requirements)
             req_embedding = self.client.embeddings.create(
                 model="text-embedding-3-small",
                 input=req_text
             ).data[0].embedding
-            
+
             # Cosine similarity
             import numpy as np
             similarity = np.dot(content_embedding, req_embedding) / (
                 np.linalg.norm(content_embedding) * np.linalg.norm(req_embedding)
             )
-            
+
             return float(similarity)
         except Exception:
             # Fallback to simple keyword matching
             return self._fallback_match(content, requirements)
-    
+
     def _fallback_match(self, content: str, requirements: List[str]) -> float:
         """Simple keyword matching fallback."""
         content_lower = content.lower()
@@ -1742,16 +2119,16 @@ class OpenAIClient(LLMClient):
 
 class AnthropicClient(LLMClient):
     """Anthropic Claude client."""
-    
+
     def __init__(self, model: str = "claude-3-opus-20240229", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable."
             )
-        
+
         try:
             from anthropic import Anthropic
             self.client = Anthropic(api_key=self.api_key)
@@ -1759,16 +2136,19 @@ class AnthropicClient(LLMClient):
             raise ImportError(
                 "Anthropic package not installed. Run: pip install anthropic"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to Claude."""
         system_blocks, payload_messages = _anthropic_messages_payload(messages)
 
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        timeout_secs = _get_config().llm_request_timeout
         try:
             request_kwargs = {
                 "model":       self.model,
@@ -1778,13 +2158,15 @@ class AnthropicClient(LLMClient):
             }
             if system_blocks:
                 request_kwargs["system"] = system_blocks
+            if timeout_secs is not None:
+                request_kwargs["timeout"] = timeout_secs
 
             response = self.client.messages.create(**request_kwargs)
             self.last_usage = response.usage
             return response.content[0].text
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Anthropic') from exc
-    
+
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Anthropic Claude. Delegates to shared implementation."""
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
@@ -1792,16 +2174,16 @@ class AnthropicClient(LLMClient):
 
 class GeminiClient(LLMClient):
     """Google Gemini client."""
-    
+
     def __init__(self, model: str = "gemini-1.5-pro", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "Gemini API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable."
             )
-        
+
         try:
             from any_llm import completion as anyllm_completion
             self._anyllm_completion = anyllm_completion
@@ -1809,16 +2191,19 @@ class GeminiClient(LLMClient):
             raise ImportError(
                 "any-llm package not installed. Run: pip install any-llm-sdk[gemini]"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to Gemini."""
+        from utils.config import get_config as _get_config  # noqa: PLC0415
+        timeout_secs = _get_config().llm_request_timeout
         try:
-            response = self._anyllm_completion(
+            gemini_kwargs: Dict[str, Any] = dict(
                 provider="gemini",
                 model=self.model,
                 api_key=self.api_key,
@@ -1826,6 +2211,9 @@ class GeminiClient(LLMClient):
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            if timeout_secs is not None:
+                gemini_kwargs["timeout"] = timeout_secs
+            response = self._anyllm_completion(**gemini_kwargs)
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Gemini') from exc
         self.last_usage = getattr(response, 'usage', None)
@@ -1895,7 +2283,7 @@ class GeminiClient(LLMClient):
             text_parts = [part.get("text", "") for part in content if isinstance(part, dict)]
             return "".join(text_parts).strip()
         return str(content)
-    
+
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Gemini. Delegates to shared implementation."""
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
@@ -1928,8 +2316,16 @@ class CopilotSdkClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Send chat messages to GitHub Copilot via any-llm copilotsdk provider."""
+        if json_mode:
+            # copilotsdk has no response_format API param; enforce JSON via a
+            # hard system instruction so the model still receives the constraint.
+            messages = [
+                {"role": "system", "content": "Respond with valid JSON only. No prose, no markdown fences."},
+                *messages,
+            ]
         kwargs: Dict[str, Any] = dict(
             # any-llm expects the provider key without an underscore.
             provider="copilotsdk",
@@ -1987,7 +2383,7 @@ class CopilotSdkClient(LLMClient):
 
 class LocalLLMClient(LLMClient):
     """Local LLM using transformers."""
-    
+
     def __init__(self, model: str = "mistralai/Mistral-7B-Instruct-v0.2"):
         self.model_name = model
         # Lazy-loaded on first chat() call so the server can start without a
@@ -2013,12 +2409,13 @@ class LocalLLMClient(LLMClient):
             raise ImportError(
                 "Transformers not installed. Run: pip install transformers torch"
             )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Generate response using local model."""
         self._ensure_model_loaded()
@@ -2049,7 +2446,7 @@ class LocalLLMClient(LLMClient):
             return response
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Local') from exc
-    
+
     def _format_messages(self, messages: List[Dict[str, str]]) -> str:
         """Format messages for instruction model."""
         formatted = []
@@ -2064,24 +2461,24 @@ class LocalLLMClient(LLMClient):
                 formatted.append(f"Assistant: {content}")
         formatted.append("Assistant: ")
         return "\n\n".join(formatted)
-    
+
     def semantic_match(self, content: str, requirements: List[str]) -> float:
         """Semantic matching using local embeddings."""
         # Use sentence-transformers for embeddings
         try:
             from sentence_transformers import SentenceTransformer, util
-            
+
             if not hasattr(self, 'embed_model'):
                 self.embed_model = SentenceTransformer('all-MiniLM-L6-v2')
-            
+
             content_emb = self.embed_model.encode(content, convert_to_tensor=True)
             req_emb = self.embed_model.encode(" ".join(requirements), convert_to_tensor=True)
-            
+
             similarity = util.cos_sim(content_emb, req_emb)
             return float(similarity[0][0])
         except ImportError:
             return self._fallback_match(content, requirements)
-    
+
     def _fallback_match(self, content: str, requirements: List[str]) -> float:
         """Simple keyword matching fallback."""
         content_lower = content.lower()
@@ -2095,17 +2492,17 @@ class LocalLLMClient(LLMClient):
 
 class GroqClient(OpenAIClient):
     """Groq client - uses OpenAI-compatible API for fast inference."""
-    
+
     def __init__(self, model: str = "llama-3.3-70b-versatile", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "Groq API key not found. Set GROQ_API_KEY environment variable or "
                 "pass api_key parameter. Get a free key from: https://console.groq.com/"
             )
-        
+
         try:
             from openai import OpenAI
             # Use Groq's API endpoint (OpenAI-compatible)
@@ -2143,13 +2540,13 @@ class GitHubModelsClient(OpenAIClient):
         resolved_model = self.MODEL_ALIASES.get(model, model)
         self.model = _normalize_github_model_id(resolved_model)
         self.api_key = api_key or os.getenv("GITHUB_MODELS_TOKEN")
-        
+
         if not self.api_key:
             raise ValueError(
                 "GitHub Models token not found. Set GITHUB_MODELS_TOKEN environment variable or "
                 "pass api_key parameter. Get a token from: https://github.com/settings/tokens"
             )
-        
+
         try:
             from openai import OpenAI
             # Use GitHub's API endpoint
@@ -2298,6 +2695,7 @@ class CopilotOAuthClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         payload: dict = {
             "model":       self.model,
@@ -2306,6 +2704,8 @@ class CopilotOAuthClient(LLMClient):
         }
         if max_tokens:
             payload["max_tokens"] = max_tokens
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
         try:
             data = self._post(payload)
             self.last_usage = data.get("usage")
@@ -2437,6 +2837,7 @@ class StubLLMClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Return a canned JSON response based on the last user message."""
         last_user = next(

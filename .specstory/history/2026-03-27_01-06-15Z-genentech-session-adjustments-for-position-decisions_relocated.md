@@ -2,7 +2,7 @@
 
 # 2026-03-27 01:06:31Z
 
-<!-- VS Code Copilot IDE Session aa6a3d49-8dc0-4c4b-802e-c93cb502d94f (2026-03-27 01:06:31Z) -->
+<!-- copilotide Session aa6a3d49-8dc0-4c4b-802e-c93cb502d94f (2026-03-27 01:06:31Z) -->
 
 _**User (2026-03-27 01:06:31Z)**_
 
@@ -82,4 +82,4 @@ _**User (2026-03-27 02:43:27Z)**_
 
 Contune, then check if there are any other missing imports.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

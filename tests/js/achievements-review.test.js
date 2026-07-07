@@ -16,6 +16,7 @@ import {
   buildAchievementsReviewTable,
   handleAchievementAction,
   bulkAchievementAction,
+  undoBulkAchievementAction,
   submitAchievementDecisions,
   saveTopLevelAchievementField,
   deleteTopLevelAchievement,
@@ -147,6 +148,73 @@ describe('bulkAchievementAction', () => {
   })
 })
 
+// ── undoBulkAchievementAction ─────────────────────────────────────────────
+
+describe('undoBulkAchievementAction', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="ach-bulk-toolbar">
+        <button class="bulk-undo-btn" style="display:none"></button>
+      </div>
+      <table id="achievements-review-table">
+        <tbody>
+          <tr data-ach-id="ach-1"><td><button class="icon-btn active" data-action="include">✓</button><button class="icon-btn" data-action="exclude">✗</button></td></tr>
+          <tr data-ach-id="ach-2"><td><button class="icon-btn active" data-action="emphasize">★</button><button class="icon-btn" data-action="exclude">✗</button></td></tr>
+        </tbody>
+      </table>`
+    window.pendingRecommendations = {}
+    window.achievementDecisions = { 'ach-1': 'include', 'ach-2': 'emphasize' }
+  })
+
+  it('restores decisions to pre-bulk state', () => {
+    bulkAchievementAction('exclude')
+    expect(window.achievementDecisions['ach-1']).toBe('exclude')
+    undoBulkAchievementAction()
+    expect(window.achievementDecisions['ach-1']).toBe('include')
+    expect(window.achievementDecisions['ach-2']).toBe('emphasize')
+  })
+
+  it('hides the undo button after undo', () => {
+    bulkAchievementAction('exclude')
+    undoBulkAchievementAction()
+    const undoBtn = document.getElementById('ach-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('none')
+  })
+
+  it('is a no-op when no snapshot exists', () => {
+    window.achievementDecisions = { 'ach-1': 'exclude' }
+    undoBulkAchievementAction()
+    expect(window.achievementDecisions['ach-1']).toBe('exclude')
+  })
+
+  it('shows the undo button after a bulk action', () => {
+    bulkAchievementAction('exclude')
+    const undoBtn = document.getElementById('ach-bulk-toolbar').querySelector('.bulk-undo-btn')
+    expect(undoBtn.style.display).toBe('')
+  })
+
+  it('clears bulk-applied state for rows that had no prior decision', () => {
+    // ach-3 has no entry in achievementDecisions before the bulk action
+    window.achievementDecisions = { 'ach-1': 'include', 'ach-2': 'emphasize' }
+    const tbody = document.querySelector('#achievements-review-table tbody')
+    const row3 = document.createElement('tr')
+    row3.dataset.achId = 'ach-3'
+    const excBtn = document.createElement('button')
+    excBtn.className = 'icon-btn'
+    excBtn.dataset.action = 'exclude'
+    row3.appendChild(excBtn)
+    tbody.appendChild(row3)
+
+    bulkAchievementAction('exclude')
+    expect(window.achievementDecisions['ach-3']).toBe('exclude')
+
+    undoBulkAchievementAction()
+    // ach-3 should be cleared (not in pre-bulk snapshot)
+    expect(window.achievementDecisions['ach-3']).toBeUndefined()
+    expect(excBtn.classList.contains('active')).toBe(false)
+  })
+})
+
 // ── submitAchievementDecisions ────────────────────────────────────────────
 
 describe('submitAchievementDecisions', () => {
@@ -163,7 +231,7 @@ describe('submitAchievementDecisions', () => {
     await submitAchievementDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('2 items'))
     expect(globalThis.scheduleAtsRefresh).toHaveBeenCalled()
-    expect(globalThis.switchTab).toHaveBeenCalledWith('summary-review')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('tagline-review')
   })
 
   it('stores decisions in _savedDecisions', async () => {

@@ -2,7 +2,7 @@
 
 # 2026-04-02 20:16:21Z
 
-<!-- VS Code Copilot IDE Session cfaabcb5-fd4d-4578-9267-0ecf9ff5fb3a (2026-04-02 20:16:21Z) -->
+<!-- copilotide Session cfaabcb5-fd4d-4578-9267-0ecf9ff5fb3a (2026-04-02 20:16:21Z) -->
 
 _**User (2026-04-02 20:16:21Z)**_
 
@@ -83,4 +83,4 @@ The user approves both:
 
 Let me first verify the current state of conversation_manager.py since the context says it was edited, then proceed with the commit and directory deletion.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

@@ -21,16 +21,17 @@ import {
   loadStateFromLocalStorage,
   stateManager,
 } from './state-manager.js';
+import { _STEP_DISPLAY } from './workflow-steps.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Accessibility: Focus Management for Modals
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Stores the element that opened the current modal (for focus restoration on close). */
-let _focusedElementBeforeModal = null;
+/** Stack of elements that opened each modal (supports nested modals). */
+const _focusStack = [];
 
-/** Stores the current keydown listener for focus trap (to enable cleanup). */
-let _currentFocusTrapListener = null;
+/** Stack of focus-trap listeners (one per open modal). */
+const _focusTrapStack = [];
 let _settingsData = null;
 const RETRY_POLICY_STORAGE_KEY = 'cv-builder-retry-policy';
 
@@ -138,6 +139,7 @@ function _collectSettingsPayloadFromForm() {
         human_pdf: Boolean(document.getElementById('settings-format-human-pdf')?.checked),
         human_docx: Boolean(document.getElementById('settings-format-human-docx')?.checked),
       },
+      ai_attribution: Boolean(document.getElementById('settings-gen-ai-attribution')?.checked),
     },
   };
 }
@@ -184,6 +186,7 @@ function _renderSettingsToForm(payload) {
   setChecked('settings-format-ats-docx', formats.ats_docx);
   setChecked('settings-format-human-pdf', formats.human_pdf);
   setChecked('settings-format-human-docx', formats.human_docx);
+  setChecked('settings-gen-ai-attribution', generation.ai_attribution);
 
   const retryPolicy = _getRetryPolicyFromStorage();
   setValue('settings-retry-base-ms', retryPolicy.baseMs);
@@ -204,8 +207,11 @@ function _renderSettingsToForm(payload) {
 async function reloadSettingsModal() {
   try {
     _setSettingsStatus('Loading settings...', 'info');
-    const result = await fetchSettings();
+    const [result, status] = await Promise.all([fetchSettings(), fetchStatus().catch(() => null)]);
     _renderSettingsToForm(result);
+    // ai_attribution is per-session, not in config.yaml — read from session status
+    const attrEl = document.getElementById('settings-gen-ai-attribution');
+    if (attrEl && status) attrEl.checked = Boolean(status.ai_attribution);
     _setSettingsStatus('Settings loaded.', 'success');
   } catch (error) {
     _setSettingsStatus(`Failed to load settings: ${error.message || error}`, 'error');
@@ -221,10 +227,15 @@ async function saveSettingsModal() {
     }
     _setSettingsStatus('Saving settings...', 'info');
     const payload = _collectSettingsPayloadFromForm();
+    const aiAttribution = Boolean(payload.generation?.ai_attribution);
     const result = await updateSettings(payload);
     _saveRetryPolicyToStorage(_collectRetryPolicyFromForm());
     _settingsData = result;
     _renderSettingsToForm(result);
+    // ai_attribution is per-session state, not a config.yaml key — save it separately
+    try {
+      await apiCall('POST', '/api/generation-settings', { ai_attribution: aiAttribution });
+    } catch (_) { /* non-fatal */ }
     _setSettingsStatus('Settings saved successfully.', 'success');
   } catch (error) {
     _setSettingsStatus(`Failed to save settings: ${error.message || error}`, 'error');
@@ -240,7 +251,8 @@ async function openSettingsModal() {
   const overlay = document.getElementById('settings-modal-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  overlay.setAttribute('aria-hidden', 'false');
+  _focusStack.push(document.activeElement);
   setInitialFocus('settings-modal-overlay');
   trapFocus('settings-modal-overlay');
   await reloadSettingsModal();
@@ -248,7 +260,10 @@ async function openSettingsModal() {
 
 function closeSettingsModal() {
   const overlay = document.getElementById('settings-modal-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+  }
   restoreFocus();
 }
 
@@ -295,31 +310,24 @@ function trapFocus(modalId) {
   const modal = document.getElementById(modalId);
   if (!modal) return;
 
-  // Remove any previous trap listener
-  if (_currentFocusTrapListener) {
-    document.removeEventListener('keydown', _currentFocusTrapListener);
-  }
-
   const focusableElements = getFocusableElements(modal);
   if (focusableElements.length === 0) return;
 
   const firstElement = focusableElements[0];
   const lastElement = focusableElements[focusableElements.length - 1];
 
-  _currentFocusTrapListener = (e) => {
+  const listener = (e) => {
     if (e.key !== 'Tab') return;
 
     const isShift = e.shiftKey;
     const activeEl = document.activeElement;
 
     if (isShift) {
-      // Shift+Tab from first element → focus last element
       if (activeEl === firstElement) {
         e.preventDefault();
         lastElement.focus();
       }
     } else {
-      // Tab from last element → focus first element
       if (activeEl === lastElement) {
         e.preventDefault();
         firstElement.focus();
@@ -327,35 +335,39 @@ function trapFocus(modalId) {
     }
   };
 
-  document.addEventListener('keydown', _currentFocusTrapListener);
+  document.addEventListener('keydown', listener);
+  _focusTrapStack.push(listener);
 }
 
 /**
  * Restore focus to the element that opened the modal.
  */
 function restoreFocus() {
-  if (_focusedElementBeforeModal && typeof _focusedElementBeforeModal.focus === 'function') {
-    _focusedElementBeforeModal.focus();
-  }
-  _focusedElementBeforeModal = null;
+  const el = _focusStack.pop();
+  if (el && typeof el.focus === 'function') el.focus();
 
-  // Clean up focus trap listener
-  if (_currentFocusTrapListener) {
-    document.removeEventListener('keydown', _currentFocusTrapListener);
-    _currentFocusTrapListener = null;
-  }
+  const listener = _focusTrapStack.pop();
+  if (listener) document.removeEventListener('keydown', listener);
+}
+
+function pushFocusStack(el) {
+  _focusStack.push(el || document.activeElement);
 }
 
 /** Maps each workflow stage (top bar) to the tabs shown in the second nav bar. */
 const STAGE_TABS = {
   job:            ['job'],
-  analysis:       ['analysis', 'questions'],
-  customizations: ['exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'summary-review', 'publications-review', 'ats-score'],
+  analysis:       ['analysis'],
+  customizations: ['goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score'],
   rewrite:        ['rewrite'],
   spell:          ['spell'],
-  generate:       ['generate'],
   layout:         ['layout'],
-  finalise:       ['download', 'finalise', 'master', 'cover-letter', 'screening'],
+  download:       ['final_generate', 'download'],
+  cover_letter:   ['cover-letter'],
+  screening:      ['screening'],
+  interview_prep: ['interview-prep'],
+  thank_you:      ['thank-you'],
+  harvest:        ['harvest'],
 };
 
 /**
@@ -367,6 +379,8 @@ const STAGE_TABS = {
  */
 function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false } = {}) {
   return new Promise(resolve => {
+    const previousFocus = document.activeElement;
+
     // Reuse or create the shared overlay element
     let overlay = document.getElementById('confirm-dialog-overlay');
     if (!overlay) {
@@ -376,7 +390,9 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
         'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999;' +
         'align-items:center; justify-content:center;';
       overlay.innerHTML =
-        '<div id="confirm-dialog-box" style="background:#fff; border-radius:8px; padding:24px 28px;' +
+        '<div id="confirm-dialog-box" role="dialog" aria-modal="true"' +
+        ' aria-labelledby="confirm-dialog-msg"' +
+        ' style="background:#fff; border-radius:8px; padding:24px 28px;' +
         'max-width:400px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.18); font-family:inherit;">' +
         '<p id="confirm-dialog-msg" style="margin:0 0 20px; font-size:0.95em; color:#1e293b; white-space:pre-wrap;"></p>' +
         '<div style="display:flex; gap:8px; justify-content:flex-end;">' +
@@ -398,14 +414,37 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
     okBtn.style.background     = danger ? '#dc2626' : '#3b82f6';
 
     overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    okBtn.focus();
+
+    // Focus trap — keep Tab/Shift+Tab inside the two buttons
+    const trapFocus = (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      const focused = document.activeElement;
+      if (e.shiftKey) {
+        (focused === cancelBtn ? okBtn : cancelBtn).focus();
+      } else {
+        (focused === okBtn ? cancelBtn : okBtn).focus();
+      }
+    };
+    overlay.addEventListener('keydown', trapFocus);
 
     const finish = (result) => {
       overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
+      overlay.removeEventListener('keydown', trapFocus);
       // Remove listeners to avoid stacking handlers
       okBtn.replaceWith(okBtn.cloneNode(true));
       cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+      if (previousFocus && typeof previousFocus.focus === 'function') {
+        previousFocus.focus();
+      }
       resolve(result);
     };
+
+    // Escape key cancels
+    overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(false); }, { once: true });
 
     // Rebind cloned buttons
     document.getElementById('confirm-dialog-ok').addEventListener('click',     () => finish(true),  { once: true });
@@ -415,63 +454,9 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
 }
 
 /**
- * Global fetch interceptor — shows amber banner on 409 Conflict (session already active).
- */
-(function() {
-  const _origFetch = window.fetch;
-  window.fetch = async function(...args) {
-    const resp = await _origFetch.apply(this, args);
-    let shouldShowBanner = true;
-    try {
-      const rawUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
-      const url = new URL(rawUrl, window.location.origin);
-      shouldShowBanner = url.pathname !== '/api/sessions/claim' && url.pathname !== '/api/sessions/takeover';
-    } catch (_) {
-      shouldShowBanner = true;
-    }
-    if (resp.status === 409 && shouldShowBanner) {
-      showSessionConflictBanner();
-    }
-    return resp;
-  };
-})();
-
-/**
  * Initialize the application on DOM ready.
  * Sets up event listeners, restores session, and loads initial tab.
  */
-async function initialize() {
-  try {
-    // Initialize state
-    if (typeof initializeState === 'function') {
-      initializeState();
-    }
-
-    // Try to restore prior session
-    if (typeof restoreSession === 'function') {
-      await restoreSession();
-    }
-
-    // Set up event listeners
-    setupEventListeners();
-
-    // Restore tab data from localStorage
-    if (typeof loadStateFromLocalStorage === 'function') {
-      loadStateFromLocalStorage();
-    }
-
-    // Load initial tab content
-    const savedTab = stateManager.getCurrentTab() || localStorage.getItem(StorageKeys.CURRENT_TAB) || 'job';
-    updateTabBarForStage(getStageForTab(savedTab) || getWorkflowStepForPhase(stateManager.getPhase()));
-    switchTab(savedTab);
-
-    log.info('✅ Application initialized');
-  } catch (error) {
-    log.error('Initialization error:', error);
-    appendMessage('system', `⚠️ Failed to initialize: ${error.message}`);
-  }
-}
-
 /**
  * Set up all global event listeners.
  */
@@ -480,29 +465,18 @@ function setupEventListeners() {
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
       const tabName = e.target.id.replace('tab-', '');
-
-      // Guard: if the user is clicking into an earlier stage, show the same
-      // downstream-aware confirmation modal used by the stage progress bar.
-      const targetStage = getStageForTab(tabName);
-      if (
-        targetStage &&
-        typeof _STEP_ORDER !== 'undefined' &&
-        typeof _showReRunConfirmModal === 'function'
-      ) {
-        const targetIdx  = _STEP_ORDER.indexOf(targetStage);
-        const currentIdx = _STEP_ORDER.indexOf(getVisibleStage());
-        const targetStepEl = document.getElementById(`step-${targetStage}`);
-        if (targetIdx < currentIdx && targetStepEl && targetStepEl.classList.contains('completed')) {
-          _showReRunConfirmModal(targetStage, 'back-nav', () => switchTab(tabName));
-          return;
-        }
-      }
-
       switchTab(tabName);
     });
 
-    // Add arrow key navigation for tabs (WCAG 2.1 AA Tabs pattern)
+    // Keyboard navigation for tabs (WCAG 2.1 AA tablist pattern)
     tab.addEventListener('keydown', (e) => {
+      // Enter/Space activate the focused tab
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.target.click();
+        return;
+      }
+      // Arrow/Home/End navigate and activate
       if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
         e.preventDefault();
         const tabs = Array.from(document.querySelectorAll('.tab:not([style*="display: none"])'));
@@ -517,7 +491,7 @@ function setupEventListeners() {
 
         if (nextTab) {
           nextTab.focus();
-          nextTab.click(); // Activate the tab
+          nextTab.click();
         }
       }
     });
@@ -595,62 +569,24 @@ function updateTabBarForStage(stage) {
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.scrollLeft = 0;
   updateTabScrollButtons();
-}
 
-/**
- * Load content for a specific tab.
- * Routes to appropriate rendering function based on tab.
- * @param {string} tab - Tab name
- */
-async function loadTabContent(tab) {
-  const content = document.getElementById('document-content');
-  if (!content) return;
-
-  content.innerHTML = ''; // Clear previous content
-
-  try {
-    switch (tab) {
-      case 'job':
-        if (typeof populateJobTab === 'function') {
-          await populateJobTab();
-        }
-        break;
-
-      case 'analysis':
-        if (typeof populateAnalysisTab === 'function' && stateManager.getTabData('analysis')) {
-          populateAnalysisTab(stateManager.getTabData('analysis'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">No analysis data yet. Submit a job description to begin.</p>';
-        }
-        break;
-
-      case 'generate':
-        if (typeof populateCVTab === 'function' && stateManager.getTabData('cv')) {
-          populateCVTab(stateManager.getTabData('cv'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">Generate a CV to see preview.</p>';
-        }
-        break;
-
-      case 'download':
-        if (typeof populateDownloadTab === 'function' && stateManager.getTabData('cv')) {
-          await populateDownloadTab(stateManager.getTabData('cv'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">Generate a CV first to download.</p>';
-        }
-        break;
-
-      default:
-        content.innerHTML = '<p style="padding: 20px; color: #999;">Unknown tab.</p>';
-    }
-  } catch (error) {
-    log.error(`Error loading tab ${tab}:`, error);
-    const errorMessage = document.createElement('p');
-    errorMessage.style.cssText = 'padding: 20px; color: #c41e3a;';
-    errorMessage.textContent = `Error loading content: ${error.message}`;
-    content.appendChild(errorMessage);
+  // GAP-16 (Part A): surface which workflow step's sub-tabs are currently
+  // shown. Visible-only label — no aria-live here; switchTab() in
+  // review-table-base.js is the sole live-speech source for this event, to
+  // avoid a double-announce from two independent live regions.
+  const labelEl = document.getElementById('tab-stage-label');
+  if (labelEl) {
+    const stepLabel = _STEP_DISPLAY[stage] || stage;
+    labelEl.textContent = stepLabel ? `Now viewing: ${stepLabel}` : '';
   }
 }
+
+// loadTabContent() lives in web/review-table-base.js, which owns the
+// full ~20-case tab dispatch (this file's copy only ever handled 5 of them
+// and was never called internally — dead code, superseded once the tab
+// system grew). review-table-base.js's version now carries the same
+// safe textContent-based error rendering this copy had; see its own
+// try/catch. Removed here rather than left to drift further out of sync.
 
 /**
  * Toggle collapsible chat panel (interaction area).
@@ -663,6 +599,12 @@ function toggleChat() {
     const isCollapsed = interactionArea.classList.toggle('collapsed');
     if (viewerArea) {
       viewerArea.style.flex = isCollapsed ? '1 1 100%' : '0 1 60%';
+    }
+    // Keep aria-label and aria-expanded in sync with collapsed state
+    const toggleBtn = document.getElementById('toggle-chat');
+    if (toggleBtn) {
+      toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+      toggleBtn.setAttribute('aria-label', isCollapsed ? 'Expand chat panel' : 'Collapse chat panel');
     }
     try {
       localStorage.setItem(StorageKeys.CHAT_COLLAPSED, isCollapsed);
@@ -680,7 +622,7 @@ function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
     // Save focus before opening modal
-    _focusedElementBeforeModal = document.activeElement;
+    _focusStack.push(document.activeElement);
 
     modal.classList.add('visible');
     modal.setAttribute('aria-hidden', 'false');
@@ -727,52 +669,6 @@ function closeAllModals() {
   document.body.style.overflow = '';
   // Restore focus
   restoreFocus();
-}
-
-/**
- * Show session conflict warning banner (multiple tabs active).
- */
-function showSessionConflictBanner() {
-  const banner = document.getElementById('session-conflict-banner');
-  if (banner) {
-    banner.style.display = 'block';
-  }
-}
-
-/**
- * Display an alert modal with title and message.
- * @param {string} title - Modal title
- * @param {string} message - Modal message
- */
-function showAlertModal(title, message) {
-  const modal = document.getElementById('alert-modal');
-  if (!modal) {
-    // Create alert modal if it doesn't exist
-    const newModal = document.createElement('div');
-    newModal.id = 'alert-modal';
-    newModal.setAttribute('role', 'dialog');
-    newModal.innerHTML = `
-      <div class="modal-overlay alert-modal-overlay" style="display: none;">
-        <div class="modal-content alert-modal">
-          <h2 id="alert-title"></h2>
-          <p id="alert-message"></p>
-          <button onclick="closeAlertModal()" class="modal-btn">OK</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(newModal);
-  }
-
-  document.getElementById('alert-title').textContent = title;
-  document.getElementById('alert-message').innerHTML = message;
-  openModal('alert-modal');
-}
-
-/**
- * Close the alert modal.
- */
-function closeAlertModal() {
-  closeModal('alert-modal');
 }
 
 // ── Model selector ────────────────────────────────────────────────────────────
@@ -833,8 +729,8 @@ function _updateLlmStatusPill(kind, text, icon = '', tooltip = '') {
     configured: 'Provider/model is configured. Connectivity not yet verified.',
     connecting: 'Testing or connecting to the selected provider.',
     connected: 'Provider responded successfully to a live request.',
-    'auth-required': 'Authentication is required. Check API key or sign in.',
-    'rate-limited': 'Rate limit reached. Wait before retrying requests.',
+    'auth-required': 'API key or sign-in credentials are invalid. Open Settings to reconfigure.',
+    'rate-limited': 'The AI provider received too many requests. Wait a moment before retrying.',
     unavailable: 'Provider is temporarily unavailable or unreachable.',
     error: 'Connection failed. Open model settings for details.',
   };
@@ -1509,14 +1405,18 @@ async function openModelModal() {
   _setModelWizardStep(1);
   _hideModelWizardBusy();
   overlay.style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  overlay.setAttribute('aria-hidden', 'false');
+  _focusStack.push(document.activeElement);
   setInitialFocus('model-modal-overlay');
   trapFocus('model-modal-overlay');
 }
 
 function closeModelModal() {
   const overlay = document.getElementById('model-modal-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+  }
   _setModelWizardStep(1);
   _hideModelWizardBusy();
   if (_copilotAuthPollTimer) {
@@ -1634,6 +1534,8 @@ function _buildModelTable() {
     const tr = document.createElement('tr');
     tr.setAttribute('data-provider', provider);
     tr.setAttribute('data-model', m);
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('role', 'row');
     _applyModelRowVisualState(tr, isSelected);
     tr.addEventListener('mouseover', () => {
       if (!tr.classList.contains('model-row-active')) tr.style.background = '#f8fafc';
@@ -1654,10 +1556,8 @@ function _buildModelTable() {
     tbody.appendChild(tr);
   });
 
-  // Rebind row click using delegation so sorting/filter redraws still work.
-  tbody.onclick = async (event) => {
-    const tr = event.target.closest('tr');
-    if (!tr) return;
+  // Shared row-selection handler for both click and keyboard (GAP-304).
+  const _activateModelRow = async (tr) => {
     const provider = tr.getAttribute('data-provider');
     const model = tr.getAttribute('data-model');
     if (!model) return;
@@ -1678,6 +1578,21 @@ function _buildModelTable() {
     }
 
     await setModel(model, provider);
+  };
+
+  // Rebind row click using delegation so sorting/filter redraws still work.
+  tbody.onclick = (event) => {
+    const tr = event.target.closest('tr');
+    if (tr) _activateModelRow(tr);
+  };
+
+  // Keyboard activation: Enter/Space selects the focused row (GAP-304).
+  tbody.onkeydown = (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const tr = event.target.closest('tr');
+    if (!tr) return;
+    event.preventDefault();
+    _activateModelRow(tr);
   };
 
   // Enhance with DataTables for sorting/searching; keep paging disabled.
@@ -1756,6 +1671,9 @@ async function setModel(model, provider) {
       currentModelProvider: effectiveProvider || null,
       currentModelName: model || null,
     });
+    if (typeof globalThis.updateAuthBadge === 'function') {
+      globalThis.updateAuthBadge({}, effectiveProvider || null);
+    }
     await _refreshCopilotAuthStatus();
     await testCurrentModel();
   } catch (e) {
@@ -1878,6 +1796,108 @@ async function refreshModelPricing() {
   }
 }
 
+
+// Helper: update workflow step bar clickable state
+function updateWorkflowStepsClickable(currentPhase) {
+  // Sequential pre-layout steps unlock one-by-one as the user progresses.
+  const sequentialSteps = [
+    'step-job',
+    'step-analysis',
+    'step-customizations',
+    'step-rewrite',
+    'step-spell',
+    'step-layout',
+  ];
+  // Post-layout steps all unlock simultaneously once layout is confirmed.
+  const postLayoutSteps = [
+    'step-download',
+    'step-cover_letter',
+    'step-screening',
+    'step-interview_prep',
+    'step-thank_you',
+    'step-harvest',
+  ];
+  // Map backend phase strings to how many sequential steps are unlocked (0-based index).
+  const phaseToIndex = {
+    'init':             0,
+    'job_analysis':     1,
+    'customization':    2,
+    'rewrite_review':   3,
+    'spell_check':      4,
+    'generation':       5,
+    'layout_review':    5,
+    'final_generation': 5,
+    'refinement':       5,
+    // Legacy fallbacks (step names sometimes passed on DOMContentLoaded)
+    'job':              0,
+    'layout':           5,
+    'finalise':         5,
+  };
+  const postLayoutUnlocked = ['final_generation', 'refinement'].includes(currentPhase);
+  const currentIdx = phaseToIndex[currentPhase] ?? 0;
+
+  function _makeStepClickable(el) {
+    if (!el || el.classList.contains('clickable')) return;
+    el.classList.add('clickable');
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    if (!el._stepKeyHandler) {
+      el._stepKeyHandler = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          el.click();
+        }
+      };
+      el.addEventListener('keydown', el._stepKeyHandler);
+    }
+  }
+
+  function _makeStepInert(el) {
+    if (!el) return;
+    el.classList.remove('clickable');
+    el.removeAttribute('role');
+    el.setAttribute('tabindex', '-1');
+    if (el._stepKeyHandler) {
+      el.removeEventListener('keydown', el._stepKeyHandler);
+      delete el._stepKeyHandler;
+    }
+  }
+
+  sequentialSteps.forEach((id, idx) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (idx <= currentIdx || postLayoutUnlocked) {
+      _makeStepClickable(el);
+    } else {
+      _makeStepInert(el);
+    }
+  });
+
+  postLayoutSteps.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (postLayoutUnlocked) {
+      _makeStepClickable(el);
+    } else {
+      _makeStepInert(el);
+    }
+  });
+
+  // Mark the currently active step for screen readers.
+  const allStepIds = [...sequentialSteps, ...postLayoutSteps];
+  allStepIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.removeAttribute('aria-current');
+  });
+  // For post-layout phases, mark step-download as the active step so screen readers
+  // have a programmatic current-position indicator.
+  const activeStepId = postLayoutUnlocked ? 'step-download' : sequentialSteps[currentIdx];
+  if (activeStepId) {
+    const activeEl = document.getElementById(activeStepId);
+    if (activeEl) activeEl.setAttribute('aria-current', 'step');
+  }
+}
+
 // Initialize on page load — delegates to app.js init() which is loaded after this file
 document.addEventListener('DOMContentLoaded', () => {
   loadModelSelector();
@@ -1895,23 +1915,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Show only the Job tab until fetchStatus resolves the actual stage
   updateTabBarForStage('job');
+  updateWorkflowStepsClickable('job');
 
-  if (typeof init === 'function') init();
+  // Listen for phase changes to update clickable steps
+  if (typeof stateManager?.onPhaseChange === 'function') {
+    stateManager.onPhaseChange((phase) => {
+      updateWorkflowStepsClickable(phase);
+    });
+  }
+
 });
 
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   // Focus / accessibility
-  setInitialFocus, trapFocus, restoreFocus,
+  setInitialFocus, trapFocus, restoreFocus, pushFocusStack,
   // Dialogs & modals
   confirmDialog, openModal, closeModal, closeAllModals,
-  showSessionConflictBanner, showAlertModal, closeAlertModal,
   // Tab & stage management
-  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, loadTabContent,
+  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage,
   // Chat
   toggleChat,
-  // Phase / status
-  initialize,
   // Model selector
   loadModelSelector, openModelModal, closeModelModal, setModel, testCurrentModel, refreshModelPricing,
   toggleModelCatalogVisibility, startCopilotAuthFromWizard, logoutCopilotAuthFromWizard,

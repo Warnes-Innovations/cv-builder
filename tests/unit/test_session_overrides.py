@@ -77,6 +77,57 @@ def test_accepted_publications_and_rejections(tmp_path):
     assert keys == ['p2', 'p1']
 
 
+def _make_orch_with_pubs(tmp_path):
+    master = {"personal_info": {"name": "Tester"}}
+    master_path = tmp_path / "Master_CV_Data.json"
+    master_path.write_text(json.dumps(master))
+    orch = CVOrchestrator(
+        str(master_path),
+        publications_path=str(tmp_path / "pubs.bib"),
+        output_dir=str(tmp_path / "out"),
+        llm_client=None,
+    )
+    orch.publications = {
+        "p1": {"key": "p1", "title": "A", "type": "article", "year": "2020", "authors": [], "journal": ""},
+        "p2": {"key": "p2", "title": "B", "type": "article", "year": "2021", "authors": [], "journal": ""},
+    }
+    return orch
+
+
+def test_position_style_industry_suppresses_publications_by_default(tmp_path):
+    # industry style has include_publications=False — no explicit selection → empty
+    orch = _make_orch_with_pubs(tmp_path)
+    selected = orch.build_render_ready_content(
+        job_analysis={},
+        customizations={"position_style_override": "industry"},
+    )
+    assert selected.get("publications", []) == []
+
+
+def test_position_style_academic_includes_publications_by_default(tmp_path):
+    # academic style has include_publications=True — no explicit selection → auto-select
+    orch = _make_orch_with_pubs(tmp_path)
+    selected = orch.build_render_ready_content(
+        job_analysis={},
+        customizations={"position_style_override": "academic"},
+    )
+    assert len(selected.get("publications", [])) > 0
+
+
+def test_explicit_accepted_publications_overrides_style_default(tmp_path):
+    # explicit accepted_publications list overrides the industry suppress default
+    orch = _make_orch_with_pubs(tmp_path)
+    selected = orch.build_render_ready_content(
+        job_analysis={},
+        customizations={
+            "position_style_override": "industry",
+            "accepted_publications": ["p1"],
+        },
+    )
+    keys = [p.get("key") for p in selected.get("publications", [])]
+    assert keys == ["p1"]
+
+
 def test_achievement_edits_hide_bullets_but_preserve_visible_output(tmp_path):
     master = {
         "personal_info": {"name": "Tester"},

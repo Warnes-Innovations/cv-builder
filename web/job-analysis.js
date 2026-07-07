@@ -10,7 +10,7 @@
  * questions, and transitions the UI to the analysis tab.
  *
  * DEPENDENCIES (all on globalThis at runtime):
- *   - isLoading, tabData (state globals)
+ *   - stateManager (state-manager.js — isLoading()/setTabData())
  *   - llmFetch, setLoading (fetch-utils.js)
  *   - appendLoadingMessage, removeLoadingMessage, appendMessage,
  *     appendRetryMessage, appendFormattedAnalysis (message-queue.js)
@@ -25,6 +25,7 @@
 import { getLogger } from './logger.js';
 const log = getLogger('job-analysis');
 
+import { StorageKeys, disclosureKey } from './api-client.js';
 import { stateManager } from './state-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -95,6 +96,17 @@ function mergePostAnalysisQuestions(existingQuestions, incomingQuestions) {
 async function analyzeJob() {
   if (stateManager.isLoading()) return;
 
+  const _currentProvider = (() => {
+    try { return JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA) || '{}').currentModelProvider || null; }
+    catch { return null; }
+  })();
+  const _discKey = disclosureKey(_currentProvider);
+  if (!localStorage.getItem(_discKey)) {
+    const providerLabel = _currentProvider ? ` (${_currentProvider})` : '';
+    appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${providerLabel} for analysis. Review your provider's data policy for details.`);
+    localStorage.setItem(_discKey, '1');
+  }
+
   const loadingMsg = appendLoadingMessage('Analyzing job description...');
   setLoading(true, 'Analysing job description…');
 
@@ -116,9 +128,14 @@ async function analyzeJob() {
       const analysisData = typeof result === 'object' && result !== null
         ? (result.context_data?.job_analysis ?? result)
         : result;
+      const contextQuestions = (typeof result === 'object' && result !== null)
+        ? result.context_data?.post_analysis_questions
+        : null;
       const structuredQuestions = mergePostAnalysisQuestions(
-        (typeof result === 'object' && result !== null) ? result.context_data?.post_analysis_questions : null,
-        extractStructuredQuestionsFromAssistantText(analysisText),
+        contextQuestions,
+        (contextQuestions && contextQuestions.length > 0)
+          ? []
+          : extractStructuredQuestionsFromAssistantText(analysisText),
       );
 
       if (analysisText) appendMessage('assistant', analysisText);
@@ -159,6 +176,7 @@ async function analyzeJob() {
       updatePositionTitle(latestStatus);
     }
   } catch (_e) { /* non-fatal */ }
+  if (typeof fetchAndDisplayLlmLog === 'function') fetchAndDisplayLlmLog();
 }
 
 // ── ES module exports ──────────────────────────────────────────────────────

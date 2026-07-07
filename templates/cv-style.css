@@ -15,10 +15,10 @@
 }
 
 body {
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: 'Inter', Arial, sans-serif;
   font-size: 11pt;
   line-height: 1.4;
-  color: #333;
+  color: #2c3e50;
   background: white;
 }
 
@@ -30,16 +30,16 @@ body {
 
 /* Header Section */
 .cv-header {
-  border-bottom: 2px solid #2c5aa0;
+  border-bottom: 2px solid #2980b9;
   padding-bottom: 0.5rem;
   margin-bottom: 1rem;
-  text-align: center;
+  text-align: left;
 }
 
 .cv-header h1 {
   font-size: 24pt;
   font-weight: bold;
-  color: #2c5aa0;
+  color: #2980b9;
   margin-bottom: 0.25rem;
 }
 
@@ -57,7 +57,7 @@ body {
 }
 
 .contact-info a {
-  color: #2c5aa0;
+  color: #2980b9;
   text-decoration: none;
 }
 
@@ -76,7 +76,7 @@ body {
 
 .cv-left-column h2 {
   font-size: 14pt;
-  color: #2c5aa0;
+  color: #2980b9;
   border-bottom: 1px solid #ddd;
   padding-bottom: 0.1rem;
   margin-top: 1rem;
@@ -144,7 +144,7 @@ body {
 
 .cv-right-column h2 {
   font-size: 12pt;
-  color: #2c5aa0;
+  color: #2980b9;
   border-bottom: 1px solid #ddd;
   padding-bottom: 0.1rem;
   margin-top: 1rem;
@@ -176,7 +176,7 @@ body {
 
 .skills-category li:before {
   content: "•";
-  color: #2c5aa0;
+  color: #2980b9;
   font-weight: bold;
   position: absolute;
   left: -0.75rem;
@@ -189,7 +189,7 @@ body {
 }
 
 .award-item strong {
-  color: #2c5aa0;
+  color: #2980b9;
 }
 
 /* Certifications */

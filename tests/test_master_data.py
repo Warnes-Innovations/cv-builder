@@ -418,6 +418,129 @@ class TestMasterDataFieldValidation(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertIn('employment_type', res.get_json()['error'])
 
+    def test_experience_achievements_must_be_list_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post(
+                '/api/master-data/experience',
+                json={
+                    'action': 'add',
+                    'experience': {
+                        'title': 'Engineer',
+                        'company': 'Acme',
+                        'achievements': 'not a list',
+                    },
+                    'session_id': sid,
+                },
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('achievements', res.get_json()['error'])
+
+    def test_experience_achievements_item_must_be_string_or_object_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = client.post(
+                '/api/master-data/experience',
+                json={
+                    'action': 'add',
+                    'experience': {
+                        'title': 'Engineer',
+                        'company': 'Acme',
+                        'achievements': [123],
+                    },
+                    'session_id': sid,
+                },
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('achievement', res.get_json()['error'])
+
+    def test_experience_add_with_achievements_persists_list(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'experience': []}))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/experience',
+                json={
+                    'action': 'add',
+                    'experience': {
+                        'title': 'Engineer',
+                        'company': 'Acme',
+                        'achievements': ['Shipped the thing', {'text': 'Led the team', 'keywords': ['leadership']}],
+                    },
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(
+            dumped['experience'][0]['achievements'],
+            ['Shipped the thing', {'text': 'Led the team', 'keywords': ['leadership']}],
+        )
+
+    def test_experience_update_with_achievements_replaces_list(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({
+            'experience': [{
+                'id': 'exp_1', 'title': 'Engineer', 'company': 'Acme',
+                'achievements': ['Old bullet'],
+            }],
+        })
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/experience',
+                json={
+                    'action': 'update',
+                    'id': 'exp_1',
+                    'experience': {
+                        'title': 'Engineer', 'company': 'Acme',
+                        'achievements': ['New bullet', 'Second bullet'],
+                    },
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['experience'][0]['achievements'], ['New bullet', 'Second bullet'])
+
+    def test_experience_update_omitting_achievements_preserves_existing(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({
+            'experience': [{
+                'id': 'exp_1', 'title': 'Engineer', 'company': 'Acme',
+                'achievements': ['Keep me'],
+            }],
+        })
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/experience',
+                json={
+                    'action': 'update',
+                    'id': 'exp_1',
+                    'experience': {'title': 'Senior Engineer', 'company': 'Acme'},
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['experience'][0]['achievements'], ['Keep me'])
+
     def test_education_start_year_after_end_year_returns_400(self):
         app, _, sid, stack = _make_app()
         with stack, app.test_client() as client:
@@ -605,6 +728,114 @@ class TestMasterDataUpdateSkill(unittest.TestCase):
         dumped = mock_dump.call_args[0][0]
         self.assertEqual(dumped['skills'][0], {'name': 'Python', 'experiences': ['exp_1']})
 
+    def test_add_skill_persists_aliases_and_years(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'skills': []}))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'add',
+                    'skill': 'JavaScript',
+                    'aliases': 'JS, ECMAScript',
+                    'years': 5,
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['skills'][0], {
+            'name': 'JavaScript', 'aliases': ['JS', 'ECMAScript'], 'years': 5.0,
+        })
+
+    def test_update_skill_preserves_aliases_and_years_when_omitted(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({
+            'skills': [{'name': 'Python', 'aliases': ['py'], 'years': 3}],
+        })
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={'action': 'update', 'skill': 'Python', 'skill_new': 'Python', 'session_id': sid},
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['skills'][0], {'name': 'Python', 'aliases': ['py'], 'years': 3})
+
+    def test_update_skill_can_clear_aliases_and_years(self):
+        app, _, sid, stack = _make_app()
+        master_json = json.dumps({
+            'skills': [{'name': 'Python', 'aliases': ['py'], 'years': 3}],
+        })
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=master_json)), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={
+                    'action': 'update', 'skill': 'Python', 'skill_new': 'Python',
+                    'aliases': '', 'years': '',
+                    'session_id': sid,
+                },
+            )
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        dumped = mock_dump.call_args[0][0]
+        self.assertEqual(dumped['skills'][0], 'Python')
+
+    def test_add_skill_invalid_years_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'skills': []}))), \
+             patch('json.dump'), patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={'action': 'add', 'skill': 'Rust', 'years': 'a lot', 'session_id': sid},
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('years', res.get_json()['error'])
+
+    def test_add_skill_negative_years_returns_400(self):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'skills': []}))), \
+             patch('json.dump'), patch('subprocess.run'):
+            res = client.post(
+                '/api/master-data/skill',
+                json={'action': 'add', 'skill': 'Rust', 'years': -1, 'session_id': sid},
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('years', res.get_json()['error'])
+
+    def test_add_skill_infinite_or_nan_years_returns_400(self):
+        """float('inf')/float('nan') would otherwise serialize as invalid JSON
+        tokens via json.dump, breaking every subsequent read of the whole file."""
+        for bad_years in ('Infinity', '-Infinity', 'NaN'):
+            app, _, sid, stack = _make_app()
+            with stack, app.test_client() as client, \
+                 patch('builtins.open', mock_open(read_data=json.dumps({'skills': []}))), \
+                 patch('json.dump'), patch('subprocess.run'):
+                res = client.post(
+                    '/api/master-data/skill',
+                    json={'action': 'add', 'skill': 'Rust', 'years': bad_years, 'session_id': sid},
+                )
+            self.assertEqual(res.status_code, 400, f"years={bad_years!r} should be rejected")
+            self.assertIn('years', res.get_json()['error'])
+
     def test_update_skill_persists_group_field(self):
         """Setting a group key on update stores it in the skill dict."""
         app, _, sid, stack = _make_app()
@@ -740,6 +971,24 @@ class TestSaveMasterHelper(unittest.TestCase):
 
             saved = json.loads(master_path.read_text(encoding='utf-8'))
             self.assertEqual(saved['personal_info']['name'], 'Old Name')
+
+    def test_save_master_git_add_failure_does_not_raise(self):
+        """When git-add returns non-zero the file is still saved and no exception is raised."""
+        import subprocess as _sp
+        with tempfile.TemporaryDirectory() as td:
+            master_path = Path(td) / 'Master_CV_Data.json'
+            data = {'personal_info': {'name': 'Test'}, 'skills': []}
+            failed_proc = _sp.CompletedProcess(
+                args=['git', 'add'],
+                returncode=1,
+                stdout=b'',
+                stderr=b'not a git repository',
+            )
+            with patch('scripts.web_app.subprocess.run', return_value=failed_proc):
+                _save_master(data, master_path)
+
+            saved = json.loads(master_path.read_text(encoding='utf-8'))
+            self.assertEqual(saved['personal_info']['name'], 'Test')
 
 
 class TestLoadMasterHelper(unittest.TestCase):

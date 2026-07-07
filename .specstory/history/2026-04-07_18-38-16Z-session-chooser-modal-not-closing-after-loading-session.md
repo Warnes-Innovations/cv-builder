@@ -2,7 +2,7 @@
 
 # 2026-04-07 18:39:23Z
 
-<!-- copilotide Session 0e3b1921-5646-4292-913e-1b37a8688a45 (2026-04-07 18:39:23Z) -->
+<!-- VS Code Copilot IDE Session 0e3b1921-5646-4292-913e-1b37a8688a45 (2026-04-07 18:39:23Z) -->
 
 _**User (2026-04-07 18:39:23Z)**_
 
@@ -256,4 +256,4 @@ The user wants to align the sidebar (left-col) and main content (right-col) top 
 
 Let me find the exact CSS in the template to fix this.
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="https://github.com/Warnes-Innovations/cv-builder" -->

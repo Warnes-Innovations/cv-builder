@@ -2,7 +2,7 @@
 
 # 2026-04-08 00:24:05Z
 
-<!-- VS Code Copilot IDE Session a4a4bea2-59ae-4561-824a-431e0cf2b013 (2026-04-08 00:24:05Z) -->
+<!-- copilotide Session a4a4bea2-59ae-4561-824a-431e0cf2b013 (2026-04-08 00:24:05Z) -->
 
 _**User (2026-04-08 00:24:05Z)**_
 
@@ -17,4 +17,4 @@ The user is asking about a timeout issue with LLM calls in the cv-builder projec
 
 First, let me check the terminal last command to understand the context better.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

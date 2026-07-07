@@ -2,7 +2,7 @@
 
 # 2026-04-08 02:27:36Z
 
-<!-- copilotide Session fe02ce24-0aab-4a67-878e-d1ecfa7f4927 (2026-04-08 02:27:36Z) -->
+<!-- VS Code Copilot IDE Session fe02ce24-0aab-4a67-878e-d1ecfa7f4927 (2026-04-08 02:27:36Z) -->
 
 _**User (2026-04-08 02:27:36Z)**_
 
@@ -77,4 +77,4 @@ _**User (2026-04-08 18:28:09Z)**_
 
 Do we need to do anything to pick up the changes in `cv-builder`?
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

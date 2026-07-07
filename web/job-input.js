@@ -18,7 +18,8 @@
  *   - analyzeJob (job-analysis.js)
  *   - fetchStatus (api-client.js)
  *   - showAlertModal (ui-helpers.js)
- *   - tabData, currentTab, PHASES (window globals)
+ *   - stateManager (state-manager.js — getCurrentTab()/setTabData())
+ *   - PHASES (window global)
  *
  * GAP-23 intake confirmation:
  *   All job-text submissions (paste, URL, file) route directly to analyzeJob()
@@ -32,11 +33,14 @@ import { PHASES, stateManager } from './state-manager.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-// Render job description markdown safely: marked parses GFM, DOMPurify strips
-// any injected HTML/JS before the result is written to innerHTML.
+// Render job description text safely: marked parses GFM (including embedded HTML
+// and autolinks), DOMPurify sanitizes the output before writing to innerHTML.
+// FORBID_ATTR: ['style'] strips inline CSS from HTML embedded in the job text
+// (e.g. Word-style font-size/font-family from JSON-LD description fields),
+// so the page's own stylesheet controls font rendering consistently.
 function _renderJobText(text) {
   const raw = marked.parse(text, { gfm: true, breaks: true });
-  return DOMPurify.sanitize(raw);
+  return DOMPurify.sanitize(raw, { FORBID_ATTR: ['style'] });
 }
 
 // ---------------------------------------------------------------------------
@@ -52,13 +56,39 @@ async function populateJobTab() {
     if (data.job_description_text) {
       const jobText = data.job_description_text;
       const positionName = data.position_name || null;
-      const h1 = positionName
+      const jobUrl = data.job_url || null;
+      const titleText = positionName
         ? escapeHtml(positionName)
-        : '<em style="color:#9ca3af;">Position title not yet extracted — analysis in progress…</em>';
-      let html = '<h1>' + h1 + '</h1>';
+        : '<em style="color:#9ca3af;">Position title not yet extracted…</em>';
+      const titleContent = (positionName && jobUrl)
+        ? `<a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;">${titleText}</a>`
+        : titleText;
+      let html = '<h1>' + titleContent + '</h1>';
+      if (jobUrl) {
+        html += `<div style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:0.85em;margin:-8px 0 8px 0;" title="${escapeHtml(jobUrl)}"><a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:none;">${escapeHtml(jobUrl)}</a></div>`;
+      }
+
+      // Intake confirm card: let user verify/correct position name before analysis (GAP-365).
+      if (data.phase === PHASES.INIT) {
+        html += `
+<div class="intake-confirm-card">
+  <h3>✏️ Confirm Position Details</h3>
+  <p>Review and correct the extracted position title before analysis. This label names your session.</p>
+  <div class="intake-field-row">
+    <label for="intake-position-name">Position Title</label>
+    <input id="intake-position-name" type="text"
+           value="${escapeHtml(positionName || '')}"
+           placeholder="e.g. Senior Software Engineer">
+  </div>
+</div>`;
+      }
 
       html += '<div style="line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + _renderJobText(jobText) + '</div>';
-      html += '<div style="margin-top:20px;"><button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
+
+      const analyzeBtn = data.phase === PHASES.INIT
+        ? '<button onclick="_analyzeJobWithConfirm()" class="btn-primary" style="margin-right:8px;">🔍 Analyse Job</button>'
+        : '';
+      html += '<div style="margin-top:20px;">' + analyzeBtn + '<button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
       content.innerHTML = html;
     } else {
       await showLoadJobPanel();
@@ -68,6 +98,26 @@ async function populateJobTab() {
     log.error('Error loading job description:', error);
     await showLoadJobPanel();
   }
+}
+
+// Read the intake-position-name input (if visible), save it via the rename endpoint
+// if it differs from the extracted value, then proceed to analysis (GAP-365).
+async function _analyzeJobWithConfirm() {
+  const input = document.getElementById('intake-position-name');
+  if (input) {
+    const newName = input.value.trim();
+    const original = input.defaultValue.trim();
+    if (newName && newName !== original) {
+      try {
+        await fetch('/api/rename-current-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_name: newName }),
+        });
+      } catch (_) { /* non-fatal; analysis still proceeds */ }
+    }
+  }
+  analyzeJob();
 }
 
 // ---------------------------------------------------------------------------
@@ -81,12 +131,6 @@ async function showLoadJobPanel() {
 
   const content = document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading…</p></div>';
-
-  const stepJob = document.getElementById('step-job');
-  if (stepJob) {
-    stepJob.classList.remove('completed');
-    stepJob.classList.add('active');
-  }
 
   content.innerHTML = `
     <div style="max-width:820px;margin:0 auto;padding:24px;">
@@ -173,6 +217,8 @@ async function showLoadJobPanel() {
       </div>
     </div>
   `;
+  // Show minimum-length hint immediately on first render (GAP-288).
+  _updatePasteCharCount();
 }
 
 // ---------------------------------------------------------------------------
@@ -293,8 +339,10 @@ async function uploadJobFile() {
     } else {
       stateManager.setTabData('job', data.text);
       saveTabData();
-      appendMessage('assistant', `✅ Job description loaded from "${data.filename}" (${data.content_length.toLocaleString()} chars).`);
-      await analyzeJob();
+      appendMessage('assistant', `✅ Job description loaded from "${data.filename}" (${data.content_length.toLocaleString()} chars). Review the extracted details below, then click "🔍 Analyse Job" to continue.`);
+      setLoading(false);
+      switchTab('job');
+      await populateJobTab();
     }
   } catch (err) {
     errEl.textContent   = err.message;
@@ -318,7 +366,7 @@ function _updatePasteCharCount() {
   const n = val.length;
   if (n === 0) {
     countEl.style.color = '#94a3b8';
-    countEl.textContent = '';
+    countEl.textContent = `Paste the full job description (minimum ${PASTE_MIN_CHARS} characters for best results)`;
   } else if (n < PASTE_MIN_CHARS) {
     countEl.style.color = '#ef4444';
     countEl.textContent = `${n} / ${PASTE_MIN_CHARS} minimum — Too short, aim for at least ${PASTE_MIN_CHARS} characters`;
@@ -391,14 +439,14 @@ async function submitJobText() {
       _clearFieldError('job-text-input', 'paste-error');
       stateManager.setTabData('job', jobText);
       saveTabData();
-      appendMessage('assistant', '✅ Job description submitted successfully.');
+      appendMessage('assistant', '✅ Job description submitted. Review the extracted details below, then click "🔍 Analyse Job" to continue.');
 
       if (typeof updateTabBarForStage === 'function') {
         updateTabBarForStage('job');
       }
       switchTab('job');
       setLoading(false);
-      await analyzeJob();
+      await populateJobTab();
       return;
     }
   } catch (error) {
@@ -481,9 +529,10 @@ async function fetchJobFromURL() {
     } else {
       stateManager.setTabData('job', data.job_text);
       saveTabData();
-      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters.`);
+      appendMessage('assistant', `✅ ${data.message}! Fetched ${data.content_length || 'content'} characters. Review the job description below, then click "🔍 Analyse Job" to continue.`);
       setLoading(false);
-      await analyzeJob();
+      switchTab('job');
+      await populateJobTab();
       return;
     }
   } catch (error) {
@@ -561,6 +610,7 @@ function _clearFieldError(inputId, errorId) {
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   populateJobTab,
+  _analyzeJobWithConfirm,
   showLoadJobPanel,
   switchInputMethod,
   _pendingUploadFile,

@@ -11,12 +11,14 @@ send message, do action, back-to-phase, re-run-phase.
 import dataclasses
 import ipaddress
 import logging
+import socket as _socket
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import io as _io
 import json as _json
+import re as _re
 
 import requests as _requests
 from bs4 import BeautifulSoup
@@ -30,6 +32,211 @@ logger = logging.getLogger(__name__)
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
 from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
+from utils.prompt_safety import scan_for_safety_alert
+
+
+def _json_ld_blobs_to_markdown(blobs: list) -> str:
+    """Render JSON-LD blobs as human-readable markdown.
+
+    All present fields are rendered dynamically without assuming any particular
+    field name exists.  JSON-LD internal tokens (@-prefixed keys and metadata
+    tokens such as sameAs and url) are always skipped.  HTML content in field
+    values is stripped to plain text via BeautifulSoup.
+    """
+    _SKIP = frozenset({'@context', '@id', 'sameAs', 'url'})
+
+    def _label(key: str) -> str:
+        """Convert camelCase key to Title Case label."""
+        return _re.sub(r'([A-Z])', r' \1', key).strip().title()
+
+    def _strip_html(text: str) -> str:
+        soup = BeautifulSoup(text, 'html.parser')
+        for tag in soup.find_all('br'):
+            tag.replace_with('\n')
+        for tag in soup.find_all(['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'blockquote', 'tr']):
+            tag.insert_after('\n')
+        return '\n'.join(line.strip() for line in soup.get_text(separator='').splitlines() if line.strip())
+
+    def _render(v, depth: int = 0) -> str:
+        pad = '  ' * depth
+        if v is None:
+            return ''
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return ''
+            return _strip_html(v)
+        if isinstance(v, (int, float, bool)):
+            return str(v)
+        if isinstance(v, dict):
+            parts = []
+            for k, sub in v.items():
+                if k in _SKIP or k.startswith('@'):
+                    continue
+                rendered = _render(sub, depth + 1)
+                if rendered:
+                    if '\n' in rendered:
+                        parts.append(f"{pad}  - **{_label(k)}:**\n{rendered}")
+                    else:
+                        parts.append(f"{pad}  - **{_label(k)}:** {rendered}")
+            return '\n'.join(parts)
+        if isinstance(v, list):
+            items = []
+            for item in v:
+                rendered = _render(item, depth)
+                if rendered:
+                    items.append(f"{pad}- {rendered}")
+            return '\n'.join(items)
+        return str(v)
+
+    # Fields shown as brief inline metadata (top of section)
+    _META_KEYS = (
+        'hiringOrganization', 'jobLocation', 'employmentType',
+        'datePosted', 'validThrough', 'baseSalary',
+    )
+    # Fields shown as sub-section headers (longer content)
+    _BODY_KEYS = (
+        'qualifications', 'responsibilities', 'skills',
+        'experienceRequirements', 'educationRequirements', 'description',
+    )
+    _HEADING_KEYS = ('title', 'name')
+
+    # Deduplicate identical blobs and drop content-free WebPage blobs (navigation
+    # metadata emitted multiple times by SPA career sites with no job content).
+    _seen_fps: set = set()
+    _deduped = []
+    for _blob in blobs:
+        _fp = _json.dumps(_blob, sort_keys=True, default=str)
+        if _fp in _seen_fps:
+            continue
+        _seen_fps.add(_fp)
+        if _blob.get('@type') == 'WebPage' and not any(_blob.get(k) for k in _BODY_KEYS):
+            continue
+        _deduped.append(_blob)
+    blobs = _deduped
+
+    sections = []
+    for blob in blobs:
+        lines: list = []
+        heading = next(
+            (blob[k].strip() for k in _HEADING_KEYS
+             if isinstance(blob.get(k), str) and blob.get(k, '').strip()),
+            None,
+        )
+        schema_type = blob.get('@type', '')
+        if heading:
+            lines.append(f"## {heading}")
+        if schema_type:
+            lines.append(f"*{schema_type}*")
+        if lines:
+            lines.append('')
+
+        for key in _META_KEYS:
+            val = blob.get(key)
+            if val is None:
+                continue
+            rendered = _render(val)
+            if not rendered:
+                continue
+            label = _label(key)
+            if isinstance(val, (dict, list)):
+                lines.append(f"**{label}:**\n{rendered}\n")
+            else:
+                lines.append(f"**{label}:** {rendered}\n")
+
+        for key in _BODY_KEYS:
+            val = blob.get(key)
+            if val is None:
+                continue
+            rendered = _render(val)
+            if rendered:
+                lines.append(f"\n### {_label(key)}\n\n{rendered}")
+
+        already = _SKIP | set(_HEADING_KEYS) | set(_META_KEYS) | set(_BODY_KEYS) | {'@type'}
+        for key, val in blob.items():
+            if key in already or key.startswith('@'):
+                continue
+            rendered = _render(val)
+            if rendered:
+                lines.append(f"\n**{_label(key)}:** {rendered}")
+
+        if lines:
+            sections.append('\n'.join(lines))
+
+    return '\n\n---\n\n'.join(sections)
+
+
+def _check_ssrf_url(url: str) -> None:
+    """Validate *url* against SSRF attack vectors.
+
+    Raises ``ValueError`` with a user-facing message when the URL is unsafe.
+    Checks: scheme allowlist, hostname blocklist, bare-IP ranges, and
+    DNS-resolved addresses (to block DNS-rebinding attacks).
+    """
+    parsed = urlparse(url)
+    if not all([parsed.scheme, parsed.netloc]):
+        raise ValueError("Invalid URL format")
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Only http and https URLs are supported")
+    hostname = parsed.hostname or ""
+    if hostname.lower() in ("localhost", "ip6-localhost", "ip6-loopback"):
+        raise ValueError("URL host not permitted")
+    is_ip = True
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        is_ip = False
+    if is_ip:
+        if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+            raise ValueError("URL host not permitted")
+    else:
+        try:
+            resolved = _socket.getaddrinfo(hostname, None)
+        except _socket.gaierror:
+            raise ValueError("Unable to resolve URL host")
+        for _family, _type, _proto, _canonname, sockaddr in resolved:
+            resolved_addr = ipaddress.ip_address(sockaddr[0])
+            if (resolved_addr.is_loopback or resolved_addr.is_private
+                    or resolved_addr.is_link_local or resolved_addr.is_reserved):
+                raise ValueError("URL host not permitted")
+
+
+def _safe_get(
+    url: str,
+    headers: dict,
+    *,
+    max_redirects: int = 5,
+    timeout: int = 30,
+) -> "_requests.Response":
+    """GET *url* following redirects, validating each hop against SSRF rules.
+
+    Raises ``ValueError`` (from ``_check_ssrf_url``) if any redirect target
+    fails the safety check.  Raises ``TooManyRedirects`` after *max_redirects*.
+    """
+    current_url = url
+    for _ in range(max_redirects + 1):
+        _check_ssrf_url(current_url)
+        # codeql[py/full-ssrf] Validated above via _check_ssrf_url(), which blocks
+        # loopback/private/link-local/reserved ranges and re-resolves DNS to catch
+        # rebinding attacks on every redirect hop. CodeQL's query only recognizes
+        # inline barrier patterns (regex fullmatch, isalnum, const-compare) as
+        # sanitizers, not calls to a separate validator function — false positive.
+        response = _requests.get(
+            current_url,
+            headers=headers,
+            allow_redirects=False,
+            timeout=timeout,
+        )
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location", "")
+            if not location:
+                return response
+            if not location.startswith(("http://", "https://")):
+                location = urljoin(current_url, location)
+            current_url = location
+        else:
+            return response
+    raise _requests.TooManyRedirects(f"Exceeded {max_redirects} redirects", response=response)
 
 
 def create_blueprint(deps):
@@ -71,12 +278,19 @@ def create_blueprint(deps):
         with entry.lock:
             conversation.add_job_description(job_text)
             conversation.state["position_name"] = _infer_position_name(job_text)
-            conversation.conversation_history.append({
-                "role": "user",
-                "content": job_text,
-            })
+            conversation.add_to_history("user", job_text)
         session_registry.touch(sid)
-        return jsonify({"ok": True, "message": "Job description added."})
+        safety_alert = scan_for_safety_alert(job_text)
+        if safety_alert:
+            logger.warning(
+                "Prompt-injection indicators in submitted job description (session %s): %s",
+                sid,
+                safety_alert,
+            )
+        response: dict = {"ok": True, "message": "Job description added."}
+        if safety_alert:
+            response["safety_alert"] = safety_alert
+        return jsonify(response)
 
     @bp.post("/api/fetch-job-url")
     def fetch_job_url():
@@ -92,24 +306,12 @@ def create_blueprint(deps):
             return jsonify({"error": "Missing URL"}), 400
 
         try:
+            _check_ssrf_url(url)
+        except ValueError:
+            return jsonify({"error": "Invalid or disallowed URL."}), 400
+
+        try:
             parsed = urlparse(url)
-            if not all([parsed.scheme, parsed.netloc]):
-                return jsonify({"error": "Invalid URL format"}), 400
-
-            if parsed.scheme not in ("http", "https"):
-                return jsonify({"error": "Only http and https URLs are supported"}), 400
-
-            # Block loopback and private-range addresses to prevent SSRF.
-            hostname = parsed.hostname or ""
-            if hostname.lower() in ("localhost", "ip6-localhost", "ip6-loopback"):
-                return jsonify({"error": "URL host not permitted"}), 400
-            try:
-                addr = ipaddress.ip_address(hostname)
-                if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
-                    return jsonify({"error": "URL host not permitted"}), 400
-            except ValueError:
-                pass  # hostname is a name, not a bare IP — allow normal DNS resolution
-
             domain = parsed.netloc.lower()
 
             protected_sites = {
@@ -168,7 +370,7 @@ def create_blueprint(deps):
             }
 
             logger.debug("Fetching URL: %s", url)
-            response = _requests.get(url, timeout=30, headers=headers, allow_redirects=True)
+            response = _safe_get(url, headers, timeout=30)
 
             if response.status_code != 200:
                 if response.status_code == 403:
@@ -202,7 +404,6 @@ def create_blueprint(deps):
 
                 # --- Structured metadata extraction (before any tag removal) ---
                 json_ld_blobs: list  = []
-                json_ld_text         = None
                 json_ld_title        = None
                 for script_tag in soup.find_all('script', type='application/ld+json'):
                     try:
@@ -217,11 +418,6 @@ def create_blueprint(deps):
                                     json_ld_title = v
                                     logger.debug("Found JSON-LD title: %s", json_ld_title)
                                     break
-                        if json_ld_text is None:
-                            desc = ld_data.get('description')
-                            if desc and len(desc) > 100:
-                                json_ld_text = desc
-                                logger.debug("Found JSON-LD job description (%d chars)", len(json_ld_text))
                     except Exception:
                         pass
 
@@ -266,12 +462,12 @@ def create_blueprint(deps):
                 # text is dominated by embedded JSON/CSS configs, not actual content.
                 _SPA_NOISE_THRESHOLD = 50_000
                 _body_is_thin   = len(html_text.strip()) < 200
-                _body_is_noisy  = json_ld_text and len(html_text) > _SPA_NOISE_THRESHOLD
+                _body_is_noisy  = bool(json_ld_blobs) and len(html_text) > _SPA_NOISE_THRESHOLD
 
                 if _body_is_thin or _body_is_noisy:
-                    # Page body too thin or full of SPA noise — prefer JSON-LD
-                    if json_ld_text:
-                        job_text = json_ld_text
+                    # Page body too thin or full of SPA noise — prefer structured JSON-LD
+                    if json_ld_blobs:
+                        job_text = _json_ld_blobs_to_markdown(json_ld_blobs)
                         if _body_is_noisy:
                             logger.info(
                                 "SPA noise detected (%d chars body) — using JSON-LD structured data",
@@ -285,16 +481,9 @@ def create_blueprint(deps):
                     else:
                         job_text = html_text
                 elif json_ld_blobs:
-                    # Both sources available — prepend structured data for the LLM
-                    blobs_md = "\n\n".join(
-                        _json.dumps(b, indent=2, ensure_ascii=False) for b in json_ld_blobs
-                    )
-                    job_text = (
-                        "## Structured Job Data (JSON-LD)\n\n"
-                        + blobs_md
-                        + "\n\n---\n\n## Page Content\n\n"
-                        + html_text
-                    )
+                    # Both sources available — combine rendered structured data with page text
+                    blobs_md = _json_ld_blobs_to_markdown(json_ld_blobs)
+                    job_text = blobs_md + "\n\n---\n\n## Page Content\n\n" + html_text
                     logger.debug("Prepended %d JSON-LD blob(s) to page content", len(json_ld_blobs))
                 else:
                     job_text = html_text
@@ -322,16 +511,31 @@ def create_blueprint(deps):
                     job_text, page_title=page_title
                 )
                 conversation.state["job_url"] = url
+                conversation.add_to_history(
+                    "user",
+                    f"[Job description fetched from {domain}]\n\n{job_text}",
+                )
             session_registry.touch(sid)
             logger.info("Fetched %d chars from %s", len(job_text), domain)
 
-            return jsonify({
+            safety_alert = scan_for_safety_alert(job_text)
+            if safety_alert:
+                logger.warning(
+                    "Prompt-injection indicators in fetched job description (session %s, url %s): %s",
+                    sid,
+                    url,
+                    safety_alert,
+                )
+            fetch_response: dict = {
                 "ok": True,
                 "job_text": job_text,
                 "message": f"Job description fetched from {domain}",
                 "source_url": url,
-                "content_length": len(job_text)
-            })
+                "content_length": len(job_text),
+            }
+            if safety_alert:
+                fetch_response["safety_alert"] = safety_alert
+            return jsonify(fetch_response)
 
         except _requests.Timeout:
             return jsonify({
@@ -485,13 +689,28 @@ def create_blueprint(deps):
             with entry.lock:
                 conversation.add_job_description(job_text)
                 conversation.state["position_name"] = _infer_position_name(job_text)
+                conversation.add_to_history(
+                    "user",
+                    f"[Job description loaded from {filename}]\n\n{job_text}",
+                )
             session_registry.touch(sid)
 
-            return jsonify({
+            safety_alert = scan_for_safety_alert(job_text)
+            if safety_alert:
+                logger.warning(
+                    "Prompt-injection indicators in loaded job file (session %s, file %s): %s",
+                    sid,
+                    filename,
+                    safety_alert,
+                )
+            file_response: dict = {
                 "ok": True,
                 "job_text": job_text,
-                "message": f"Loaded job description from {filename}"
-            })
+                "message": f"Loaded job description from {filename}",
+            }
+            if safety_alert:
+                file_response["safety_alert"] = safety_alert
+            return jsonify(file_response)
         except Exception:
             logger.exception("Failed to load job file: %s", filename)
             return jsonify({"error": "Failed to load file."}), 500
@@ -551,6 +770,13 @@ def create_blueprint(deps):
         try:
             with entry.lock:
                 result = conversation._execute_action(payload)
+                # Persist session (including conversation_history) immediately so
+                # history is on disk even if the client never calls
+                # /api/post-analysis-responses.
+                try:
+                    conversation._save_session()
+                except Exception:
+                    logger.warning("Non-fatal: failed to save session after action %s", action)
             if not result:
                 return jsonify({"error": "Invalid or unsupported action"}), 400
             session_registry.touch(sid)
@@ -591,10 +817,10 @@ def create_blueprint(deps):
                 result = conversation.back_to_phase(target)
                 feedback = (data.get("feedback") or "").strip()
                 if feedback:
-                    conversation.conversation_history.append({
-                        "role": "user",
-                        "content": f"[Refinement feedback for {target}]: {feedback}",
-                    })
+                    conversation.add_to_history(
+                        "user",
+                        f"[Refinement feedback for {target}]: {feedback}",
+                    )
             session_registry.touch(sid)
             return jsonify(result)
         except Exception:

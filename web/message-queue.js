@@ -61,6 +61,50 @@ function appendMessageHtml(type, html) {
   conversation.scrollTop = conversation.scrollHeight;
 }
 
+// ---------------------------------------------------------------------------
+// Collapsible long-content helper
+// ---------------------------------------------------------------------------
+
+const COLLAPSE_LINE_THRESHOLD = 8;  // lines before collapsing
+const COLLAPSE_CHAR_THRESHOLD = 480; // chars before collapsing
+
+/**
+ * Wrap rendered HTML in a collapsible container when the content exceeds the
+ * threshold, showing the first few lines with a toggle button.
+ */
+function _makeCollapsibleContent(html, textStr) {
+  const lines = textStr.split('\n');
+  if (lines.length <= COLLAPSE_LINE_THRESHOLD && textStr.length <= COLLAPSE_CHAR_THRESHOLD) {
+    return { html, collapsible: false };
+  }
+
+  // Build preview: first COLLAPSE_LINE_THRESHOLD lines worth of escaped text
+  const previewLines = lines.slice(0, COLLAPSE_LINE_THRESHOLD);
+  const previewHtml = escapeHtml(previewLines.join('\n'))
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+
+  const overflow = lines.length - COLLAPSE_LINE_THRESHOLD;
+  const id = `collapsible-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const wrapped = `
+    <div class="msg-preview" id="${id}-preview">${previewHtml}</div>
+    <div class="msg-full" id="${id}-full" style="display:none">${html}</div>
+    <button class="msg-toggle-btn" onclick="(function(btn){
+      var p=document.getElementById('${id}-preview'),
+          f=document.getElementById('${id}-full');
+      if(f.style.display==='none'){
+        p.style.display='none'; f.style.display='block'; btn.textContent='Show less';
+      } else {
+        p.style.display=''; f.style.display='none'; btn.textContent='Show ${overflow} more line${overflow === 1 ? '' : 's'}…';
+      }
+    })(this)" type="button">Show ${overflow} more line${overflow === 1 ? '' : 's'}…</button>`;
+
+  return { html: wrapped, collapsible: true };
+}
+
 function appendMessage(type, text) {
   const conversation = document.getElementById('conversation');
   if (!conversation) {
@@ -75,12 +119,20 @@ function appendMessage(type, text) {
 
   // Simple markdown rendering: convert **text** to <strong> and preserve newlines
   const textStr = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
-  const html = escapeHtml(textStr)
+  const renderedHtml = escapeHtml(textStr)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\n/g, '<br>');
 
-  content.innerHTML = html;
+  // Apply collapsible wrapper for long user/assistant messages
+  if (type === 'user' || type === 'assistant') {
+    const { html, collapsible } = _makeCollapsibleContent(renderedHtml, textStr);
+    content.innerHTML = html;
+    if (collapsible) content.classList.add('collapsible-msg');
+  } else {
+    content.innerHTML = renderedHtml;
+  }
   message.appendChild(content);
 
   // Check if message ends with response options like (yes/no/maybe)
@@ -157,28 +209,36 @@ function appendFormattedAnalysis(result) {
       content.className = 'content job-analysis';
 
       let html = '<h3>📋 Job Analysis Complete</h3>';
-      if (data.title)  html += `<p><strong>Position:</strong> ${data.title} at ${data.company || 'Company'}</p>`;
-      if (data.domain) html += `<p><strong>Domain:</strong> ${data.domain}</p>`;
+      if (data.title)      html += `<p><strong>Position:</strong> ${data.title} at ${data.company || 'Company'}</p>`;
+      if (data.domain)     html += `<p><strong>Domain:</strong> ${data.domain}</p>`;
+      if (data.role_level) html += `<p><strong>Role level:</strong> ${data.role_level}</p>`;
 
       if (data.required_skills?.length) {
         html += '<h4>🎯 Required Skills:</h4><ul>';
-        data.required_skills.forEach(s => { html += `<li>${s}</li>`; });
+        data.required_skills.forEach(s => { html += `<li>${escapeHtml(s)}</li>`; });
+        html += '</ul>';
+      }
+      if (data.skill_gaps?.length) {
+        html += '<h4 style="color:#b45309;">⚠️ Skill Gaps</h4>';
+        html += '<p style="font-size:0.85em;color:#92400e;margin:0 0 4px;">Required skills not found in your Master CV profile — consider adding them before generating:</p>';
+        html += '<ul style="margin:0 0 8px;color:#92400e;">';
+        data.skill_gaps.forEach(s => { html += `<li>${escapeHtml(s)}</li>`; });
         html += '</ul>';
       }
       if (data.preferred_skills?.length) {
         html += '<h4>⭐ Preferred Skills:</h4><ul>';
-        data.preferred_skills.forEach(s => { html += `<li>${s}</li>`; });
+        data.preferred_skills.forEach(s => { html += `<li>${escapeHtml(s)}</li>`; });
         html += '</ul>';
       }
       if (data.nice_to_have_requirements?.length) {
         html += '<h4>✨ Nice to Have:</h4><ul>';
-        data.nice_to_have_requirements.forEach(r => { html += `<li>${r}</li>`; });
+        data.nice_to_have_requirements.forEach(r => { html += `<li>${escapeHtml(r)}</li>`; });
         html += '</ul>';
       }
       if (data.ats_keywords?.length) {
         html += '<h4>🔑 ATS Keywords:</h4><p style="line-height: 2;">';
         data.ats_keywords.forEach(kw => {
-          html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;margin:2px;font-size:0.85em;">${kw}</span>`;
+          html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;margin:2px;font-size:0.85em;">${escapeHtml(kw)}</span>`;
         });
         html += '</p>';
       }

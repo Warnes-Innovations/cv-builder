@@ -65,6 +65,11 @@ def test_achievements_review_table_loads(seeded_page: Page):
             window.tabData.customizations = {};
             window._achievementsOrdered = achievements;
             window.achievementDecisions = {};
+            // Seed stateManager so populateReviewTab('achievements') passes its
+            // null-customizations guard and creates #achievements-table-container.
+            if (typeof stateManager !== 'undefined' && stateManager.setTabData) {
+                stateManager.setTabData('customizations', {});
+            }
         }
         """,
         master_fields["selected_achievements"],
@@ -152,7 +157,7 @@ def test_experience_bullets_editor_hide_show_and_delete_confirm(
 
     delete_button = seeded_page.locator("#ach-row-0-0 button").nth(4)
     delete_button.click()
-    seeded_page.get_by_role("button", name="Delete").click()
+    seeded_page.locator("#confirm-dialog-ok").click()
 
     expect(seeded_page.locator("[id^='ach-row-0-']")).to_have_count(1)
     expect(seeded_page.locator("#ach-text-0-0")).to_have_value(

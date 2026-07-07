@@ -109,9 +109,9 @@ def _make_app_and_client(tmp_dir: Path):
 
     stack = ExitStack()
     stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
-    stack.enter_context(patch('scripts.web_app.get_cached_pricing', return_value={}))
-    stack.enter_context(patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'))
-    stack.enter_context(patch('scripts.web_app.get_pricing_source', return_value='static'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_cached_pricing', return_value={}))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_source', return_value='static'))
 
     app = create_app(args)
     app.config['TESTING'] = True
@@ -1293,10 +1293,9 @@ class TestGenerateFinalEndpoint(unittest.TestCase):
         entry = self.app.session_registry.get(self.session_id)
         self.assertEqual(entry.manager.state['generated_files']['final_html'], final_paths['html'])
         self.assertEqual(entry.manager.state['generated_files']['final_pdf'], final_paths['pdf'])
-        self.assertEqual(
-            entry.manager.state['generated_files']['files'],
-            [final_paths['html'], final_paths['pdf']],
-        )
+        # files list starts with html + pdf; may also include ats_docx / human_docx
+        files = entry.manager.state['generated_files']['files']
+        self.assertEqual(files[:2], [final_paths['html'], final_paths['pdf']])
 
     def test_orchestrator_failure_returns_500(self):
         self._seed_confirmed_layout()

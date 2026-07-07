@@ -207,7 +207,7 @@ def test_publication_decisions_true_values_become_accepted_publications():
             captured['customizations'] = dict(customizations)
             return {'files': [], 'output_dir': str(tmp), 'generation_progress': []}
 
-        manager.orchestrator.generate_cv = fake_generate
+        manager.orchestrator.generate_preview_html_only = fake_generate
         manager._execute_action({'action': 'generate_cv'})
 
         assert set(captured['customizations']['accepted_publications']) == {'pub_a', 'pub_b'}
@@ -227,7 +227,7 @@ def test_publication_decisions_all_false_become_empty_accepted():
             captured['customizations'] = dict(customizations)
             return {'files': [], 'output_dir': str(tmp), 'generation_progress': []}
 
-        manager.orchestrator.generate_cv = fake_generate
+        manager.orchestrator.generate_preview_html_only = fake_generate
         manager._execute_action({'action': 'generate_cv'})
 
         assert captured['customizations']['accepted_publications'] == []
@@ -244,7 +244,7 @@ def test_publication_decisions_empty_dict_leaves_no_accepted_rejected():
             captured['customizations'] = dict(customizations)
             return {'files': [], 'output_dir': str(tmp), 'generation_progress': []}
 
-        manager.orchestrator.generate_cv = fake_generate
+        manager.orchestrator.generate_preview_html_only = fake_generate
         manager._execute_action({'action': 'generate_cv'})
 
         assert 'accepted_publications' not in captured['customizations']
@@ -266,7 +266,7 @@ def test_legacy_post_analysis_answers_overrides_publication_decisions():
             captured['customizations'] = dict(customizations)
             return {'files': [], 'output_dir': str(tmp), 'generation_progress': []}
 
-        manager.orchestrator.generate_cv = fake_generate
+        manager.orchestrator.generate_preview_html_only = fake_generate
         manager._execute_action({'action': 'generate_cv'})
 
         # Legacy path overwrites the dict-based path

@@ -2,7 +2,7 @@
 
 # 2026-03-20 12:42:20Z
 
-<!-- copilotide Session 6295aebc-694a-4f69-bcc7-a23f170ffbf3 (2026-03-20 12:42:20Z) -->
+<!-- VS Code Copilot IDE Session 6295aebc-694a-4f69-bcc7-a23f170ffbf3 (2026-03-20 12:42:20Z) -->
 
 _**User (2026-03-20 12:42:20Z)**_
 
@@ -86,4 +86,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to add `/tmp` and `/dev/null` to read/write permissions for copilot, claude, cod
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

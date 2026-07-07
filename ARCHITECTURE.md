@@ -96,6 +96,18 @@
 │  │  docx_generator.py                          [NEW]        │  │
 │  │    - generate_ats_docx() - python-docx generation        │  │
 │  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  interview_prep.py                          [PLANNED]    │  │
+│  │    - generate_questions() - LLM question generation      │  │
+│  │    - refine_response()    - LLM prose/bullet refinement  │  │
+│  │    - generate_files()     - Markdown/DOCX/PDF output     │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  thank_you.py                               [PLANNED]    │  │
+│  │    - generate_sections()  - LLM multi-choice options     │  │
+│  │    - refine_section()     - LLM section refinement       │  │
+│  │    - generate_files()     - Markdown/DOCX/PDF output     │  │
+│  └──────────────────────────────────────────────────────────┘  │
 └────────────────┬───────────────────────────────────────────────┘
                  │
                  ▼
@@ -142,15 +154,29 @@
 
 ### 2.1 Frontend Components (web/index.html)
 
+#### Navigation Steps (12-step workflow)
+
+The top nav bar has 12 sequential steps. The first 6 (`job` → `layout`) are unlocked one at a time as the backend phase advances. The last 6 (`download` → `harvest`) are all unlocked simultaneously once `layout_review` completes.
+
+| Step key | Display label | Backend phase trigger | Tab(s) shown |
+|----------|--------------|----------------------|--------------|
+| `job` | Job | `init` | `job`, `goals`, `master` |
+| `analysis` | Analysis | `job_analysis` | `analysis`, `questions` |
+| `customizations` | Customizations | `customization` | `exp-review`, `ach-editor`, `skills-review`, `achievements-review`, `tagline-review`, `summary-review`, `publications-review`, `ats-score` |
+| `rewrite` | Rewrite | `rewrite_review` | `rewrite` |
+| `spell` | Spell Check | `spell_check` | `spell` |
+| `layout` | Layout Review | `generation` | `layout` |
+| `download` | Download Files | `final_generation` / `refinement` | `final_generate`, `download` |
+| `cover_letter` | Cover Letter | *(post-layout)* | `cover-letter` |
+| `screening` | Screening | *(post-layout)* | `screening` |
+| `interview_prep` | Interview Prep | *(post-layout)* | `interview-prep` |
+| `thank_you` | Thank You | *(post-layout)* | `thank-you` |
+| `harvest` | Harvest | *(post-layout)* | `harvest` |
+
 #### Component Hierarchy
 ```
 App Shell
-├── Navigation Tabs
-│   ├── Job Description Tab
-│   ├── Job Analysis Tab
-│   ├── Customization Review Tab
-│   ├── CV Editor Tab           [NEW]
-│   └── Generated CVs Tab       [NEW]
+├── Navigation Steps (12 steps — see table above)
 ├── Job Description Form
 │   ├── Text Area (paste job)
 │   └── File Upload (future)
@@ -182,11 +208,47 @@ App Shell
 │   ├── Live Preview Pane
 │   ├── Save Draft Button
 │   └── Reset Button
-└── Generated CVs Display       [ENHANCED]
-    ├── Download PDF Link
-    ├── Download DOCX Link
-    ├── Preview iframe
-    └── Edit & Regenerate Button
+├── Generated CVs Display
+│   ├── Download PDF Link
+│   ├── Download DOCX Link
+│   ├── Preview iframe
+│   └── Edit & Regenerate Button
+├── Download Files Tab          (web/download-tab.js)
+│   ├── CV file download links
+│   ├── Cover letter download links
+│   ├── Interview prep file links
+│   ├── Thank you letter file links
+│   └── Proceed to Cover Letter button
+├── Cover Letter Tab            (web/cover-letter.js)
+│   └── Proceed to Screening button
+├── Screening Tab               (web/screening-questions.js)
+│   └── Proceed to Interview Prep button
+├── Interview Prep Tab          (web/interview-prep.js)
+│   ├── Question list (selectable, add custom)
+│   ├── Per-question accordion
+│   │   ├── Prose response editor + LLM refinement
+│   │   └── Bullet talking points editor + LLM refinement
+│   ├── Format checkboxes (Markdown / DOCX / PDF)
+│   ├── Form radio buttons (prose / bullets / combined)
+│   ├── Generate Documents button
+│   ├── Download links
+│   └── Proceed to Thank You Letter button
+├── Thank You Tab               (web/thank-you.js)
+│   ├── Hiring manager name input
+│   ├── Per-section multiple-choice panels
+│   │   ├── Opening
+│   │   ├── Key strength highlight
+│   │   ├── Role enthusiasm
+│   │   ├── Next-steps reference
+│   │   └── Closing
+│   ├── Format choice (Email / Formal letter)
+│   ├── Format checkboxes (Markdown / DOCX / PDF)
+│   ├── Generate Documents button
+│   ├── mailto: link
+│   ├── Download links
+│   └── Proceed to Harvest button
+└── Harvest Tab                 (web/finalise.js)
+    └── Harvest improvements back to master CV
 ```
 
 #### State Management

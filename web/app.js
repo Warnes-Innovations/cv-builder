@@ -53,6 +53,9 @@ async function init() {
     return;
   }
 
+  // Show welcome/onboarding modal on every startup until user dismisses it.
+  await maybeShowWelcomeModal();
+
   // Restore session state first
   await restoreSession();
 
@@ -82,15 +85,18 @@ async function init() {
     }
   });
 
-  // Auto-analyze job if loaded but not analyzed (only if not reconnecting)
+  // Prompt user to analyze if a job description is loaded but not yet analyzed.
+  // Do NOT auto-fire — a returning user may have intentionally left it unanalyzed
+  // (e.g. mid-edit). Let them click Analyse Job explicitly (GAP-248).
   if (!stateManager.isReconnecting()) {
     const status = await fetchStatus();
     if (!status._error && status.job_description && !status.job_analysis) {
-      appendMessage('system', 'Auto-analyzing loaded job description...');
-      await analyzeJob();
-
-      // Don't auto-recommend - let user answer questions first
-      // User will type "proceed" when ready for recommendations
+      appendMessage('system', '📋 Job description detected — click <strong>Analyse Job</strong> when ready to begin.');
+      const analyzeBtn = document.getElementById('analyze-btn');
+      if (analyzeBtn) {
+        analyzeBtn.style.outline = '2px solid #3b82f6';
+        analyzeBtn.style.outlineOffset = '2px';
+      }
     } else if (status.job_analysis) {
       _appLog.info('Job analysis already complete, skipping auto-analysis');
     }
@@ -118,7 +124,23 @@ function setupEventListeners() {
   document.getElementById('analyze-btn').addEventListener('click', analyzeJob);
   document.getElementById('recommend-btn').addEventListener('click', () => sendAction('recommend_customizations'));
   document.getElementById('generate-btn').addEventListener('click', async () => {
-    // Check if we need to sync review decisions to backend before generating CV
+    // Soft gate: warn if customisation items have never been individually reviewed (GAP-116)
+    const reviewed = window._explicitlyReviewed || { experiences: new Set(), skills: new Set() };
+    const totalExp = (window._experiencesOrdered || []).length;
+    const totalSkill = Object.keys(userSelections?.skills || {}).length;
+    const unreviewedExp = totalExp - reviewed.experiences.size;
+    const unreviewedSkill = totalSkill - reviewed.skills.size;
+    const unreviewedTotal = Math.max(0, unreviewedExp) + Math.max(0, unreviewedSkill);
+    if (unreviewedTotal > 0) {
+      const parts = [];
+      if (unreviewedExp > 0) parts.push(`${unreviewedExp} experience entr${unreviewedExp === 1 ? 'y' : 'ies'}`);
+      if (unreviewedSkill > 0) parts.push(`${unreviewedSkill} skill${unreviewedSkill === 1 ? '' : 's'}`);
+      const ok = await confirmDialog(
+        `${parts.join(' and ')} not individually reviewed — the AI's recommendation will be used for these. Proceed anyway?`,
+        { confirmLabel: 'Proceed', cancelLabel: 'Go back and review' }
+      );
+      if (!ok) return;
+    }
     if (userSelections && (Object.keys(userSelections.experiences).length > 0 || Object.keys(userSelections.skills).length > 0)) {
       appendMessage('system', 'Applying your review decisions...');
       // Decisions were already submitted via submitExperienceDecisions/submitSkillDecisions
@@ -130,7 +152,32 @@ function setupEventListeners() {
   document.getElementById('spell-btn').addEventListener('click', submitSpellCheckDecisions);
   document.getElementById('generate-proceed-btn').addEventListener('click', () => switchTab('layout'));
   document.getElementById('layout-btn').addEventListener('click', handleLayoutPrimaryAction);
-  document.getElementById('finalise-action-btn').addEventListener('click', () => switchTab('finalise'));
+  document.getElementById('final-generate-proceed-btn').addEventListener('click', finalGenerationComplete);
+  const finaliseBtn = document.getElementById('finalise-action-btn');
+  if (finaliseBtn) {
+    // Rename from "📦 Package Application Files" → clearer label (GAP-325).
+    finaliseBtn.innerHTML = '<span aria-hidden="true">📦</span> Archive Application';
+    finaliseBtn.title = 'Run the completeness checklist and archive this application package';
+    finaliseBtn.addEventListener('click', () => switchTab('finalise'));
+  }
+
+  if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
+  if (typeof initEarlyPreviewPanel === 'function') initEarlyPreviewPanel();
+
+  // Redirect the "? Help" header button from the welcome wizard to the keyboard
+  // shortcuts panel — the `?` key opens shortcuts, so the button should match
+  // (GAP-349). index.html is off-limits, so the onclick is overridden here.
+  const helpBtn = document.getElementById('help-btn');
+  if (helpBtn) {
+    helpBtn.removeAttribute('onclick');
+    helpBtn.title = 'Keyboard shortcuts reference';
+    helpBtn.setAttribute('aria-label', 'Open keyboard shortcuts reference');
+    helpBtn.addEventListener('click', () => {
+      if (typeof showKeyboardShortcutsPanel === 'function') showKeyboardShortcutsPanel();
+    });
+  }
 }
 
 // Tests now import helper functions from their canonical ES modules directly.
+
+export { init, setupEventListeners };

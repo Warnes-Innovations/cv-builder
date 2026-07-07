@@ -35,7 +35,7 @@ _PASTE_JOB = (
 class TestPageLoad:
     def test_title(self, job_stage_page: Page):
         """Default title is shown when no job has been loaded."""
-        expect(job_stage_page).to_have_title("CV Generator — Professional Web UI")
+        expect(job_stage_page).to_have_title("CV Builder — Professional Web UI")
 
     def test_job_input_step_exists(self, page: Page):
         expect(page.locator("#step-job")).to_be_visible()
@@ -62,8 +62,8 @@ class TestPageLoad:
     def test_workflow_steps_all_visible(self, page: Page):
         for step_id in [
             "step-job", "step-analysis", "step-customizations",
-            "step-rewrite", "step-spell", "step-generate",
-            "step-finalise",
+            "step-rewrite", "step-spell",
+            "step-layout", "step-download",
         ]:
             expect(page.locator(f"#{step_id}")).to_be_visible()
 

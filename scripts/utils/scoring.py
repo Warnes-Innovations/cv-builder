@@ -10,7 +10,7 @@ Relevance scoring utilities for content selection.
 
 import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Any
 from collections import Counter
 
 
@@ -22,37 +22,37 @@ def calculate_relevance_score(
 ) -> float:
     """
     Calculate relevance score for a CV item (experience, skill, achievement).
-    
+
     Scoring factors:
     - Keyword matches in description/text
     - Importance rating (1-10 from master data)
     - Domain relevance matches
     - Audience tags matching job context
-    
+
     Args:
         item: CV data item (experience, skill, achievement)
         job_keywords: Set of keywords from job description
         job_requirements: List of requirement phrases
         domain_context: Domain/industry context from job
-        
+
     Returns:
         Relevance score (0.0 to 100.0)
     """
     score = 0.0
-    
+
     # Base importance from master data (0-40 points)
     importance = item.get('importance', 5)
     score += importance * 4.0
-    
+
     # Keyword matching (0-30 points)
     item_text = _extract_text(item).lower()
     item_keywords = set(_extract_keywords(item_text))
-    
+
     keyword_matches = len(job_keywords.intersection(item_keywords))
     max_keywords = max(len(job_keywords), 1)
     keyword_score = (keyword_matches / max_keywords) * 30.0
     score += keyword_score
-    
+
     # Domain relevance (0-15 points)
     domain_relevance = item.get('domain_relevance', [])
     if isinstance(domain_relevance, list):
@@ -60,13 +60,13 @@ def calculate_relevance_score(
             score += 15.0
         elif domain_relevance:  # Has some domain tags
             score += 7.5
-    
+
     # Audience tag match (0-10 points)
     audience = item.get('audience', [])
     if isinstance(audience, list) and audience:
         # Boost if it has audience tags (indicates targeted content)
         score += 10.0
-    
+
     # Requirement phrase matching (0-5 points)
     requirement_matches = sum(
         1 for req in job_requirements
@@ -74,21 +74,21 @@ def calculate_relevance_score(
     )
     if requirement_matches > 0:
         score += min(requirement_matches * 2.5, 5.0)
-    
+
     return min(score, 100.0)
 
 
 def _extract_text(item: Dict) -> str:
     """Extract searchable text from an item."""
     text_parts = []
-    
+
     # Common fields
     for field in ['title', 'company', 'description', 'name', 'text', 'summary']:
         if field in item:
             value = item[field]
             if isinstance(value, str):
                 text_parts.append(value)
-    
+
     # Achievements/projects
     if 'achievements' in item:
         for ach in item['achievements']:
@@ -96,12 +96,12 @@ def _extract_text(item: Dict) -> str:
                 text_parts.append(ach.get('description', ''))
             elif isinstance(ach, str):
                 text_parts.append(ach)
-    
+
     if 'projects' in item:
         for proj in item['projects']:
             if isinstance(proj, dict):
                 text_parts.append(proj.get('description', ''))
-    
+
     # Keywords
     if 'keywords' in item:
         keywords = item['keywords']
@@ -109,7 +109,7 @@ def _extract_text(item: Dict) -> str:
             text_parts.extend(keywords)
         elif isinstance(keywords, str):
             text_parts.append(keywords)
-    
+
     return ' '.join(text_parts)
 
 
@@ -117,7 +117,7 @@ def _extract_keywords(text: str) -> List[str]:
     """Extract meaningful keywords from text."""
     # Remove punctuation and split
     words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9+#\-]*\b', text)
-    
+
     # Filter stopwords
     stopwords = {
         'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
@@ -126,7 +126,7 @@ def _extract_keywords(text: str) -> List[str]:
         'should', 'could', 'may', 'might', 'must', 'can', 'this', 'that',
         'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they'
     }
-    
+
     keywords = [w.lower() for w in words if len(w) > 2 and w.lower() not in stopwords]
     return keywords
 
@@ -140,54 +140,54 @@ def rank_content(
 ) -> List[Tuple[Dict, float]]:
     """
     Rank CV items by relevance score.
-    
+
     Args:
         items: List of CV items to rank
         job_keywords: Keywords from job description
         job_requirements: Requirement phrases from job
         domain_context: Domain/industry context
         top_n: Return only top N items (None for all)
-        
+
     Returns:
         List of (item, score) tuples, sorted by score descending
     """
     scored_items = []
-    
+
     for item in items:
         score = calculate_relevance_score(
             item, job_keywords, job_requirements, domain_context
         )
         scored_items.append((item, score))
-    
+
     # Sort by score descending
     scored_items.sort(key=lambda x: x[1], reverse=True)
-    
+
     if top_n:
         return scored_items[:top_n]
-    
+
     return scored_items
 
 
 def extract_job_keywords(job_text: str) -> Set[str]:
     """
     Extract important keywords from job description.
-    
+
     Focus on:
     - Technical skills (Python, AWS, Docker, etc.)
     - Domain terms (genomics, machine learning, etc.)
     - Key phrases (data analysis, team leadership, etc.)
-    
+
     Args:
         job_text: Full job description text
-        
+
     Returns:
         Set of extracted keywords
     """
     keywords = set()
-    
+
     # Extract n-grams for technical terms
     text_lower = job_text.lower()
-    
+
     # Technical skills patterns
     tech_patterns = [
         r'\b(?:python|r|java|javascript|c\+\+|sql|nosql)\b',
@@ -197,15 +197,15 @@ def extract_job_keywords(job_text: str) -> Set[str]:
         r'\b(?:rest|api|microservices|backend|frontend)\b',
         r'\b(?:linux|unix|windows|macos)\b',
     ]
-    
+
     for pattern in tech_patterns:
         matches = re.findall(pattern, text_lower)
         keywords.update(matches)
-    
+
     # Extract capitalized terms (often tools/frameworks)
     cap_terms = re.findall(r'\b[A-Z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*\b', job_text)
     keywords.update(term.lower() for term in cap_terms if len(term) > 2)
-    
+
     # Extract multi-word phrases (e.g., "machine learning", "data science")
     phrases = re.findall(
         r'\b(?:machine learning|data science|deep learning|natural language processing|'
@@ -214,20 +214,20 @@ def extract_job_keywords(job_text: str) -> Set[str]:
         text_lower
     )
     keywords.update(phrases)
-    
+
     # Add individual words from phrases
     for phrase in phrases:
         keywords.update(phrase.split())
-    
+
     # Extract all significant words (fallback)
     all_words = _extract_keywords(job_text)
     word_freq = Counter(all_words)
-    
+
     # Add frequently mentioned words
     for word, count in word_freq.most_common(50):
         if count >= 2 and len(word) > 3:
             keywords.add(word)
-    
+
     return keywords
 
 
@@ -238,24 +238,24 @@ def select_best_summary(
 ) -> Dict:
     """
     Select the most appropriate professional summary for a job.
-    
+
     Args:
         summaries: List of professional summary variants
         job_keywords: Keywords from job description
         job_title: Job title for context
-        
+
     Returns:
         Best matching summary
     """
     if not summaries:
         return {}
-    
+
     scored = []
     job_title_lower = job_title.lower()
-    
+
     for summary in summaries:
         score = 0
-        
+
         # Match by audience tag
         audience = summary.get('audience', [])
         if isinstance(audience, list):
@@ -273,15 +273,15 @@ def select_best_summary(
                 elif 'software' in aud_lower or 'engineer' in aud_lower:
                     if any(term in job_title_lower for term in ['software', 'engineer', 'developer']):
                         score += 25
-        
+
         # Keyword overlap
         summary_text = summary.get('summary', '').lower()
         summary_keywords = set(_extract_keywords(summary_text))
         keyword_overlap = len(job_keywords.intersection(summary_keywords))
         score += keyword_overlap * 2
-        
+
         scored.append((summary, score))
-    
+
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored[0][0]
 
@@ -293,41 +293,41 @@ def calculate_skill_score(
 ) -> float:
     """
     Calculate relevance score for a skill.
-    
+
     Args:
         skill: Skill dictionary
         job_keywords: Keywords from job
         required_skills: List of explicitly required skills
-        
+
     Returns:
         Score 0-100
     """
     score = 0.0
-    
+
     skill_name = skill.get('name', '').lower()
     skill_keywords = skill.get('keywords', [])
     if isinstance(skill_keywords, str):
         skill_keywords = [skill_keywords]
-    
+
     # Direct match with required skills (40 points)
     for req_skill in required_skills:
         if req_skill.lower() in skill_name or any(req_skill.lower() in kw.lower() for kw in skill_keywords):
             score += 40
             break
-    
+
     # Keyword matching (30 points)
     all_skill_terms = [skill_name] + [kw.lower() for kw in skill_keywords]
     matches = sum(1 for term in all_skill_terms if any(jk in term for jk in job_keywords))
     if matches > 0:
         score += min(matches * 10, 30)
-    
+
     # Proficiency level (20 points)
     proficiency = skill.get('proficiency', 'intermediate')
     if proficiency in ['expert', 'advanced']:
         score += 20
     elif proficiency == 'intermediate':
         score += 10
-    
+
     # Years of experience (10 points)
     years = skill.get('years', 0)
     if years >= 5:
@@ -346,6 +346,7 @@ def compute_ats_score(
     job_analysis: Dict,
     customizations: Optional[Dict],
     basis: str = "review_checkpoint",
+    synonym_map: Optional[Dict[str, str]] = None,
 ) -> Dict:
     """Compute an ATS match score for the current session state.
 
@@ -366,6 +367,8 @@ def compute_ats_score(
         customizations: The customizations dict (approved skills, rewrites, etc.)
                         May be None if not yet available.
         basis: One of "analysis", "review_checkpoint", "post_generation".
+        synonym_map: Optional expansion_index (alias → canonical) from CVOrchestrator.
+                     When supplied, synonymous forms are matched and labelled match_type='synonym'.
     """
     required_skills: List[str] = job_analysis.get("required_skills", [])
     nice_to_have: List[str] = job_analysis.get("nice_to_have_skills", [])
@@ -440,15 +443,42 @@ def compute_ats_score(
                 candidate_terms.add(kw)
                 section_matches["education"].add(kw)
 
-    def _match_status(keyword: str) -> Tuple[str, List[str]]:
-        """Return (status, sections_list) where status is 'matched', 'partial', or 'missing'.
+    # Pre-compute synonym sets: form → frozenset of all synonymous forms
+    # synonym_map is expansion_index: {any_form: canonical}. Two forms are synonymous when
+    # they share the same canonical.
+    _synonym_forms: Dict[str, FrozenSet[str]] = {}
+    if synonym_map:
+        _canonical_to_forms: Dict[str, Set[str]] = {}
+        for form, canonical in synonym_map.items():
+            _canonical_to_forms.setdefault(canonical, set()).add(form)
+        for form, canonical in synonym_map.items():
+            _synonym_forms[form] = frozenset(_canonical_to_forms[canonical])
 
-        - 'matched'  — whole keyword string is present as a term or substring
+    def _match_status(keyword: str) -> Tuple[str, List[str], bool]:
+        """Return (status, sections_list, via_synonym).
+
+        status values:
+        - 'matched'  — whole keyword string (or a synonym) is present as a term or substring
         - 'partial'  — at least one token of a multi-word keyword is present
         - 'missing'  — no match at all
+
+        via_synonym is True only when the match was found through a synonym, not the keyword itself.
         """
         kw_lower = keyword.lower().strip()
         kw_words = [w for w in kw_lower.split() if len(w) > 2]
+        # Pre-compute hyphen/slash variant forms for this keyword
+        _kw_variants = {kw_lower}
+        for _part in kw_lower.split('/'):
+            _part = _part.strip()
+            if _part and len(_part) > 1:
+                _kw_variants.add(_part)
+        _hyph_space = kw_lower.replace('-', ' ')
+        _hyph_none  = kw_lower.replace('-', '')
+        if _hyph_space != kw_lower:
+            _kw_variants.add(_hyph_space)
+        if _hyph_none != kw_lower and len(_hyph_none) > 2:
+            _kw_variants.add(_hyph_none)
+
         matched_in: List[str] = []
         partial_in: List[str] = []
 
@@ -457,7 +487,11 @@ def compute_ats_score(
                 matched_in.append(sec)
                 continue
             # Substring containment (handles compound terms like "machine learning")
-            whole_match = any(kw_lower in term or term in kw_lower for term in terms)
+            # Also checks hyphen/slash-normalised variants
+            whole_match = any(
+                any(v in term or term in v for term in terms)
+                for v in _kw_variants
+            )
             if whole_match:
                 matched_in.append(sec)
                 continue
@@ -469,69 +503,76 @@ def compute_ats_score(
                 partial_in.append(sec)
 
         if matched_in:
-            return "matched", list(dict.fromkeys(matched_in))
+            return "matched", list(dict.fromkeys(matched_in)), False
         if partial_in:
-            return "partial", list(dict.fromkeys(partial_in))
-        return "missing", []
+            return "partial", list(dict.fromkeys(partial_in)), False
+
+        # No direct match — try synonyms
+        synonyms = _synonym_forms.get(kw_lower, frozenset())
+        syn_matched_in: List[str] = []
+        for syn in synonyms:
+            if syn == kw_lower:
+                continue
+            for sec, terms in section_matches.items():
+                if syn in terms or any(syn in term or term in syn for term in terms):
+                    syn_matched_in.append(sec)
+        if syn_matched_in:
+            return "matched", list(dict.fromkeys(syn_matched_in)), True
+
+        return "missing", [], False
 
     # ── Build keyword_status list ──────────────────────────────────────────
     keyword_status: List[Dict] = []
     hard_matched = hard_total = 0
     soft_matched = soft_total = 0
 
-    # Hard requirements
-    for kw in required_skills:
-        status, sections = _match_status(kw)
+    def _make_entry(kw: str, kw_type: str) -> Dict[str, Any]:
+        status, sections, via_synonym = _match_status(kw)
         entry: Dict[str, Any] = {
             "keyword": kw,
-            "type": "hard",
+            "type": kw_type,
             "status": status,
             "matched_in_sections": sections,
         }
-        if status != "missing":
-            entry["match_type"] = "exact" if status == "matched" else "partial"
+        if status == "missing":
+            return entry
+        if via_synonym:
+            entry["match_type"] = "synonym"
+        elif status == "matched":
+            entry["match_type"] = "exact"
+        else:
+            entry["match_type"] = "partial"
+        return entry
+
+    # Hard requirements
+    for kw in required_skills:
+        entry = _make_entry(kw, "hard")
         keyword_status.append(entry)
         hard_total += 1
-        if status in ("matched", "partial"):
+        if entry["status"] in ("matched", "partial"):
             hard_matched += 1
 
     # Soft / nice-to-have
     for kw in nice_to_have:
-        status, sections = _match_status(kw)
-        entry = {
-            "keyword": kw,
-            "type": "soft",
-            "status": status,
-            "matched_in_sections": sections,
-        }
-        if status != "missing":
-            entry["match_type"] = "exact" if status == "matched" else "partial"
+        entry = _make_entry(kw, "soft")
         keyword_status.append(entry)
         soft_total += 1
-        if status in ("matched", "partial"):
+        if entry["status"] in ("matched", "partial"):
             soft_matched += 1
 
     # Bonus ATS keywords (not already listed)
     listed_kws = {k.lower() for k in required_skills + nice_to_have}
     for kw in ats_keywords:
         if kw.lower() not in listed_kws:
-            status, sections = _match_status(kw)
-            entry = {
-                "keyword": kw,
-                "type": "bonus",
-                "status": status,
-                "matched_in_sections": sections,
-            }
-            if status != "missing":
-                entry["match_type"] = "exact" if status == "matched" else "partial"
+            entry = _make_entry(kw, "bonus")
             keyword_status.append(entry)
 
     # ── Compute sub-scores ────────────────────────────────────────────────
     hard_score = (hard_matched / hard_total * 100.0) if hard_total else 100.0
     soft_score = (soft_matched / soft_total * 100.0) if soft_total else 100.0
 
-    # Overall: 70% hard, 30% soft
-    overall = round(0.7 * hard_score + 0.3 * soft_score, 1)
+    # Overall: hard skills count twice as much as soft skills (2:1 ratio).
+    overall = round((2 * hard_score + soft_score) / 3, 1)
 
     # ── Section scores ────────────────────────────────────────────────────
     all_keywords = {k.lower() for k in required_skills + nice_to_have + ats_keywords}

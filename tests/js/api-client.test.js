@@ -8,6 +8,18 @@
  * tests/js/api-client.test.js
  * Unit tests for web/api-client.js — StorageKeys constants and apiCall().
  */
+
+// sessionAwareFetch() calls the real handle409Conflict() on any 409 response,
+// which shows the session-conflict banner and returns a Promise that only
+// resolves via conflictRetryNow()/conflictDismiss() (web/fetch-utils.js) —
+// neither of which this file's 409 tests trigger, so without this mock a
+// mocked 409 response hangs until the test times out. These tests are about
+// apiCall()'s own 409 handling, not the conflict-banner UI, so short-circuit
+// to "don't retry".
+vi.mock('../../web/fetch-utils.js', () => ({
+  handle409Conflict: vi.fn().mockResolvedValue(false),
+}))
+
 let apiClient
 let fetchMock
 
@@ -39,8 +51,14 @@ describe('StorageKeys', () => {
   it('defines CHAT_COLLAPSED', () => {
     expect(apiClient.StorageKeys.CHAT_COLLAPSED).toBe('cv-builder-chat-collapsed')
   })
-  it('has exactly 5 keys', () => {
-    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(5)
+  it('defines LLM_DISCLOSURE_SHOWN', () => {
+    expect(apiClient.StorageKeys.LLM_DISCLOSURE_SHOWN).toBe('cv-builder-llm-disclosure-shown')
+  })
+  it('defines EARLY_PREVIEW_COLLAPSED', () => {
+    expect(apiClient.StorageKeys.EARLY_PREVIEW_COLLAPSED).toBe('cv-builder-early-preview-collapsed')
+  })
+  it('has exactly 7 keys', () => {
+    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(7)
   })
   it('all values are strings', () => {
     Object.values(apiClient.StorageKeys).forEach(v => expect(typeof v).toBe('string'))
@@ -128,7 +146,14 @@ describe('apiCall', () => {
   })
 
   it('throws "Session already active" on 409 Conflict', async () => {
-    fetchMock.mockResolvedValue({ status: 409, ok: false })
+    // Use phase_enforcement type so handle409Conflict returns false immediately
+    // (session_ownership type would open a banner and await user interaction).
+    const body = { conflict_type: 'phase_enforcement' }
+    fetchMock.mockResolvedValue({
+      status: 409, ok: false,
+      json: async () => body,
+      clone: () => ({ json: async () => body }),
+    })
     await expect(apiClient.apiCall('POST', '/api/action', {}))
       .rejects.toThrow('Session already active in another tab')
   })

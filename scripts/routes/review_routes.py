@@ -42,6 +42,25 @@ def create_blueprint(deps):
         current_app.logger.exception(message)
         return jsonify({'error': message}), 500
 
+    def _try_patch_metadata(conv, updates: Dict) -> None:
+        """Write *updates* into the session's metadata.json without raising."""
+        try:
+            import json as _json
+            generated = conv.state.get('generated_files') or {}
+            output_dir = generated.get('output_dir')
+            if not output_dir:
+                return
+            metadata_path = Path(output_dir) / 'metadata.json'
+            if not metadata_path.exists():
+                return
+            with open(metadata_path, encoding='utf-8') as f:
+                metadata = _json.load(f)
+            metadata.update(updates)
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                _json.dump(metadata, f, indent=2)
+        except Exception:
+            current_app.logger.warning('_try_patch_metadata failed silently', exc_info=True)
+
     def _trigger_render_snapshot_refresh(conversation, reason: str) -> None:
         """Best-effort async render snapshot refresh after submitted changes."""
         try:
@@ -208,7 +227,7 @@ def create_blueprint(deps):
         # duckflow:
         #   id: review_api_decisions_live
         #   kind: api
-        #   timestamp: "2026-03-27T02:07:47Z"
+        #   timestamp: "2026-05-19T00:00:00Z"
         #   status: live
         #   handles:
         #     - "POST /api/review-decisions"
@@ -229,12 +248,15 @@ def create_blueprint(deps):
         #     - "state:accepted_suggested_achievements"
         #     - "state:publication_decisions"
         #     - "state:summary_focus_override"
+        #     - "state:tagline_override"
+        #     - "state:decisions_confirmed"
         #   returns:
         #     - "response:POST /api/review-decisions.success"
         #   notes:
         #     "Persists per-surface review decisions in session state;
         #     skill decisions also update session customizations so
-        #     downstream generation can materialize the same choices."
+        #     downstream generation can materialize the same choices.
+        #     All types also set decisions_confirmed[type]=True."
         entry = _get_session()
         _validate_owner(entry)
         conversation = entry.manager
@@ -247,7 +269,9 @@ def create_blueprint(deps):
         decision_type = data.get('type')
         decisions = data.get('decisions', {})
 
-        if not decision_type or not decisions:
+        if not decision_type or (not decisions and decision_type != 'tagline'):
+            return jsonify({"error": "Missing type or decisions"}), 400
+        if decision_type == 'tagline' and decisions is None:
             return jsonify({"error": "Missing type or decisions"}), 400
 
         try:
@@ -338,23 +362,53 @@ def create_blueprint(deps):
                 # duckflow:
                 #   id: summary_api_review_decision_live
                 #   kind: api
-                #   timestamp: "2026-03-27T01:23:28Z"
+                #   timestamp: "2026-04-20T17:00:00Z"
                 #   status: live
                 #   handles:
                 #     - "POST /api/review-decisions"
                 #   reads:
                 #     - "request:POST /api/review-decisions.summary_focus"
+                #     - "request:POST /api/review-decisions.summary_text"
                 #   writes:
                 #     - "state:summary_focus_override"
+                #     - "state:session_summaries.<key>"
                 #   notes:
-                #     "Live review-decisions route persists the selected
-                #     summary key in session state."
+                #     "Persists the selected summary key; if summary_text is
+                #     provided, also updates the stored text for that key so
+                #     user edits survive navigation."
                 conversation.state['summary_focus_override'] = decisions
+                summary_text = (data.get('summary_text') or '').strip()
+                if summary_text:
+                    session_summaries = conversation.state.get('session_summaries') or {}
+                    session_summaries[decisions] = summary_text
+                    conversation.state['session_summaries'] = session_summaries
                 message = "Saved summary focus preference"
+            elif decision_type == 'tagline':
+                # duckflow:
+                #   id: tagline_api_review_decision_live
+                #   kind: api
+                #   timestamp: "2026-05-19T00:00:00Z"
+                #   status: live
+                #   handles:
+                #     - "POST /api/review-decisions"
+                #   reads:
+                #     - "request:POST /api/review-decisions.decisions"
+                #   writes:
+                #     - "state:tagline_override"
+                #   notes:
+                #     "Persists the user-confirmed applicant tagline in session state;
+                #     overrides the LLM-proposed applicant_tagline during CV generation."
+                conversation.state['tagline_override'] = decisions
+                message = "Saved tagline"
             else:
                 return jsonify(
                     {"error": f"Invalid type: {decision_type}"},
                 ), 400
+
+            # Track which decision types have been explicitly confirmed by the user.
+            confirmed = conversation.state.get('decisions_confirmed') or {}
+            confirmed[decision_type] = True
+            conversation.state['decisions_confirmed'] = confirmed
 
             conversation._save_session()
             current_app.logger.debug("Saved %s decisions", decision_type)
@@ -790,6 +844,9 @@ def create_blueprint(deps):
 
         proficiency = str(data.get('proficiency') or '').strip() or None
         parenthetical = str(data.get('parenthetical') or '').strip() or None
+        raw_skill_type = str(data.get('skill_type') or '').strip().lower() or None
+        skill_type = raw_skill_type if raw_skill_type in ('hard', 'soft') else None
+        skill_type_clear = 'skill_type' in data and data['skill_type'] in (None, '')
         raw_subskills = data.get('subskills')
         if isinstance(raw_subskills, str):
             raw_subskills = [item.strip() for item in raw_subskills.split(',')]
@@ -825,6 +882,11 @@ def create_blueprint(deps):
                 current['parenthetical'] = parenthetical
             else:
                 current.pop('parenthetical', None)
+
+            if skill_type:
+                current['skill_type'] = skill_type
+            elif skill_type_clear:
+                current.pop('skill_type', None)
 
             if current:
                 overrides[skill_name] = current
@@ -1129,6 +1191,7 @@ def create_blueprint(deps):
                         [],
                     ),
                     phase=Phase.REWRITE_REVIEW,
+                    rewrite_audit=conversation.state.get('rewrite_audit') or [],
                 )))
 
             job_analysis = conversation.state.get('job_analysis')
@@ -1193,6 +1256,7 @@ def create_blueprint(deps):
                     [],
                 ),
                 phase=phase,
+                rewrite_audit=conversation.state.get('rewrite_audit') or [],
             )))
 
         except Exception:
@@ -1227,6 +1291,7 @@ def create_blueprint(deps):
                 "approved_count": summary['approved_count'],
                 "rejected_count": summary['rejected_count'],
                 "phase":          summary['phase'],
+                "rewrite_audit":  conversation.state.get('rewrite_audit') or [],
             })
 
         except Exception:
@@ -1308,12 +1373,15 @@ def create_blueprint(deps):
                     "Publication ranking failed; using score-based fallback",
                     exc_info=True,
                 )
-                selected = orchestrator._select_publications(
+                # Fetch ALL publications with heuristic scores; partition into
+                # recommended (top 15) and not-recommended (rest) so both
+                # groups show real relevance scores and rationale in the UI.
+                all_scored = orchestrator._select_publications(
                     job_analysis,
-                    max_count=15,
+                    max_count=None,
                 )
                 recommendations = []
-                for pub in selected:
+                for pub in all_scored[:15]:
                     cite_key = pub.get('key', '')
                     raw_pub  = orchestrator.publications.get(cite_key, {})
                     recommendations.append({
@@ -1326,75 +1394,104 @@ def create_blueprint(deps):
                         'is_first_author':   _is_first_author(raw_pub.get('authors', '')),
                         'relevance_score':   pub.get('relevance_score', 5),
                         'confidence':        'Medium',
-                        'rationale':         '',
+                        'rationale':         pub.get('rationale', ''),
                         'authority_signals': [],
                         'venue_warning': (
                             ''
                             if (
                                 pub.get('journal')
                                 or pub.get('booktitle')
+                                or pub.get('fields', {}).get('type') == 'software'
                             )
                             else 'No venue found'
                         ),
                         'formatted_citation': pub.get('formatted', ''),
+                        'is_recommended':    True,
                     })
-                source = "fallback"
-
-            recommended_keys = {r['cite_key'] for r in recommendations}
-            for r in recommendations:
-                r['is_recommended'] = True
-
-            if orchestrator.publications:
-                try:
-                    from utils.bibtex_parser import (
-                        format_publication as _fmt_pub,
-                    )
-                except ImportError:
-                    _fmt_pub = None
                 not_recommended = []
-                for key, pub in orchestrator.publications.items():
-                    if key in recommended_keys:
-                        continue
-                    if _fmt_pub:
-                        try:
-                            formatted = _fmt_pub(pub, style='apa')
-                        except Exception:
-                            formatted = ''
-                    else:
-                        formatted = ''
-                    if not formatted:
-                        formatted = (
-                            f"{pub.get('authors', '')} "
-                            f"({pub.get('year', '')}). "
-                            f"{pub.get('title', '')}"
-                        ).strip('. ')
+                for pub in all_scored[15:]:
+                    cite_key = pub.get('key', '')
+                    raw_pub  = orchestrator.publications.get(cite_key, {})
                     not_recommended.append({
-                        'cite_key':          key,
+                        'cite_key':          cite_key,
                         'title':             pub.get('title', ''),
                         'venue': (
                             pub.get('journal') or pub.get('booktitle') or ''
                         ),
                         'year':              pub.get('year', ''),
-                        'is_first_author':   _is_first_author(pub.get('authors', '')),
-                        'relevance_score':   0,
+                        'is_first_author':   _is_first_author(raw_pub.get('authors', '')),
+                        'relevance_score':   pub.get('relevance_score', 0),
                         'confidence':        '',
-                        'rationale':         '',
+                        'rationale':         pub.get('rationale', ''),
                         'authority_signals': [],
                         'venue_warning': (
                             ''
                             if (
                                 pub.get('journal')
                                 or pub.get('booktitle')
+                                or pub.get('fields', {}).get('type') == 'software'
                             )
                             else 'No venue found'
                         ),
-                        'formatted_citation': formatted,
+                        'formatted_citation': pub.get('formatted', ''),
                         'is_recommended':    False,
                     })
                 not_recommended.sort(
-                    key=lambda pub: -int(str(pub['year']).strip() or '0'),
+                    key=lambda p: -float(p.get('relevance_score') or 0),
                 )
                 recommendations.extend(not_recommended)
+                source = "fallback"
+
+            # For the LLM path: tag recs as recommended and append non-recommended
+            # pubs (with heuristic scores from _select_publications).
+            if source == 'llm':
+                recommended_keys = {r['cite_key'] for r in recommendations}
+                for r in recommendations:
+                    r['is_recommended'] = True
+
+                if orchestrator.publications:
+                    all_scored = orchestrator._select_publications(
+                        job_analysis,
+                        max_count=None,
+                    )
+                    not_recommended = []
+                    for scored_pub in all_scored:
+                        key = scored_pub['key']
+                        if key in recommended_keys:
+                            continue
+                        raw_pub = orchestrator.publications.get(key, {})
+                        not_recommended.append({
+                            'cite_key':          key,
+                            'title':             scored_pub.get('title', ''),
+                            'venue': (
+                                scored_pub.get('journal')
+                                or scored_pub.get('booktitle')
+                                or ''
+                            ),
+                            'year':              scored_pub.get('year', ''),
+                            'is_first_author':   _is_first_author(
+                                raw_pub.get('authors', '')
+                            ),
+                            'relevance_score':   scored_pub.get('relevance_score', 0),
+                            'confidence':        '',
+                            'rationale':         scored_pub.get('rationale', ''),
+                            'authority_signals': [],
+                            'venue_warning': (
+                                ''
+                                if (
+                                    scored_pub.get('journal')
+                                    or scored_pub.get('booktitle')
+                                    or scored_pub.get('fields', {}).get('type') == 'software'
+                                )
+                                else 'No venue found'
+                            ),
+                            'formatted_citation': scored_pub.get('formatted', ''),
+                            'is_recommended':    False,
+                        })
+                    not_recommended.sort(
+                        key=lambda p: -float(p.get('relevance_score') or 0),
+                    )
+                    recommendations.extend(not_recommended)
 
             conversation.state['publication_recommendations'] = recommendations
             conversation._save_session()
@@ -1532,19 +1629,19 @@ def create_blueprint(deps):
         data = request.get_json(silent=True) or {}
         row_type = data.get("type")
         ordered_ids = data.get("ordered_ids")
-        if row_type not in ("experience", "skill"):
+        if row_type not in ("experience", "skill", "publication"):
             return jsonify(
-                {"error": "type must be 'experience' or 'skill'"},
+                {"error": "type must be 'experience', 'skill', or 'publication'"},
             ), 400
         if ordered_ids is None:
             return jsonify({"error": "Missing ordered_ids"}), 400
         if not isinstance(ordered_ids, list):
             return jsonify({"error": "ordered_ids must be a list"}), 400
-        state_key = (
-            "experience_row_order"
-            if row_type == "experience"
-            else "skill_row_order"
-        )
+        state_key = {
+            "experience":  "experience_row_order",
+            "skill":       "skill_row_order",
+            "publication": "publication_row_order",
+        }[row_type]
         try:
             with entry.lock:
                 if ordered_ids:
@@ -2106,6 +2203,73 @@ def create_blueprint(deps):
         except Exception:
             return _internal_server_error('Failed to complete layout review.')
 
+    @bp.post("/api/generation-goals")
+    def update_generation_goals():
+        """Persist generation goal settings to session state."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        try:
+            body = request.get_json(force=True) or {}
+            goals: dict = {}
+
+            # Enabled/disabled flags
+            for flag in ('pdf_pages_enabled', 'ats_pages_enabled', 'ats_chars_enabled'):
+                if flag in body:
+                    goals[flag] = bool(body[flag])
+
+            # PDF page mode
+            if 'max_pdf_pages_mode' in body:
+                mode = str(body['max_pdf_pages_mode'])
+                if mode not in ('combined', 'split'):
+                    return jsonify({'error': 'max_pdf_pages_mode must be "combined" or "split"'}), 400
+                goals['max_pdf_pages_mode'] = mode
+
+            # PDF pages — combined
+            if 'max_pdf_pages' in body:
+                val = int(body['max_pdf_pages'])
+                if not (1 <= val <= 10):
+                    return jsonify({'error': 'max_pdf_pages must be 1–10'}), 400
+                goals['max_pdf_pages'] = val
+
+            # PDF pages — split
+            if 'max_pdf_resume_pages' in body:
+                val = int(body['max_pdf_resume_pages'])
+                if not (1 <= val <= 10):
+                    return jsonify({'error': 'max_pdf_resume_pages must be 1–10'}), 400
+                goals['max_pdf_resume_pages'] = val
+            if 'max_pdf_cv_pages' in body:
+                val = int(body['max_pdf_cv_pages'])
+                if not (1 <= val <= 10):
+                    return jsonify({'error': 'max_pdf_cv_pages must be 1–10'}), 400
+                goals['max_pdf_cv_pages'] = val
+
+            if 'max_ats_pages' in body:
+                val = int(body['max_ats_pages'])
+                if not (1 <= val <= 5):
+                    return jsonify({'error': 'max_ats_pages must be 1–5'}), 400
+                goals['max_ats_pages'] = val
+            if 'max_ats_chars' in body:
+                val = int(body['max_ats_chars'])
+                if not (500 <= val <= 20000):
+                    return jsonify({'error': 'max_ats_chars must be 500–20000'}), 400
+                goals['max_ats_chars'] = val
+
+            if not goals:
+                return jsonify({'error': 'No valid goal fields provided'}), 400
+            with entry.lock:
+                existing = dict(conversation.state.get('generation_goals') or {})
+                existing.update(goals)
+                conversation.state['generation_goals'] = existing
+                conversation._save_session()
+            session_registry.touch(sid)
+            return jsonify({'ok': True, 'saved': list(goals.keys())})
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Goal values must be integers'}), 400
+        except Exception:
+            return _internal_server_error('Failed to update generation goals.')
+
     @bp.post("/api/layout-settings")
     def update_layout_settings():
         """Persist layout display settings to session state."""
@@ -2116,24 +2280,36 @@ def create_blueprint(deps):
         try:
             body = request.get_json(force=True) or {}
             with entry.lock:
+                customizations = conversation.state.get('customizations')
+                if not isinstance(customizations, dict):
+                    customizations = {}
+                    conversation.state['customizations'] = customizations
+
                 if 'base_font_size' in body:
                     raw = str(body['base_font_size']).strip()
                     if not raw.endswith('px'):
                         raw = raw + 'px'
                     conversation.state['base_font_size'] = raw
-                    if 'customizations' in conversation.state:
-                        conversation.state['customizations'][
-                            'base_font_size'
-                        ] = raw
+                    customizations['base_font_size'] = raw
                 if 'page_margin' in body:
                     raw = str(body['page_margin']).strip()
                     if raw and raw.replace('.', '', 1).isdigit():
                         raw = raw + 'in'
                     conversation.state['page_margin'] = raw
-                    if 'customizations' in conversation.state:
-                        conversation.state['customizations'][
-                            'page_margin'
-                        ] = raw
+                    customizations['page_margin'] = raw
+                if 'publications_start_new_page' in body:
+                    raw = body['publications_start_new_page']
+                    if isinstance(raw, str):
+                        raw = raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+                    else:
+                        raw = bool(raw)
+                    conversation.state['publications_start_new_page'] = raw
+                    customizations['publications_start_new_page'] = raw
+                if 'skills_show_experience' in body:
+                    raw = str(body['skills_show_experience']).strip().lower()
+                    if raw in {'always', 'never', 'individual'}:
+                        conversation.state['skills_show_experience'] = raw
+                        customizations['skills_show_experience'] = raw
                 conversation._save_session()
             _trigger_render_snapshot_refresh(
                 conversation,
@@ -2143,6 +2319,64 @@ def create_blueprint(deps):
             return jsonify({'ok': True})
         except Exception:
             return _internal_server_error('Failed to update layout settings.')
+
+    # ── Per-session position style override ─────────────────────────────────
+
+    @bp.post("/api/session/position-style")
+    def set_position_style():
+        """Set or clear a per-session position style override (industry/academic/government)."""
+        entry = _get_session()
+        conversation = entry.manager
+        body = request.get_json(silent=True) or {}
+        style = (body.get('style') or '').strip()
+        from scripts.utils.config import get_config
+        cfg = get_config()
+        if not style:
+            conversation.state.pop('position_style_override', None)
+            conversation._save_session()
+            return jsonify({'ok': True, 'position_style': None, 'cleared': True})
+        if style not in cfg.position_styles:
+            return jsonify({'ok': False, 'error': f"Unknown style: {style!r}"}), 400
+        conversation.state['position_style_override'] = style
+        conversation._save_session()
+        return jsonify({'ok': True, 'position_style': style})
+
+    # ── Page-count estimation ────────────────────────────────────────────────
+
+    @bp.get("/api/estimate-pages")
+    def estimate_pages():
+        """Return an estimated page count based on current customisation selections."""
+        entry = _get_session()
+        conversation = entry.manager
+        try:
+            job_analysis = _coerce_to_dict(conversation.state.get('job_analysis') or {})
+            customizations = conversation.state.get('customizations') or {}
+            orc = conversation.orchestrator
+            content = orc.build_render_ready_content(job_analysis, customizations)
+            chars_per_page = orc.cfg.get('generation.cv_body_chars_per_page', 2500)
+            total_chars = orc._estimate_cv_body_chars(
+                content.get('summary'),
+                content.get('experiences', []),
+                content.get('achievements', []),
+                content.get('skills', []),
+            )
+            estimated_pages = round(total_chars / int(chars_per_page), 1)
+            domain = job_analysis.get('domain', '')
+            override = conversation.state.get('position_style_override')
+            from scripts.routes.generation_routes import _page_warning, _page_style_for_domain
+            style_key, _style = _page_style_for_domain(domain, override)
+            return jsonify({
+                'ok': True,
+                'estimated_pages': estimated_pages,
+                'chars': total_chars,
+                'domain': domain,
+                'position_style': style_key,
+                'position_style_is_override': bool(override),
+                'page_length_warning': _page_warning(estimated_pages, domain, override),
+            })
+        except Exception:
+            current_app.logger.exception('estimate_pages failed')
+            return jsonify({'ok': False, 'error': 'Estimate failed'}), 500
 
     # ── ATS validation + persuasion ──────────────────────────────────────────
 
@@ -2189,6 +2423,10 @@ def create_blueprint(deps):
                 'summary': summary,
                 'validation_date': _dt.now().isoformat(),
             }
+
+            # Persist to metadata.json so validation survives without a finalise call.
+            _try_patch_metadata(conversation, {'validation_results': conversation.state['validation_results']})
+
             session_registry.touch(sid)
 
             return jsonify({

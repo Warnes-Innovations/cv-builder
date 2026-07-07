@@ -7,10 +7,11 @@
 /**
  * tests/js/session-switcher-ui.test.js
  * Unit tests for web/session-switcher-ui.js — render helpers, modal open/close,
- * rename/delete actions, trash view, conflict banner, retry/dismiss.
+ * rename/delete actions, trash view.
+ * (The session-conflict banner/retry/dismiss functions live in
+ * web/fetch-utils.js — see tests/js/fetch-utils.test.js.)
  */
 import {
-  _conflictRetryQueue,
   _renderActiveSessionRows,
   _renderSavedSessionRows,
   _renderSessionSwitcherSections,
@@ -33,9 +34,6 @@ import {
   restoreFromTrash,
   deleteForever,
   emptyTrash,
-  showSessionConflictBanner,
-  conflictRetryNow,
-  conflictDismiss,
 } from '../../web/session-switcher-ui.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────────
@@ -55,6 +53,7 @@ beforeEach(() => {
   vi.stubGlobal('setInitialFocus', vi.fn())
   vi.stubGlobal('trapFocus', vi.fn())
   vi.stubGlobal('restoreFocus', vi.fn())
+  vi.stubGlobal('pushFocusStack', vi.fn())
   vi.stubGlobal('confirmDialog', vi.fn().mockResolvedValue(true))
   globalThis.fetch = vi.fn()
 })
@@ -212,6 +211,22 @@ describe('showOwnershipConflictDialog', () => {
     expect(await p).toBe('takeover')
   })
 
+  it('sets aria-hidden false on show', async () => {
+    setupOwnershipDom()
+    const p = showOwnershipConflictDialog('Test conflict')
+    expect(document.getElementById('ownership-conflict-overlay').getAttribute('aria-hidden')).toBe('false')
+    document.getElementById('ownership-load-different-btn').click()
+    await p
+  })
+
+  it('calls pushFocusStack on show', async () => {
+    setupOwnershipDom()
+    const p = showOwnershipConflictDialog()
+    expect(globalThis.pushFocusStack).toHaveBeenCalled()
+    document.getElementById('ownership-load-different-btn').click()
+    await p
+  })
+
   it('resolves "different" immediately when overlay elements absent', async () => {
     const result = await showOwnershipConflictDialog()
     expect(result).toBe('different')
@@ -250,15 +265,31 @@ describe('openSessionsModal / closeSessionsModal', () => {
     expect(document.getElementById('sessions-modal-overlay').style.display).toBe('flex')
   })
 
+  it('sets aria-hidden false on open', async () => {
+    await openSessionsModal()
+    expect(document.getElementById('sessions-modal-overlay').getAttribute('aria-hidden')).toBe('false')
+  })
+
   it('calls trapFocus', async () => {
     await openSessionsModal()
     expect(globalThis.trapFocus).toHaveBeenCalledWith('sessions-modal-overlay')
+  })
+
+  it('calls pushFocusStack on open', async () => {
+    await openSessionsModal()
+    expect(globalThis.pushFocusStack).toHaveBeenCalled()
   })
 
   it('hides overlay on close', async () => {
     await openSessionsModal()
     closeSessionsModal()
     expect(document.getElementById('sessions-modal-overlay').style.display).toBe('none')
+  })
+
+  it('sets aria-hidden true on close', async () => {
+    await openSessionsModal()
+    closeSessionsModal()
+    expect(document.getElementById('sessions-modal-overlay').getAttribute('aria-hidden')).toBe('true')
   })
 
   it('calls restoreFocus on close', async () => {
@@ -398,67 +429,10 @@ describe('emptyTrash', () => {
   })
 })
 
-// ── showSessionConflictBanner / conflictRetryNow / conflictDismiss ────────────
-
-describe('showSessionConflictBanner', () => {
-  beforeEach(() => {
-    document.body.innerHTML = `
-      <div id="session-conflict-banner" style="display:none;">
-        <span id="conflict-banner-text"></span>
-        <span id="conflict-countdown"></span>
-      </div>`
-  })
-
-  afterEach(() => {
-    // Always dismiss to clear any interval
-    conflictDismiss()
-  })
-
-  it('shows banner', () => {
-    showSessionConflictBanner()
-    expect(document.getElementById('session-conflict-banner').style.display).toBe('block')
-  })
-
-  it('sets countdown text', () => {
-    showSessionConflictBanner()
-    expect(document.getElementById('conflict-countdown').textContent).toContain('30s')
-  })
-})
-
-describe('conflictRetryNow', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '<div id="session-conflict-banner" style="display:block;"></div>'
-  })
-
-  it('hides banner', () => {
-    conflictRetryNow()
-    expect(document.getElementById('session-conflict-banner').style.display).toBe('none')
-  })
-
-  it('drains retry queue with true', () => {
-    const cb = vi.fn()
-    _conflictRetryQueue.push(cb)
-    conflictRetryNow()
-    expect(cb).toHaveBeenCalledWith(true)
-    expect(_conflictRetryQueue.length).toBe(0)
-  })
-})
-
-describe('conflictDismiss', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '<div id="session-conflict-banner" style="display:block;"></div>'
-  })
-
-  it('hides banner', () => {
-    conflictDismiss()
-    expect(document.getElementById('session-conflict-banner').style.display).toBe('none')
-  })
-
-  it('drains retry queue with false', () => {
-    const cb = vi.fn()
-    _conflictRetryQueue.push(cb)
-    conflictDismiss()
-    expect(cb).toHaveBeenCalledWith(false)
-    expect(_conflictRetryQueue.length).toBe(0)
-  })
-})
+// showSessionConflictBanner/conflictRetryNow/conflictDismiss moved to
+// web/fetch-utils.js (see tests/js/fetch-utils.test.js) — this file used to
+// carry a byte-for-byte duplicate with its own separate retry queue that
+// handle409Conflict (in fetch-utils.js) never actually fed, so "Retry Now"
+// could silently never resolve the retried request depending on module load
+// order. Removed as dead/duplicate code; see web/session-switcher-ui.js's
+// header comment.

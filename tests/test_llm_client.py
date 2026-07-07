@@ -157,6 +157,62 @@ class TestParseJsonResponse(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# LLMClient._validate_with_repair
+# ---------------------------------------------------------------------------
+
+class TestValidateWithRepair(unittest.TestCase):
+    """Unit tests for LLMClient._validate_with_repair()."""
+
+    def setUp(self):
+        self.client = _make_openai_client()
+        # A minimal Pydantic model with one required field for testing.
+        from pydantic import BaseModel
+        class _TestModel(BaseModel):
+            cite_key: str
+            score: int = 0
+
+        self._TestModel = _TestModel
+
+    def test_valid_data_returns_immediately_without_chat_call(self):
+        self.client.client.chat.completions.create = MagicMock()
+        messages = [{"role": "user", "content": "rank these"}]
+        data = {"cite_key": "Jones2020", "score": 5}
+        result = self.client._validate_with_repair(data, self._TestModel, messages, temperature=0.3)
+        self.assertEqual(result.cite_key, "Jones2020")
+        self.assertEqual(result.score, 5)
+        self.client.client.chat.completions.create.assert_not_called()
+
+    def test_invalid_data_triggers_repair_and_returns_repaired_result(self):
+        repaired_json = '{"cite_key": "Jones2020", "score": 3}'
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = repaired_json
+        mock_response.usage = None
+        self.client.client.chat.completions.create = MagicMock(return_value=mock_response)
+
+        messages = [{"role": "user", "content": "rank these"}]
+        invalid_data = {"score": 5}  # missing required cite_key
+        result = self.client._validate_with_repair(invalid_data, self._TestModel, messages, temperature=0.3)
+        self.assertEqual(result.cite_key, "Jones2020")
+        self.client.client.chat.completions.create.assert_called_once()
+
+    def test_persistent_validation_failure_raises_validation_error(self):
+        from pydantic import ValidationError
+        still_invalid_json = '{"score": 99}'  # still missing cite_key after repair
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = still_invalid_json
+        mock_response.usage = None
+        self.client.client.chat.completions.create = MagicMock(return_value=mock_response)
+
+        messages = [{"role": "user", "content": "rank these"}]
+        invalid_data = {"score": 5}  # missing required cite_key
+        with self.assertRaises(ValidationError):
+            self.client._validate_with_repair(invalid_data, self._TestModel, messages, temperature=0.3)
+        self.client.client.chat.completions.create.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # OpenAIClient.propose_rewrites  (task 1.2.4)
 # ---------------------------------------------------------------------------
 
@@ -367,14 +423,16 @@ class TestAnthropicClient(unittest.TestCase):
             content=[SimpleNamespace(text='ready')],
         )
 
-        result = client.chat(
-            messages=[
-                {'role': 'system', 'content': 'Answer in one word.'},
-                {'role': 'user', 'content': 'Say ready'},
-            ],
-            temperature=0,
-            max_tokens=8,
-        )
+        _no_timeout = SimpleNamespace(llm_request_timeout=None)
+        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
+            result = client.chat(
+                messages=[
+                    {'role': 'system', 'content': 'Answer in one word.'},
+                    {'role': 'user', 'content': 'Say ready'},
+                ],
+                temperature=0,
+                max_tokens=8,
+            )
 
         self.assertEqual(result, 'ready')
         client.client.messages.create.assert_called_once_with(
@@ -524,7 +582,9 @@ class TestGeminiClientAnyLLM(unittest.TestCase):
             {'role': 'user', 'content': 'Say ready'}
         ]
 
-        result = client.chat(messages, temperature=0.1, max_tokens=12)
+        _no_timeout = SimpleNamespace(llm_request_timeout=None)
+        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
+            result = client.chat(messages, temperature=0.1, max_tokens=12)
 
         self.assertEqual(result, 'Ready')
         client._anyllm_completion.assert_called_once_with(
@@ -895,11 +955,11 @@ class TestPersuasionChecks(unittest.TestCase):
         self.assertTrue(result['pass'])
 
     def test_has_no_result_clause(self):
-        """Bullet without quantifiable result flags warning (info severity)."""
+        """Bullet without quantifiable result flags warning (warn severity — GAP-307)."""
         text = 'Worked on various projects and helped the team.'
         result = LLMClient.check_has_result_clause(text)
         self.assertFalse(result['pass'])
-        self.assertEqual(result['severity'], 'info')
+        self.assertEqual(result['severity'], 'warn')
 
     def test_has_result_empty_text(self):
         """Empty text passes."""
@@ -1022,6 +1082,88 @@ class TestPersuasionChecks(unittest.TestCase):
     def test_generic_summary_empty_text(self):
         """Empty text passes."""
         result = LLMClient.check_summary_generic_phrases('')
+        self.assertTrue(result['pass'])
+
+
+    # ── Positive Metric Framing Checks ────────────────────────────────────
+
+    def test_positive_framing_clean(self):
+        """Bullet with positive framing passes."""
+        text = 'Improved query throughput by 40%, enabling 3× user scale.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertTrue(result['pass'])
+        self.assertEqual(result['flag_type'], 'negative_metric_framing')
+
+    def test_negative_framing_reduced_percent(self):
+        """'Reduced by 30%' is flagged."""
+        text = 'Reduced infrastructure costs by 30% through rightsizing.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'info')
+        self.assertIn('positive-sum', result['details'])
+
+    def test_negative_framing_cut_dollar(self):
+        """'Cut $2M in overhead' is flagged."""
+        text = 'Cut $2M in annual overhead by consolidating vendors.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertFalse(result['pass'])
+
+    def test_negative_framing_eliminated(self):
+        """'Eliminated 50%' is flagged."""
+        text = 'Eliminated 50% of legacy tech debt in two sprints.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertFalse(result['pass'])
+
+    def test_no_metric_negative_verb_passes(self):
+        """Negative verb without a metric does not trigger the check."""
+        text = 'Reduced friction in the onboarding experience for new hires.'
+        result = LLMClient.check_positive_metric_framing(text)
+        self.assertTrue(result['pass'])
+
+    def test_positive_framing_empty_text(self):
+        """Empty text passes."""
+        result = LLMClient.check_positive_metric_framing('')
+        self.assertTrue(result['pass'])
+
+
+class TestCheckNewNumericClaims(unittest.TestCase):
+    """Tests for LLMClient.check_new_numeric_claims (GAP-300b)."""
+
+    def test_no_new_numbers_passes(self):
+        """Proposed with same numbers as original passes."""
+        result = LLMClient.check_new_numeric_claims(
+            'Improved efficiency by 30%',
+            'Delivered a 30% efficiency gain',
+        )
+        self.assertTrue(result['pass'])
+
+    def test_new_percent_flagged(self):
+        """Proposed introducing a new percentage is flagged as warn."""
+        result = LLMClient.check_new_numeric_claims(
+            'Improved team efficiency significantly',
+            'Improved team efficiency by 40%',
+        )
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['severity'], 'warn')
+        self.assertIn('40', result['details'])
+
+    def test_new_dollar_amount_flagged(self):
+        """Proposed introducing a new dollar amount is flagged."""
+        result = LLMClient.check_new_numeric_claims(
+            'Reduced operational costs substantially',
+            'Reduced operational costs by $2M annually',
+        )
+        self.assertFalse(result['pass'])
+        self.assertEqual(result['flag_type'], 'new_numeric_claim')
+
+    def test_original_empty_passes(self):
+        """Empty original cannot determine newness — passes rather than false-positive."""
+        result = LLMClient.check_new_numeric_claims('', 'Added 50% improvement')
+        self.assertTrue(result['pass'])
+
+    def test_both_empty_passes(self):
+        """Both empty passes cleanly."""
+        result = LLMClient.check_new_numeric_claims('', '')
         self.assertTrue(result['pass'])
 
 

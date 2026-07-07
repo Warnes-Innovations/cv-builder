@@ -2,7 +2,7 @@
 
 # 2026-03-25 02:19:09Z
 
-<!-- copilotide Session 555f576d-1706-4cb0-948e-73c099243b24 (2026-03-25 02:19:09Z) -->
+<!-- VS Code Copilot IDE Session 555f576d-1706-4cb0-948e-73c099243b24 (2026-03-25 02:19:09Z) -->
 
 _**User (2026-03-25 02:19:09Z)**_
 
@@ -372,4 +372,4 @@ _**User (2026-03-25 19:28:07Z)**_
 
 Are you there?
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

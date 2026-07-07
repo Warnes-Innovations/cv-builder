@@ -2,7 +2,7 @@
 
 # 2026-04-08 01:46:00Z
 
-<!-- copilotide Session 7d059d52-287e-4245-a970-725055528338 (2026-04-08 01:46:00Z) -->
+<!-- VS Code Copilot IDE Session 7d059d52-287e-4245-a970-725055528338 (2026-04-08 01:46:00Z) -->
 
 _**User (2026-04-08 01:46:00Z)**_
 
@@ -112,4 +112,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants me to check the session file to see what's stored in the job description object. Let me find the session files directory and look at the current session.
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

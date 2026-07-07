@@ -2,7 +2,7 @@
 
 # 2026-03-13 18:21:03Z
 
-<!-- copilotide Session 73832675-0eec-4a97-bd1d-2a2d7f55980c (2026-03-13 18:21:03Z) -->
+<!-- VS Code Copilot IDE Session 73832675-0eec-4a97-bd1d-2a2d7f55980c (2026-03-13 18:21:03Z) -->
 
 _**User (2026-03-13 18:21:03Z)**_
 
@@ -264,4 +264,4 @@ From my review:
 2. In `_validateCoverLetter()` / `_getCompanyNameForCL()`:
    - `companyName` is used in detail strings without escapeHtml()
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

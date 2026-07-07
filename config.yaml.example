@@ -20,6 +20,10 @@ data:
   master_cv:    ~/CV/Master_CV_Data.json
   publications: ~/CV/publications.bib
   output_dir:   ~/CV/cv-builder
+  # Master CV data backup retention (backups live under <data_root>/backups/).
+  # 0 disables that pruning rule; both rules apply independently.
+  backup_retention_days: 30   # delete backups older than N days
+  backup_max_count:      50   # keep at most N backups regardless of age
 
 # ── LLM settings ──────────────────────────────────────────────────────────────
 # default_provider must be set (no built-in default).
@@ -51,7 +55,9 @@ generation:
   base_font_size: 13px
   max_skills:       20
   max_achievements:  5
-  max_publications: 10
+  max_publications:          10
+  max_publication_pages:     null  # page-based cap; overrides count limit when set
+  publication_chars_per_page: 1500 # calibration: ~10 APA citations ≈ 4 pages at 0.88em
   page_margin:     0.5in
   page_count:
     warn_single:  true
@@ -63,6 +69,54 @@ generation:
     human_pdf:  true
     human_docx: true
   skills_section_title: Skills
+
+# ── Position target styles (issue #126) ──────────────────────────────────────
+# Presets that drive page-length targets and section defaults.
+# The 'domain_terms' list is matched against the LLM-inferred job-analysis domain.
+# 'industry' is the fallback when nothing matches; override individual fields only.
+# Omit this section entirely to use built-in defaults.
+position_styles:
+  industry:
+    label: "Industry / Corporate"
+    page_warn_below: 2.0
+    page_warn_above: 3.0
+    include_publications: false
+    include_teaching: false
+
+  academic:
+    label: "Academic / Research"
+    page_warn_below: 2.0
+    page_warn_above: null     # no upper-page-count warning for academic CVs
+    include_publications: true
+    include_teaching: true
+    domain_terms:
+      - research
+      - academic
+      - science
+      - scientist
+      - statistics
+      - biostat
+      - genomic
+      - clinical
+      - epidemiol
+      - faculty
+      - bioinformat
+      - computational biology
+      - drug discovery
+
+  government:
+    label: "Government / Federal"
+    page_warn_below: 2.0
+    page_warn_above: null     # federal resumes often run 4–6 pages
+    include_publications: false
+    include_teaching: false
+    domain_terms:
+      - federal
+      - government
+      - agency
+      - defense
+      - military
+      - public service
 
 # ── Session persistence ───────────────────────────────────────────────────────
 session:

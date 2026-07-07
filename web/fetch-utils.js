@@ -34,19 +34,27 @@ function _shouldHandleBusyConflict(args) {
   }
 }
 
-// Global fetch interceptor — shows amber banner on 409 Conflict; auto-retries after countdown.
-(function () {
-  const _origFetch = window.fetch;
-  window.fetch = async function (...args) {
-    const resp = await _origFetch.apply(this, args);
-    if (resp.status === 409 && _shouldHandleBusyConflict(args)) {
-      showSessionConflictBanner();
-      const shouldRetry = await new Promise(resolve => _conflictRetryQueue.push(resolve));
-      if (shouldRetry) return _origFetch.apply(this, args);
-    }
-    return resp;
-  };
-}());
+/**
+ * Handle a 409 Conflict response: show the amber banner and await user choice.
+ * Returns a Promise<boolean> — true means "retry", false means "dismiss".
+ * Called from api-client.js inside sessionAwareFetch so the full fetch pipeline
+ * is owned by a single module-level window.fetch assignment there.
+ *
+ * @param {string|Request} input - The request URL/object (used for path filtering).
+ * @param {object} init - The fetch init options.
+ * @param {Response} [response] - The 409 response (used to check conflict_type).
+ */
+async function handle409Conflict(input, init, response) {
+  if (!_shouldHandleBusyConflict([input, init])) return false;
+  if (response) {
+    try {
+      const body = await response.clone().json();
+      if (body && body.conflict_type && body.conflict_type !== 'session_ownership') return false;
+    } catch (_) { /* non-JSON body — proceed to banner */ }
+  }
+  showSessionConflictBanner();
+  return new Promise(resolve => _conflictRetryQueue.push(resolve));
+}
 
 function showSessionConflictBanner() {
   const banner      = document.getElementById('session-conflict-banner');
@@ -119,7 +127,10 @@ function _updateLLMOverlay(loading, label) {
   if (loading) {
     overlay.classList.add('visible');
     overlay.classList.remove('slow');
-    if (labelEl) labelEl.textContent = label || 'Reasoning…';
+    if (labelEl) {
+      if (!labelEl.getAttribute('aria-live')) labelEl.setAttribute('aria-live', 'polite');
+      labelEl.textContent = label || 'Working…';
+    }
     if (elapsed)  elapsed.textContent = '0:00';
 
     _llmStartTime = Date.now();
@@ -138,7 +149,7 @@ function _updateLLMOverlay(loading, label) {
     _llmElapsedTimer = null;
     _llmStartTime    = null;
     overlay.classList.remove('visible', 'slow');
-    if (labelEl) labelEl.textContent = 'Reasoning…';
+    if (labelEl) labelEl.textContent = 'Working…';
     if (elapsed)  elapsed.textContent = '0:00';
     _refreshContextStats();
   }
@@ -157,7 +168,7 @@ function _updateLLMStatusBar(loading, label) {
   if (loading) {
     bar.style.display = 'flex';
     if (thinking) thinking.style.display = 'flex';
-    if (stepLabel) stepLabel.textContent = label || 'Reasoning…';
+    if (stepLabel) stepLabel.textContent = label || 'Working…';
     if (abortBtn) {
       abortBtn.style.display = '';
       abortBtn.disabled = false;
@@ -194,8 +205,6 @@ async function _refreshContextStats() {
 function setLoading(loading, label) {
   if (typeof stateManager !== 'undefined' && stateManager?.setLoading) {
     stateManager.setLoading(loading);
-  } else {
-    globalThis.isLoading = loading;
   }
 
   if (loading) {
@@ -215,8 +224,10 @@ function setLoading(loading, label) {
 
   _updateLLMStatusBar(loading, label);
 
-  const buttons = document.querySelectorAll('button');
-  buttons.forEach(btn => btn.disabled = loading);
+  // Only disable buttons inside the chat/interaction area — not the whole page.
+  const chatArea = document.getElementById('chat-area');
+  const scope = chatArea || document;
+  scope.querySelectorAll('button').forEach(btn => { btn.disabled = loading; });
   const stopBtn = document.getElementById('llm-busy-stop');
   if (stopBtn) stopBtn.disabled = false;
 
@@ -243,6 +254,7 @@ function setLoading(loading, label) {
 
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
+  handle409Conflict,
   showSessionConflictBanner, conflictRetryNow, conflictDismiss,
   llmFetch, abortCurrentRequest,
   _updateLLMStatusBar,

@@ -21,7 +21,6 @@ Then open http://localhost:5001
 """
 
 import argparse
-import copy
 import dataclasses
 import json
 import logging
@@ -32,8 +31,7 @@ import subprocess
 import sys
 import threading
 import time
-import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -42,11 +40,11 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-from flask import Flask, jsonify, redirect, request, send_file, send_from_directory, url_for
-import requests
-from urllib.parse import urlparse
+from flask import (
+    Flask, g, redirect, request,
+    session,
+)
 import re
-from bs4 import BeautifulSoup
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent / '.env'
@@ -56,35 +54,19 @@ if env_path.exists():
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.config import get_config, validate_config, ConfigurationError, setup_logging
-from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO
+from utils.config import get_config, validate_config, setup_logging
+from utils.llm_client import get_llm_provider, PROVIDER_MODELS
 from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
 from utils.conversation_manager import ConversationManager, Phase
-from utils.llm_client import LLMError, LLMAuthError, LLMRateLimitError, LLMContextLengthError
 from utils.copilot_auth import CopilotAuthManager
 from utils.pricing_cache import (
-    get_cached_pricing, get_pricing_updated_at, get_pricing_source,
-    refresh_pricing_cache, maybe_refresh_in_background, lookup_runtime_pricing_bulk, STATIC_PRICING,
+    maybe_refresh_in_background,
 )
-from utils.spell_checker import SpellChecker
-from utils.master_data_validator import validate_master_data_file
-from utils.bibtex_parser import (
-    parse_bibtex_file,
-    format_publication,
-    serialize_publications_to_bibtex,
-    bibtex_text_to_publications,
-)
+from utils.master_data_validator import MasterDataSaveError, validate_master_data_file
+from utils.backup_helpers import prune_backups as _prune_backups
 from utils.session_registry import (
-    SessionRegistry, SessionNotFoundError, SessionOwnedError
+    SessionRegistry, SessionNotFoundError
 )
-from routes.generation_routes import (
-    _compile_harvest_candidates,
-    _harvest_add_skill,
-    _harvest_add_summary_variant,
-    _harvest_apply_bullet,
-)
-
-
 # ---------------------------------------------------------------------------
 # API response DTOs — typed dataclasses for the most critical endpoints.
 #
@@ -127,6 +109,8 @@ class StatusResponse:
     achievement_decisions: Dict[str, Any]
     publication_decisions: Dict[str, Any]
     summary_focus_override: Optional[str]
+    tagline_override: Optional[str]
+    decisions_confirmed: Dict[str, bool]
     extra_skills: List[Any]
     extra_skill_matches: Dict[str, List[str]]
     session_file: str
@@ -142,6 +126,14 @@ class StatusResponse:
     skills_section_title: str
     achievement_edits: Dict[str, Any]
     intake: Dict[str, Any]
+    stale_steps: List[str]
+    job_url: Optional[str]
+    generation_goals: Optional[Dict[str, Any]]
+    skill_qualifier_overrides: Dict[str, Dict[str, Any]]
+    ai_attribution: bool
+    highest_phase: Optional[str]
+    session_last_modified: Optional[str] = None
+    ats_checks: Optional[List[Any]] = None
 
 
 @dataclass
@@ -155,6 +147,10 @@ class SessionItem:
     has_job: bool
     has_analysis: bool
     has_customizations: bool
+    application_status: str = ''
+    notes: str = ''
+    ats_score: Optional[int] = None
+    company: str = ''
 
 
 @dataclass
@@ -175,6 +171,7 @@ class RewritesResponse:
     rewrites: List[Any]
     persuasion_warnings: List[Any]
     phase: str
+    rewrite_audit: List[Any]
 
 
 @dataclass
@@ -479,7 +476,7 @@ def _catalog_discover_provider_models(provider: str) -> Optional[List[str]]:
 
 _dynamic_model_cache: Dict[str, List[str]] = {}
 _dynamic_model_cache_lock = threading.Lock()
- 
+
 
 def _get_available_models(provider: str, current_model: Optional[str] = None) -> List[str]:
     """Return the best-available model list for a provider.
@@ -518,34 +515,6 @@ def _maybe_refresh_dynamic_cache_in_background(provider: str) -> None:
     t.start()
 
 
-def _text_similarity(query: str, target: str) -> float:
-    """Simple word-overlap similarity score (0–1) for response library search."""
-    _STOP = {
-        'a', 'an', 'the', 'and', 'or', 'for', 'in', 'of', 'to', 'is',
-        'are', 'was', 'were', 'i', 'my', 'your', 'we', 'our', 'this',
-        'that', 'it', 'with', 'as', 'by', 'at', 'on', 'be', 'have',
-        'has', 'had', 'do', 'does', 'did', 'will', 'would', 'can',
-        'could', 'should', 'may', 'might', 'from', 'into', 'about',
-    }
-    def _tok(s: str) -> set:
-        return {w.lower() for w in re.findall(r'\w+', s) if w.lower() not in _STOP and len(w) > 2}
-    q_tok = _tok(query)
-    t_tok = _tok(target)
-    if not q_tok or not t_tok:
-        return 0.0
-    return len(q_tok & t_tok) / max(len(q_tok), len(t_tok))
-
-
-_SCREENING_FORMAT_GUIDANCE: dict = {
-    'direct':    ('Direct/Concise',    '150–200 words',
-                  'Be clear and direct. State the answer, give one concrete example, close concisely.'),
-    'star':      ('STAR',              '250–350 words',
-                  'Use the STAR framework: Situation, Task, Action, Result. 1–2 sentences each.'),
-    'technical': ('Technical Detail', '400–500 words',
-                  'Provide full technical depth: context, methodology, tools/technologies, outcomes with metrics.'),
-}
-
-
 def _web_app_build_objects(args, auth_manager):
     """
     Instantiate LLMClient, CVOrchestrator, and ConversationManager from CLI args.
@@ -571,6 +540,50 @@ def _web_app_build_objects(args, auth_manager):
 
 def create_app(args) -> Flask:
     app = Flask(__name__, static_folder=None)
+
+    # ── Keycloak OIDC auth (enabled when KEYCLOAK_URL env var is set) ────────
+    from utils.auth import (  # noqa: PLC0415
+        init_auth, is_enabled as _kc_enabled,
+        is_exempt as _kc_exempt, load_user_from_session,
+    )
+    init_auth(app)
+
+    # ── Host-header validation (DNS-rebinding protection) ────────────────────
+    # When CV_ALLOWED_HOSTS is unset and the app binds to loopback, only allow
+    # requests whose Host header matches known loopback patterns.  Set
+    # CV_ALLOWED_HOSTS=* to disable the check (e.g. when behind a reverse proxy).
+    _loopback_hosts = {'localhost', '127.0.0.1', '::1', '[::1]'}
+    _raw_allowed = os.getenv('CV_ALLOWED_HOSTS', '')
+    _allowed_hosts: Optional[set] = None  # None = disabled
+    if _raw_allowed == '*':
+        _allowed_hosts = None  # explicitly disabled
+    elif _raw_allowed:
+        _allowed_hosts = {h.strip().lower() for h in _raw_allowed.split(',') if h.strip()}
+    elif os.getenv('CV_WEB_HOST', '127.0.0.1') in ('127.0.0.1', '::1', 'localhost'):
+        _allowed_hosts = _loopback_hosts
+
+    @app.before_request
+    def _validate_host():
+        if _allowed_hosts is None:
+            return
+        host = (request.host or '').lower().split(':')[0]
+        if host not in _allowed_hosts:
+            from flask import abort as _abort  # noqa: PLC0415
+            _abort(400, description=f'Request rejected: Host "{host}" is not in the allowed list.')
+
+    @app.before_request
+    def _load_user():
+        load_user_from_session()
+
+    @app.before_request
+    def _require_login():
+        if not _kc_enabled():
+            return
+        if _kc_exempt(request.path):
+            return
+        if not g.get('user_id'):
+            session['next'] = request.url
+            return redirect('/login')
 
     # Validate configuration before initializing dependencies.
     # Raises ConfigurationError with a clear message if no LLM provider is set.
@@ -599,7 +612,6 @@ def create_app(args) -> Flask:
 
     # Copilot OAuth auth manager (shared across all requests)
     auth_manager = CopilotAuthManager()
-    _auth_poll: dict = {"polling": False, "error": None, "device_code": None, "interval": 5}
 
     # ── Provider / model state ───────────────────────────────────────────────
     _provider_name: str = args.llm_provider
@@ -636,7 +648,14 @@ def create_app(args) -> Flask:
     _app_config = get_config()
 
     def _build_objects_for_registry(_config_ignored):
-        """Factory passed to SessionRegistry; uses the current provider/model refs."""
+        """Factory passed to SessionRegistry; uses the current provider/model refs.
+
+        When Keycloak auth is active, paths are scoped to the current user
+        (read from flask.g, which is set by the before_request auth hook).
+        """
+        from utils.auth import (  # noqa: PLC0415
+            ensure_master_cv_exists, get_current_user_id, user_data_paths,
+        )
         session_provider = provider_name_ref["value"]
         session_model = current_model_ref["value"]
         session_llm_client = get_llm_provider(
@@ -644,10 +663,21 @@ def create_app(args) -> Flask:
             model=session_model,
             auth_manager=auth_manager,
         )
+        user_id = get_current_user_id()
+        if user_id:
+            paths = user_data_paths(user_id, _app_config.data_root)
+            master_data = paths['master_data']
+            publications = paths.get('publications', args.publications)
+            output_dir = paths['output_dir']
+        else:
+            master_data = args.master_data
+            publications = args.publications
+            output_dir = args.output_dir
+            ensure_master_cv_exists(master_data)
         orchestrator = CVOrchestrator(
-            master_data_path=args.master_data,
-            publications_path=args.publications,
-            output_dir=args.output_dir,
+            master_data_path=master_data,
+            publications_path=publications,
+            output_dir=output_dir,
             llm_client=session_llm_client,
         )
         conversation = ConversationManager(
@@ -662,10 +692,17 @@ def create_app(args) -> Flask:
     )
     app.session_registry = session_registry  # exposed for test access
 
+    _last_eviction_time: list = [0.0]
+    _EVICTION_INTERVAL_S: float = 60.0
+
     @app.before_request
     def _evict_idle_sessions():
-        """Lazily evict stale sessions on every request."""
-        session_registry.evict_idle()
+        """Lazily evict stale sessions — throttled to once per minute."""
+        import time as _time
+        now = _time.monotonic()
+        if now - _last_eviction_time[0] >= _EVICTION_INTERVAL_S:
+            _last_eviction_time[0] = now
+            session_registry.evict_idle()
 
     # ── Session helpers ──────────────────────────────────────────────────────
 
@@ -683,13 +720,13 @@ def create_app(args) -> Flask:
         sid = request.args.get('session_id')
         if not sid and request.is_json:
             sid = (request.get_json(silent=True) or {}).get('session_id')
-        
+
         source = "query" if request.args.get('session_id') else ("json_body" if sid else "none")
         logger.debug(
             "_get_session: session_id=%s (source=%s, method=%s, path=%s)",
             sid or "<missing>", source, request.method, request.path
         )
-        
+
         if not sid:
             if required:
                 _abort(400, description='session_id is required')
@@ -776,8 +813,20 @@ def create_app(args) -> Flask:
         if not lines:
             return None
 
-        # 2. Skip navigation-noise lines; take the first content line as the title
-        content_lines = [l for l in lines if not _is_nav_noise(l)]
+        # 2. Skip navigation-noise lines and bare markdown section headers;
+        #    take the first content line as the title.
+        _GENERIC_LABELS = frozenset({
+            'description', 'qualifications', 'responsibilities', 'skills',
+            'requirements', 'overview', 'about', 'summary', 'details',
+            'job description', 'position', 'role', 'duties',
+            'experience requirements', 'education requirements',
+        })
+        def _is_section_header(line: str) -> bool:
+            stripped = line.lstrip('#').strip().lower()
+            return line.lstrip('#') != line and stripped in _GENERIC_LABELS
+        content_lines = [
+            line for line in lines if not _is_nav_noise(line) and not _is_section_header(line)
+        ]
         if not content_lines:
             content_lines = lines
 
@@ -1012,27 +1061,24 @@ Job Description (excerpt):
                 if loaded:
                     print(f"✓ Restored previous session for: {position_name}")
                 else:
-                    _preload_conv.conversation_history.append({
-                        "role": "system",
-                        "content": (
-                            f"Job description loaded: {job_text.split(chr(10))[0]} at "
-                            + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company')
-                        ),
-                    })
+                    _preload_conv.add_to_history(
+                        "system",
+                        f"Job description loaded: {job_text.split(chr(10))[0]} at "
+                        + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'),
+                    )
             except Exception as e:
                 print(f"⚠ Could not load previous session: {e}")
-                _preload_conv.conversation_history.append({
-                    "role": "system",
-                    "content": (
-                        f"Job description loaded: {job_text.split(chr(10))[0]} at "
-                        + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company')
-                    ),
-                })
+                _preload_conv.add_to_history(
+                    "system",
+                    f"Job description loaded: {job_text.split(chr(10))[0]} at "
+                    + (job_text.split(chr(10))[1] if len(job_text.split(chr(10))) > 1 else 'Company'),
+                )
             session_registry.touch(_preload_sid)
 
     from routes.auth_routes import create_blueprint as create_auth_blueprint
     from routes.generation_routes import create_blueprint as create_generation_blueprint
     from routes.job_routes import create_blueprint as create_job_blueprint
+    from routes.llm_routes import create_blueprint as create_llm_blueprint
     from routes.master_data_routes import create_blueprint as create_master_data_blueprint
     from routes.review_routes import create_blueprint as create_review_blueprint
     from routes.session_routes import create_blueprint as create_session_blueprint
@@ -1081,6 +1127,7 @@ Job Description (excerpt):
     app.register_blueprint(create_auth_blueprint(deps))
     app.register_blueprint(create_master_data_blueprint(deps))
     app.register_blueprint(create_static_blueprint(deps))
+    app.register_blueprint(create_llm_blueprint(deps))
 
     # Return JSON (not HTML) for all HTTP errors on /api/ routes.
     # Without this, flask.abort(400/403/404) sends an HTML error page, which
@@ -1127,7 +1174,7 @@ def _extract_year(value: Any) -> Optional[int]:
 def _validate_master_for_persistence(master: Dict[str, Any]) -> None:
     """Validate top-level master CV structure before writing to disk."""
     if not isinstance(master, dict):
-        raise ValueError("master data must be a JSON object")
+        raise MasterDataSaveError(["master data must be a JSON object"])
 
     errors: List[str] = []
 
@@ -1145,7 +1192,7 @@ def _validate_master_for_persistence(master: Dict[str, Any]) -> None:
         errors.append("professional_summaries must be an object or list")
 
     if errors:
-        raise ValueError("Invalid master data: " + "; ".join(errors))
+        raise MasterDataSaveError(errors)
 
 
 def _save_master(master: Dict[str, Any], master_path: Path) -> None:
@@ -1170,8 +1217,17 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
     if not validation.valid:
         if backup_path is not None and backup_path.exists():
             shutil.copy2(backup_path, master_path)
-        msg = "; ".join(validation.errors) or "master data validation failed"
-        raise ValueError(f"Master data validation failed after write: {msg}")
+        raise MasterDataSaveError(validation.errors or ["master data validation failed"])
+
+    # Prune only after a successful write+validation, so a pruning bug can
+    # never run concurrently with the rollback path above that depends on
+    # backup_path still existing.
+    if backup_path is not None:
+        try:
+            config = get_config()
+            _prune_backups(backup_path.parent, config.master_data_backup_retention_days, config.master_data_backup_max_count)
+        except Exception:
+            logger.warning("Backup pruning failed", exc_info=True)
 
     subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
@@ -1181,15 +1237,15 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
 
 def parse_args():
     config = get_config()
-    
+
     parser = argparse.ArgumentParser(description="Minimal Web UI for CV Generator")
     parser.add_argument("--job-file", help="Path to job description text file")
     parser.add_argument("--master-data", default=config.master_cv_path,
-                       help=f"Path to Master_CV_Data.json")
+                       help="Path to Master_CV_Data.json")
     parser.add_argument("--publications", default=config.publications_path,
-                       help=f"Path to publications.bib")
+                       help="Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
-                       help=f"Output directory")
+                       help="Output directory")
     parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk", "stub"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
@@ -1203,7 +1259,7 @@ def parse_args():
 def main():
     args = parse_args()
     config = get_config()
-    
+
     # Set up logging before anything else
     setup_logging(config)
 

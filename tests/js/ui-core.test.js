@@ -9,17 +9,29 @@
  * Focused regression tests for web/ui-core.js event wiring.
  */
 
-vi.mock('../../web/api-client.js', () => ({
-  StorageKeys: { TAB_DATA: 'tabData' },
-  apiCall: vi.fn(),
-  fetchStatus: vi.fn(),
-  askPostAnalysisQuestions: vi.fn(),
-  sendMessage: vi.fn(),
-  fetchSettings: vi.fn(),
-  updateSettings: vi.fn(),
+// Use vi.hoisted so mock instances survive vi.resetModules() between tests
+const { _apiCall, _fetchStatus, _fetchSettings, _updateSettings } = vi.hoisted(() => ({
+  _apiCall: vi.fn(),
+  _fetchStatus: vi.fn(),
+  _fetchSettings: vi.fn(),
+  _updateSettings: vi.fn(),
 }))
 
-import { apiCall, fetchSettings, updateSettings } from '../../web/api-client.js'
+vi.mock('../../web/api-client.js', () => ({
+  StorageKeys: { TAB_DATA: 'tabData' },
+  apiCall: _apiCall,
+  fetchStatus: _fetchStatus,
+  askPostAnalysisQuestions: vi.fn(),
+  sendMessage: vi.fn(),
+  fetchSettings: _fetchSettings,
+  updateSettings: _updateSettings,
+}))
+
+// Alias to match the original names used throughout the tests
+const apiCall = _apiCall
+const fetchStatus = _fetchStatus
+const fetchSettings = _fetchSettings
+const updateSettings = _updateSettings
 
 let mod
 
@@ -46,6 +58,12 @@ beforeEach(async () => {
   apiCall.mockReset()
   fetchSettings.mockReset()
   updateSettings.mockReset()
+  fetchStatus.mockReset()
+  // reloadSettingsModal() does fetchStatus().catch(...) unconditionally —
+  // an unmocked vi.fn() returns undefined, and undefined.catch() throws
+  // before _renderSettingsToForm ever runs. Default to an empty status so
+  // individual tests only need to override this when they care about it.
+  fetchStatus.mockResolvedValue({})
   await loadModule()
 })
 
@@ -68,22 +86,80 @@ describe('setupEventListeners', () => {
   })
 })
 
-describe('loadTabContent', () => {
-  it('renders thrown error text without interpreting it as HTML', async () => {
-    document.body.innerHTML = '<div id="document-content"></div>'
-    vi.stubGlobal(
-      'populateJobTab',
-      vi.fn(async () => {
-        throw new Error('<img src=x onerror=alert(1)>')
-      }),
-    )
+describe('toggleChat', () => {
+  it('collapses the chat area and updates aria attributes when not collapsed', () => {
+    buildFixture()
 
-    await mod.loadTabContent('job')
+    mod.toggleChat()
 
-    const content = document.getElementById('document-content')
-    expect(content.innerHTML).not.toContain('<img src=x onerror=alert(1)>')
-    expect(content.textContent).toContain('Error loading content: <img src=x onerror=alert(1)>')
-    expect(content.querySelector('img')).toBeNull()
+    const chatArea = document.getElementById('chat-area')
+    const viewerArea = document.getElementById('viewer-area')
+    const toggleBtn = document.getElementById('toggle-chat')
+    expect(chatArea.classList.contains('collapsed')).toBe(true)
+    expect(viewerArea.style.flex).toBe('1 1 100%')
+    expect(toggleBtn.getAttribute('aria-expanded')).toBe('false')
+    expect(toggleBtn.getAttribute('aria-label')).toBe('Expand chat panel')
+  })
+
+  it('expands the chat area again on a second call', () => {
+    buildFixture()
+
+    mod.toggleChat()
+    mod.toggleChat()
+
+    const chatArea = document.getElementById('chat-area')
+    const viewerArea = document.getElementById('viewer-area')
+    const toggleBtn = document.getElementById('toggle-chat')
+    expect(chatArea.classList.contains('collapsed')).toBe(false)
+    expect(viewerArea.style.flex).toBe('0 1 60%')
+    expect(toggleBtn.getAttribute('aria-expanded')).toBe('true')
+    expect(toggleBtn.getAttribute('aria-label')).toBe('Collapse chat panel')
+  })
+
+  it('does nothing if .interaction-area is absent from the DOM', () => {
+    document.body.innerHTML = ''
+    expect(() => mod.toggleChat()).not.toThrow()
+  })
+})
+
+// loadTabContent lives in web/review-table-base.js — see tests/js/review-table-base.test.js
+// (ui-core.js's copy was dead/superseded; see its header comment.)
+
+describe('updateTabBarForStage — tab-stage-label (GAP-16 Part A)', () => {
+  function buildTabBarFixture() {
+    document.body.innerHTML = `
+      <div class="tab-bar-wrapper">
+        <div class="tab-stage-label" id="tab-stage-label"></div>
+        <button class="tab-scroll-btn tab-scroll-left" id="tab-scroll-left" style="display:none"></button>
+        <div class="tabs" id="tab-bar">
+          <div class="tab" data-tab="goals"></div>
+          <div class="tab" data-tab="job"></div>
+        </div>
+        <button class="tab-scroll-btn tab-scroll-right" id="tab-scroll-right" style="display:none"></button>
+      </div>`
+  }
+
+  it('sets the label text from _STEP_DISPLAY for the given stage', () => {
+    buildTabBarFixture()
+    mod.updateTabBarForStage('customizations')
+    expect(document.getElementById('tab-stage-label').textContent).toBe('Now viewing: Customise')
+  })
+
+  it('updates the label again on a subsequent call with a different stage', () => {
+    buildTabBarFixture()
+    mod.updateTabBarForStage('customizations')
+    mod.updateTabBarForStage('job')
+    expect(document.getElementById('tab-stage-label').textContent).toBe('Now viewing: Job Input')
+  })
+
+  it('does not throw when #tab-stage-label is absent from the DOM', () => {
+    document.body.innerHTML = `
+      <div class="tab-bar-wrapper">
+        <button class="tab-scroll-btn tab-scroll-left" id="tab-scroll-left" style="display:none"></button>
+        <div class="tabs" id="tab-bar"></div>
+        <button class="tab-scroll-btn tab-scroll-right" id="tab-scroll-right" style="display:none"></button>
+      </div>`
+    expect(() => mod.updateTabBarForStage('customizations')).not.toThrow()
   })
 })
 
@@ -481,6 +557,37 @@ describe('openModelModal', () => {
     expect(document.getElementById('model-wizard-step-label').textContent).toContain('Step 4 of 4: Complete')
     expect(document.getElementById('model-success-summary').textContent).toContain('123ms')
   })
+
+  it('model table rows have tabindex=0 and role=row for keyboard access (GAP-304)', async () => {
+    buildModelFixture()
+
+    apiCall.mockImplementation(async (_method, url) => {
+      if (url === '/api/model') {
+        return {
+          provider: 'github',
+          model: 'gpt-5.4',
+          providers: ['github'],
+          all_models: [
+            { provider: 'github', model: 'gpt-5.4', source: 'list_models' },
+            { provider: 'github', model: 'gpt-4o', source: 'list_models' },
+          ],
+          list_models_capable: ['github'],
+        }
+      }
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+
+    await mod.openModelModal()
+    await mod.nextWizardStep()  // step 1 → 2 (auth)
+    await mod.nextWizardStep()  // step 2 → 3 (models)
+
+    const rows = document.querySelectorAll('#model-table-body tr[data-model]')
+    expect(rows.length).toBeGreaterThan(0)
+    rows.forEach(tr => {
+      expect(tr.getAttribute('tabindex')).toBe('0')
+      expect(tr.getAttribute('role')).toBe('row')
+    })
+  })
 })
 
 describe('settings modal', () => {
@@ -517,7 +624,11 @@ describe('settings modal', () => {
 
   it('loads settings into the modal fields', async () => {
     buildSettingsFixture()
-    fetchSettings.mockResolvedValue({
+    // After vi.resetModules() in loadModule(), get the fresh mock references
+    // that ui-core.js is actually using (same module cache entry).
+    const { fetchSettings: $fetchSettings, fetchStatus: $fetchStatus } = await import('../../web/api-client.js')
+    $fetchStatus.mockResolvedValue(null)
+    $fetchSettings.mockResolvedValue({
       ok: true,
       settings: {
         llm: {

@@ -1,0 +1,1 @@
+/Users/warnes/src/cv-builder/.github/prompts/cvHarvest.prompt.md

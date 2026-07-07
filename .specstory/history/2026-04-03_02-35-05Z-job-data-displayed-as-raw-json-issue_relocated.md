@@ -2,7 +2,7 @@
 
 # 2026-04-03 02:36:55Z
 
-<!-- VS Code Copilot IDE Session ef608c69-b0c6-41c0-ac93-c51e41c842e2 (2026-04-03 02:36:55Z) -->
+<!-- copilotide Session ef608c69-b0c6-41c0-ac93-c51e41c842e2 (2026-04-03 02:36:55Z) -->
 
 _**User (2026-04-03 02:36:55Z)**_
 
@@ -224,4 +224,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user approved the commit. I need to stage and commit the files. Per the shell patterns in user memory, I should write the commit message to a temp file first, then use `git commit -F`.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder reason="first-path signal (signal3) points to cv-builder" -->

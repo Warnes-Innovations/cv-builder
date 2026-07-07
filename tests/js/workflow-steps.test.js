@@ -15,11 +15,15 @@ import {
   _ACTION_LABELS,
   _markChanged,
   _highlightChangedItems,
+  _injectCustomizationsFilterToggle,
+  _injectTableFilterBtn,
   _applyBulletOrder,
   moveBullet,
   _updateBulletArrows,
   backToPhase,
   reRunPhase,
+  _getStepTooltip,
+  _updateViewingIndicator,
 } from '../../web/workflow-steps.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────
@@ -49,10 +53,10 @@ afterEach(() => {
 // ── Constants ─────────────────────────────────────────────────────────────
 
 describe('_STEP_ORDER', () => {
-  it('has 8 steps in the correct order', () => {
+  it('has 12 steps in the correct order', () => {
     expect(_STEP_ORDER).toEqual([
       'job', 'analysis', 'customizations', 'rewrite', 'spell',
-      'generate', 'layout', 'finalise',
+      'layout', 'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
     ])
   })
 })
@@ -131,6 +135,112 @@ describe('_highlightChangedItems (rewrite step)', () => {
   it('does nothing for analysis step (no per-entity targeting)', () => {
     document.body.innerHTML = '<div id="rw-card-rw1"></div>'
     expect(() => _highlightChangedItems('analysis', {}, {})).not.toThrow()
+  })
+})
+
+// ── _highlightChangedItems — customizations step ──────────────────────────
+
+describe('_highlightChangedItems (customizations step)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <table id="experience-review-table">
+        <tbody>
+          <tr data-exp-id="exp1"></tr>
+          <tr data-exp-id="exp2"></tr>
+        </tbody>
+      </table>
+      <table id="skills-review-table">
+        <tbody>
+          <tr data-skill="python"></tr>
+          <tr data-skill="java"></tr>
+        </tbody>
+      </table>`
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('marks a new experience row as changed', () => {
+    const prior = { customizations: { experience_recommendations: [], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-exp-id="exp1"]').getAttribute('data-changed')).toBe('true')
+  })
+
+  it('marks an experience row as changed when recommendation changes', () => {
+    const prior = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'exclude' }], skill_recommendations: [] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-exp-id="exp1"]').getAttribute('data-changed')).toBe('true')
+  })
+
+  it('does not mark an unchanged experience row', () => {
+    const prior = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [{ id: 'exp1', recommendation: 'include' }], skill_recommendations: [] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-exp-id="exp1"]').getAttribute('data-changed')).toBeNull()
+  })
+
+  it('marks a new skill row as changed', () => {
+    const prior = { customizations: { experience_recommendations: [], skill_recommendations: [] } }
+    const next  = { customizations: { experience_recommendations: [], skill_recommendations: [{ skill: 'Python', recommendation: 'include' }] } }
+    _highlightChangedItems('customizations', prior, next)
+    expect(document.querySelector('tr[data-skill="python"]').getAttribute('data-changed')).toBe('true')
+  })
+})
+
+// ── _injectTableFilterBtn ─────────────────────────────────────────────────
+
+describe('_injectTableFilterBtn', () => {
+  function buildExpContainer(rowCount = 3, changedCount = 1) {
+    const rows = Array.from({ length: rowCount }, (_, i) =>
+      `<tr data-exp-id="exp${i}"${i < changedCount ? ' class="rw-new-item"' : ''}></tr>`
+    ).join('')
+    document.body.innerHTML = `
+      <div id="experience-table-container">
+        <div class="bulk-toolbar"><span>Bulk:</span></div>
+        <table id="experience-review-table"><tbody>${rows}</tbody></table>
+      </div>`
+  }
+
+  it('injects a filter button into the bulk-toolbar', () => {
+    buildExpContainer(3, 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    expect(document.querySelector('.cust-changed-filter-btn')).not.toBeNull()
+  })
+
+  it('button text shows the changed count', () => {
+    buildExpContainer(3, 2)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 2)
+    expect(document.querySelector('.cust-changed-filter-btn').textContent).toContain('Changed (2)')
+  })
+
+  it('toggles filter-cust-changed class on the table when clicked', () => {
+    buildExpContainer(3, 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    const btn = document.querySelector('.cust-changed-filter-btn')
+    btn.click()
+    expect(document.getElementById('experience-review-table').classList.contains('filter-cust-changed')).toBe(true)
+    btn.click()
+    expect(document.getElementById('experience-review-table').classList.contains('filter-cust-changed')).toBe(false)
+  })
+
+  it('does not inject when count is 0', () => {
+    buildExpContainer(3, 0)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 0)
+    expect(document.querySelector('.cust-changed-filter-btn')).toBeNull()
+  })
+
+  it('does not inject when all rows are changed', () => {
+    buildExpContainer(3, 3)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 3)
+    expect(document.querySelector('.cust-changed-filter-btn')).toBeNull()
+  })
+
+  it('does not inject a second button on repeat call', () => {
+    buildExpContainer(3, 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    _injectTableFilterBtn('experience-review-table', 'experience-table-container', 1)
+    expect(document.querySelectorAll('.cust-changed-filter-btn').length).toBe(1)
   })
 })
 
@@ -348,5 +458,117 @@ describe('reRunPhase', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await reRunPhase('analysis')
     expect(globalThis.appendRetryMessage).toHaveBeenCalled()
+  })
+})
+
+// ── _getStepTooltip ───────────────────────────────────────────────────────────
+
+describe('_getStepTooltip', () => {
+  it('returns step description for locked step', () => {
+    const tip = _getStepTooltip('job', false, false, false, false, false, false)
+    expect(tip).toContain('Paste a job description')
+  })
+
+  it('returns empty string for locked step with no known description', () => {
+    expect(_getStepTooltip('unknown_step', false, false, false, false, false, false)).toBe('')
+  })
+
+  it('includes "Current step" for active+viewing', () => {
+    const tip = _getStepTooltip('analysis', true, true, false, false, false, false)
+    expect(tip).toContain('Current step')
+    expect(tip).toContain('Extracts job title')
+  })
+
+  it('includes click-to-return text when browsing away from active step', () => {
+    const tip = _getStepTooltip('analysis', true, false, true, false, false, false)
+    expect(tip).toContain('Active step — click to return')
+  })
+
+  it('includes rerun prompt for completed+viewing', () => {
+    const tip = _getStepTooltip('customizations', false, true, false, true, false, false)
+    expect(tip).toContain('Click ↻ to rerun from here')
+    expect(tip).toContain('tailors content')
+  })
+
+  it('includes click-to-view for completed+not-viewing', () => {
+    const tip = _getStepTooltip('customizations', false, false, false, true, false, false)
+    expect(tip).toContain('Click to view')
+    expect(tip).toContain('tailors content')
+  })
+
+  it('includes stale-critical text when viewing', () => {
+    const tip = _getStepTooltip('layout', false, true, false, true, true, true)
+    expect(tip).toContain('Critical changes')
+    expect(tip).toContain('↻')
+  })
+
+  it('returns stale-critical without rerun hint when not viewing', () => {
+    const tip = _getStepTooltip('layout', false, false, false, true, true, true)
+    expect(tip).toContain('Critical changes')
+    expect(tip).not.toContain('↻')
+  })
+
+  it('returns stale text with rerun hint when stale+viewing', () => {
+    const tip = _getStepTooltip('layout', false, true, false, true, true, false)
+    expect(tip).toContain('may be outdated')
+    expect(tip).toContain('↻')
+  })
+})
+
+// ── _updateViewingIndicator ───────────────────────────────────────────────────
+
+describe('_updateViewingIndicator', () => {
+  function makeStepPills(activeStep) {
+    const steps = ['job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout', 'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest']
+    document.body.innerHTML = steps.map(s => {
+      const classes = s === activeStep ? 'step active' : 'step completed'
+      return `<div id="step-${s}" class="${classes}"></div>`
+    }).join('')
+  }
+
+  it('adds .viewing to the pill matching the current tab', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('analysis')
+    expect(document.getElementById('step-analysis').classList.contains('viewing')).toBe(true)
+  })
+
+  it('removes .viewing from all other pills', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('analysis')
+    expect(document.getElementById('step-job').classList.contains('viewing')).toBe(false)
+    expect(document.getElementById('step-rewrite').classList.contains('viewing')).toBe(false)
+  })
+
+  it('adds .browsing-away to the active pill when user is viewing a different step', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('analysis')
+    expect(document.getElementById('step-rewrite').classList.contains('browsing-away')).toBe(true)
+  })
+
+  it('does NOT add .browsing-away when user is viewing the active step', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('rewrite')
+    expect(document.getElementById('step-rewrite').classList.contains('browsing-away')).toBe(false)
+  })
+
+  it('maps the questions tab to the analysis pill', () => {
+    makeStepPills('customizations')
+    _updateViewingIndicator('questions')
+    expect(document.getElementById('step-analysis').classList.contains('viewing')).toBe(true)
+  })
+
+  it('maps the exp-review tab to the customizations pill', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('exp-review')
+    expect(document.getElementById('step-customizations').classList.contains('viewing')).toBe(true)
+  })
+
+  it('clears all rings when an unknown tab is passed', () => {
+    makeStepPills('rewrite')
+    _updateViewingIndicator('some-unknown-tab')
+    document.querySelectorAll('.step').forEach(el => {
+      expect(el.classList.contains('viewing')).toBe(false)
+      expect(el.classList.contains('browsing-away')).toBe(false)
+    })
   })
 })

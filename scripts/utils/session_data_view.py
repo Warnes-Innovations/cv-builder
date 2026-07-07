@@ -190,6 +190,13 @@ def _coerce_skill_qualifier_overrides(raw: Any) -> Dict[str, Dict[str, Any]]:
             elif isinstance(parenthetical, str):
                 normalized["parenthetical"] = parenthetical.strip() or None
 
+        if "skill_type" in value:
+            skill_type = value.get("skill_type")
+            if skill_type is None:
+                normalized["skill_type"] = None
+            elif isinstance(skill_type, str) and skill_type.strip().lower() in ("hard", "soft"):
+                normalized["skill_type"] = skill_type.strip().lower()
+
         if normalized:
             cleaned[skill_name] = normalized
 
@@ -627,6 +634,14 @@ class SessionDataView:
             updated["rejected_publications"] = [
                 key.strip() for key in rejected_str.split(",") if key.strip()
             ]
+
+        # GAP-203: honour the include_publications clarifying-question answer.
+        # When the user answered "No — omit…", suppress all publications by
+        # overriding accepted_publications to an empty list (which the generation
+        # pipeline treats as "user explicitly selected nothing").
+        include_pubs_answer = str(post_answers.get("include_publications", "")).lower()
+        if include_pubs_answer.startswith("no") and "accepted_publications" not in updated:
+            updated["accepted_publications"] = []
 
         return updated
 

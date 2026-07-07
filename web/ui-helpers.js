@@ -9,14 +9,8 @@
  * Lightweight DOM helpers: toasts, alert/confirm modals, chat toggle, and
  * workflow-stage action-button management.
  *
- * NOTE: showAlertModal / closeAlertModal are also defined in ui-core.js
- * (the bundled version that includes focus-trap behaviour).  This file
- * provides the app.js-side versions that call trapFocus / restoreFocus
- * (exported from ui-core.js and available on globalThis after the bundle
- * is loaded).
- *
- * DEPENDENCIES: ui-core.js exports (trapFocus, restoreFocus, setInitialFocus)
- *               available on globalThis at runtime.
+ * DEPENDENCIES: ui-core.js exports (trapFocus, restoreFocus, setInitialFocus,
+ *               pushFocusStack) available on globalThis at runtime.
  */
 
 import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
@@ -25,10 +19,28 @@ import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
 // Alert modal (informational — single OK button)
 // ---------------------------------------------------------------------------
 
+function _setModalText(el, message) {
+  el.textContent = '';
+  const parts = String(message || '').split('\n');
+  parts.forEach((part, i) => {
+    el.appendChild(document.createTextNode(part));
+    if (i < parts.length - 1) el.appendChild(document.createElement('br'));
+  });
+}
+
 function showAlertModal(title, message) {
+  // Push to shared focus stack so restoreFocus() works correctly when stacked with other modals (GAP-305).
+  if (typeof pushFocusStack === 'function') pushFocusStack();
   document.getElementById('alert-modal-title').textContent = title;
-  document.getElementById('alert-modal-message').innerHTML = message.replace(/\n/g, '<br>');
+  _setModalText(document.getElementById('alert-modal-message'), message);
   document.getElementById('alert-modal-overlay').style.display = 'block';
+  // pushFocusStack (GAP-197) pairs with trapFocus/restoreFocus below — using
+  // the shared focus-stack mechanism, not a local variable, so closeAlertModal
+  // also pops the keydown listener trapFocus registers on document. A prior
+  // version tracked its own `_alertPreviousFocus` and never called
+  // restoreFocus(), which left that trapFocus listener permanently attached
+  // after every alert modal close.
+  if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
   if (typeof setInitialFocus === 'function') setInitialFocus('alert-modal-overlay');
   if (typeof trapFocus === 'function') trapFocus('alert-modal-overlay');
 }
@@ -43,19 +55,28 @@ function closeAlertModal() {
 // ---------------------------------------------------------------------------
 
 let _confirmResolve = null;
+let _confirmPreviousFocus = null;
 
 function showConfirmModal(title, message, okLabel = 'OK') {
+  _confirmPreviousFocus = document.activeElement;
   document.getElementById('confirm-modal-title').textContent = title;
-  document.getElementById('confirm-modal-message').innerHTML = message.replace(/\n/g, '<br>');
+  _setModalText(document.getElementById('confirm-modal-message'), message);
   const okBtn = document.getElementById('confirm-modal-ok');
   if (okBtn) okBtn.textContent = okLabel;
   document.getElementById('confirm-modal-overlay').style.display = 'block';
+  if (okBtn) okBtn.focus();
+  if (typeof trapFocus === 'function') trapFocus('confirm-modal-overlay');
   return new Promise(resolve => { _confirmResolve = resolve; });
 }
 
 function closeConfirmModal(result) {
   document.getElementById('confirm-modal-overlay').style.display = 'none';
+  if (typeof restoreFocus === 'function') restoreFocus();
   if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+  if (_confirmPreviousFocus && typeof _confirmPreviousFocus.focus === 'function') {
+    _confirmPreviousFocus.focus();
+  }
+  _confirmPreviousFocus = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,26 +97,6 @@ function showToast(message, type = 'success', duration = 3000) {
   }, duration);
 }
 
-// ---------------------------------------------------------------------------
-// Chat panel toggle
-// ---------------------------------------------------------------------------
-
-function toggleChat() {
-  const chatArea = document.getElementById('chat-area');
-  const viewerArea = document.getElementById('viewer-area');
-  const toggleBtn = document.getElementById('toggle-chat');
-
-  if (chatArea.classList.contains('collapsed')) {
-    chatArea.classList.remove('collapsed');
-    viewerArea.classList.remove('expanded');
-    toggleBtn.textContent = '◀';
-  } else {
-    chatArea.classList.add('collapsed');
-    viewerArea.classList.add('expanded');
-    toggleBtn.textContent = '▶';
-  }
-}
-
 function refreshLayoutStatusUI() {
   const layoutChip = document.getElementById('layout-freshness-chip');
   const layoutBtn = document.getElementById('layout-btn');
@@ -114,10 +115,13 @@ function refreshLayoutStatusUI() {
   if (layoutBtn) {
     if (freshness.isStale) {
       layoutBtn.textContent = '↻ Regenerate Preview';
+      layoutBtn.title = 'Preview is out of date — regenerate before confirming layout';
     } else if (generationState.layoutConfirmed || generationState.phase === 'confirmed') {
       layoutBtn.textContent = '⬇️ Generate Final Files';
+      layoutBtn.title = 'Layout confirmed — produce final submission-ready DOCX and PDF files';
     } else {
       layoutBtn.textContent = '✅ Confirm Layout';
+      layoutBtn.title = 'Step 2 of 3: Confirm the layout looks right before generating final files';
     }
   }
 }
@@ -136,7 +140,7 @@ function handleLayoutFreshnessChipClick() {
 const _STAGE_BUTTONS = [
   'analyze-btn', 'recommend-btn', 'generate-btn',
   'rewrite-btn', 'spell-btn', 'generate-proceed-btn',
-  'layout-btn', 'finalise-action-btn',
+  'layout-btn', 'final-generate-proceed-btn', 'finalise-action-btn',
 ];
 
 /** Maps each workflow stage to its one primary action button. */
@@ -148,6 +152,7 @@ const _STAGE_BUTTON_MAP = {
   spell:          'spell-btn',
   generate:       'generate-proceed-btn',
   layout:         'layout-btn',
+  final_generate: 'final-generate-proceed-btn',
   finalise:       'finalise-action-btn',
 };
 
@@ -173,7 +178,6 @@ export {
   showAlertModal, closeAlertModal,
   showConfirmModal, closeConfirmModal,
   showToast,
-  toggleChat,
   refreshLayoutStatusUI,
   handleLayoutFreshnessChipClick,
   updateActionButtons,

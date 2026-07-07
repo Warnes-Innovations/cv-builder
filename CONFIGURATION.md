@@ -145,6 +145,8 @@ generation:
   max_skills: 20
   max_achievements: 5
   max_publications: 10
+  max_publication_pages: null       # Page-based cap (overrides count when set). null = no cap.
+  publication_chars_per_page: 1500  # Calibration: ~10 APA citations ≈ 4 pages at 0.88em
   page_margin: "0.5in"  # Default PDF/print page margins
 
   formats:

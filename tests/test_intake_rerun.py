@@ -140,9 +140,9 @@ def _make_app_client(tmp: Path):
 
     stack = ExitStack()
     stack.enter_context(patch('scripts.web_app.get_llm_provider', return_value=mock_llm))
-    stack.enter_context(patch('scripts.web_app.get_cached_pricing', return_value={}))
-    stack.enter_context(patch('scripts.web_app.get_pricing_updated_at', return_value='2024-01-01'))
-    stack.enter_context(patch('scripts.web_app.get_pricing_source', return_value='static'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_cached_pricing', return_value={}))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_updated_at', return_value='2024-01-01'))
+    stack.enter_context(patch('scripts.routes.auth_routes.get_pricing_source', return_value='static'))
 
     app = create_app(args)
     app.config['TESTING'] = True

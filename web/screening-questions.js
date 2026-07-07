@@ -9,13 +9,21 @@
  * Screening questions tab: parse, search, generate, save responses.
  *
  * Dependencies (resolved through globalThis at runtime):
- *   escapeHtml, showAlertModal
+ *   escapeHtml, showAlertModal, appendMessage
  */
+
+import { disclosureKey, StorageKeys } from './api-client.js';
 
 // ── Module-level state ────────────────────────────────────────────────────────
 
 /** Per-question draft state: { format, experienceIndices, responseText, topicTag, priorResponse } */
 const _screeningState = {};
+
+/** Raw text from the sc-input textarea — survives tab navigation. */
+let _screeningInputText = '';
+
+/** Reset function for testing — clears saved textarea state. */
+function _resetScreeningInputText() { _screeningInputText = ''; }
 
 // ── Populate screening tab ────────────────────────────────────────────────────
 
@@ -27,13 +35,23 @@ async function populateScreeningTab() {
       <p class="sc-intro">Paste one or more screening questions below — one per line, or separated by blank lines. Click <strong>Parse Questions</strong> to generate tailored draft responses.</p>
       <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:20px;">
         <textarea id="sc-input" rows="6" style="flex:1;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.93em;resize:vertical;" placeholder="Paste screening questions here…&#10;&#10;E.g.&#10;Describe a time you led a cross-functional project.&#10;&#10;How do you handle tight deadlines?"></textarea>
-        <button class="btn btn-primary" onclick="parseScreeningQuestions()">Parse Questions</button>
+        <button class="btn-primary" onclick="parseScreeningQuestions()">Parse Questions</button>
       </div>
       <div id="sc-questions-container"></div>
       <div class="sc-save-bar" id="sc-save-bar" style="display:none;">
-        <button class="btn btn-success" id="sc-save-btn" onclick="saveScreeningResponses()">💾 Save All Responses</button>
+        <button class="continue-btn" id="sc-save-btn" onclick="saveScreeningResponses()">💾 Save All Responses</button>
+      </div>
+      <div class="nav-buttons nav-end" style="margin-top:24px;">
+        <button class="continue-btn" onclick="handleStepClick('interview_prep')">🎤 Proceed to Interview Prep →</button>
       </div>
     </div>`;
+
+  // Restore the raw input text and wire up save-on-input listener.
+  const scInput = document.getElementById('sc-input');
+  if (scInput) {
+    if (_screeningInputText) scInput.value = _screeningInputText;
+    scInput.addEventListener('input', () => { _screeningInputText = scInput.value; });
+  }
 }
 
 // ── Parse questions ───────────────────────────────────────────────────────────
@@ -82,7 +100,7 @@ function renderQuestionBlock(question, idx) {
           ${['direct','star','technical'].map(f => `
             <button class="sc-format-btn${f === 'direct' ? ' active' : ''}" data-fmt="${f}" onclick="selectFormat(${idx},'${f}',this)">${_fmtLabel(f)}</button>`).join('')}
         </div>
-        <button class="btn btn-primary btn-sm" id="sc-gen-btn-${idx}" onclick="generateScreeningResponse(${idx})">✨ Generate Draft</button>
+        <button class="btn-primary" id="sc-gen-btn-${idx}" onclick="generateScreeningResponse(${idx})">✨ Generate Draft</button>
         <div id="sc-result-${idx}" style="margin-top:12px;"></div>
         <div class="sc-topic-row" id="sc-topic-row-${idx}" style="display:none;">
           <label for="sc-topic-${idx}">Topic tag:</label>
@@ -209,6 +227,19 @@ async function generateScreeningResponse(idx) {
    *   - window:_screeningState.format
    *   notes: Generates a single screening response from the selected format, prior-response seed, and chosen experience evidence, then stores the draft back into UI state for editing.
    */
+  // GAP-374: fire LLM disclosure on first use per provider
+  try {
+    const provider = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA) || '{}').currentModelProvider || null;
+    const key = disclosureKey(provider);
+    if (!localStorage.getItem(key)) {
+      const label = provider ? ` (${provider})` : '';
+      if (typeof appendMessage === 'function') {
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis. Review your provider's data policy for details.`);
+      }
+      localStorage.setItem(key, '1');
+    }
+  } catch (_) { /* non-fatal */ }
+
   const btn      = document.getElementById(`sc-gen-btn-${idx}`);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
 
@@ -316,6 +347,8 @@ async function saveScreeningResponses() {
 
 export {
   _screeningState,
+  _screeningInputText,
+  _resetScreeningInputText,
   populateScreeningTab,
   parseScreeningQuestions,
   renderQuestionBlock,

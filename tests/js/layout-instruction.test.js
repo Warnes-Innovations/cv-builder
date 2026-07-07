@@ -12,6 +12,7 @@
  */
 import {
   showProcessing,
+  _showGenStepProgress,
   showConfirmationMessage,
   renderInstructionHistory,
   renderPreviewOutputStatus,
@@ -21,6 +22,8 @@ import {
   completeLayoutReview,
   generateFinalOutputs,
   loadLayoutInstructionHistory,
+  submitLayoutInstruction,
+  pxToPt,
 } from '../../web/layout-instruction.js'
 import { scheduleAtsRefresh } from '../../web/ats-refinement.js'
 import { apiCall } from '../../web/api-client.js'
@@ -55,7 +58,15 @@ vi.mock('../../web/state-manager.js', () => ({
 
 function buildDom() {
   document.body.innerHTML = `
-    <div id="processing-indicator" style="display:none"></div>
+    <div id="processing-indicator" style="display:none">
+      <div class="spinner"></div>
+      <p id="processing-indicator-label">Applying instruction...</p>
+      <ol class="cv-gen-step-list" id="cv-gen-step-list" style="display:none">
+        <li class="cv-gen-step is-pending" data-step="0">Rendering HTML</li>
+        <li class="cv-gen-step is-pending" data-step="1">Generating PDF</li>
+        <li class="cv-gen-step is-pending" data-step="2">Building DOCX files</li>
+      </ol>
+    </div>
     <div id="confirmation-message" style="display:none"></div>
     <div id="layout-stale-callout" style="display:none"></div>
     <div id="layout-preview-status" style="display:none"></div>
@@ -63,6 +74,7 @@ function buildDom() {
     <div id="preview-output-status"></div>
     <span id="instruction-count">0</span>
     <button id="confirm-layout-btn" style="display:none"></button>
+    <button id="confirm-layout-btn-2" style="display:none"></button>
     <button id="proceed-to-finalise-btn" style="display:none"></button>`
 }
 
@@ -126,7 +138,9 @@ describe('staged layout regressions', () => {
 
     await completeLayoutReview()
 
-    expect(apiCall).toHaveBeenCalledWith('POST', '/api/cv/confirm-layout', {})
+    expect(apiCall).toHaveBeenCalledWith('POST', '/api/cv/confirm-layout', {
+      content_revision: 0,
+    })
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/cv/generate-final', {})
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
     expect(stateManager.markLayoutConfirmed).toHaveBeenCalled()
@@ -143,7 +157,7 @@ describe('staged layout regressions', () => {
     expect(apiCall).not.toHaveBeenCalledWith('POST', '/api/layout-complete', expect.anything())
     expect(appendMessage).toHaveBeenCalledWith(
       'system',
-      expect.stringContaining('Final generation failed')
+      expect.stringContaining('Could not generate final files')
     )
     expect(stateManager.setPhase).not.toHaveBeenCalled()
     expect(switchTab).not.toHaveBeenCalled()
@@ -164,9 +178,57 @@ describe('showProcessing', () => {
     expect(document.getElementById('processing-indicator').style.display).toBe('none')
   })
 
+  it('hides the step list and shows the label when called normally', () => {
+    showProcessing(true)
+    expect(document.getElementById('cv-gen-step-list').style.display).toBe('none')
+    expect(document.getElementById('processing-indicator-label').style.display).toBe('')
+  })
+
   it('does not throw when element is absent', () => {
     document.body.innerHTML = ''
     expect(() => showProcessing(true)).not.toThrow()
+  })
+})
+
+// ── _showGenStepProgress ──────────────────────────────────────────────────
+
+describe('_showGenStepProgress', () => {
+  it('shows the indicator and the step list', () => {
+    _showGenStepProgress(0)
+    expect(document.getElementById('processing-indicator').style.display).toBe('block')
+    expect(document.getElementById('cv-gen-step-list').style.display).toBe('block')
+  })
+
+  it('hides the label when showing step list', () => {
+    _showGenStepProgress(0)
+    expect(document.getElementById('processing-indicator-label').style.display).toBe('none')
+  })
+
+  it('marks step 0 active and steps 1-2 pending when activeIdx=0', () => {
+    _showGenStepProgress(0)
+    const steps = [...document.querySelectorAll('.cv-gen-step')]
+    expect(steps[0].classList.contains('is-active')).toBe(true)
+    expect(steps[1].classList.contains('is-pending')).toBe(true)
+    expect(steps[2].classList.contains('is-pending')).toBe(true)
+  })
+
+  it('marks step 0 complete and step 1 active when activeIdx=1', () => {
+    _showGenStepProgress(1)
+    const steps = [...document.querySelectorAll('.cv-gen-step')]
+    expect(steps[0].classList.contains('is-complete')).toBe(true)
+    expect(steps[1].classList.contains('is-active')).toBe(true)
+    expect(steps[2].classList.contains('is-pending')).toBe(true)
+  })
+
+  it('marks all steps complete when activeIdx < 0', () => {
+    _showGenStepProgress(-1)
+    const steps = [...document.querySelectorAll('.cv-gen-step')]
+    steps.forEach(s => expect(s.classList.contains('is-complete')).toBe(true))
+  })
+
+  it('does not throw when elements are absent', () => {
+    document.body.innerHTML = ''
+    expect(() => _showGenStepProgress(0)).not.toThrow()
   })
 })
 
@@ -305,37 +367,82 @@ describe('addToInstructionHistory', () => {
 // ── undoInstruction ───────────────────────────────────────────────────────
 
 describe('undoInstruction', () => {
-  beforeEach(() => {
+  it('shows "Nothing to undo" when undo stack is empty', () => {
+    window.layoutInstructions = []
+    undoInstruction(0)
+    expect(appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('Nothing to undo'))
+  })
+
+  it('restores previous instructions and HTML after a successful submit', async () => {
+    // Set up pre-submit state
     window.layoutInstructions = [
-      { timestamp: '', instruction_text: 'A', change_summary: '' },
-      { timestamp: '', instruction_text: 'B', change_summary: '' },
+      { timestamp: '10:00', instruction_text: 'A', change_summary: 'summary A', confirmation: true },
     ]
-  })
+    stateManager.getTabData.mockReturnValue({ '*.html': '<html>before</html>' })
+    stateManager.getGenerationState.mockReturnValue({ previewAvailable: true })
 
-  it('removes the entry at the given index', () => {
-    undoInstruction(0)
-    expect(window.layoutInstructions).toHaveLength(1)
-    expect(window.layoutInstructions[0].instruction_text).toBe('B')
-  })
+    apiCall.mockResolvedValueOnce({
+      ok: true,
+      html: '<html>after</html>',
+      summary: 'made bold',
+      safety_alert: null,
+      preview_outputs: null,
+      page_count_estimate: null,
+      page_count_exact: null,
+      page_count_confidence: null,
+      page_count_source: null,
+      page_length_warning: false,
+      preview_generated_at: '2026-01-01T00:00:00Z',
+      preview_request_id: 'req-1',
+    })
 
-  it('calls appendMessage with a system message', () => {
-    undoInstruction(0)
-    expect(appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('Undo'))
-  })
+    await submitLayoutInstruction('make it bold')
 
-  it('does nothing for an out-of-range index', () => {
-    undoInstruction(99)
+    // After submit: two instructions in history, stateManager has new HTML
     expect(window.layoutInstructions).toHaveLength(2)
+
+    // Now undo
+    undoInstruction(0)
+
+    // Instructions restored to pre-submit snapshot
+    expect(window.layoutInstructions).toHaveLength(1)
+    expect(window.layoutInstructions[0].instruction_text).toBe('A')
+
+    // HTML restored via setTabData
+    const lastSetTabDataCall = stateManager.setTabData.mock.calls
+      .slice()
+      .reverse()
+      .find(([tab]) => tab === 'cv')
+    expect(lastSetTabDataCall[1]).toMatchObject({ '*.html': '<html>before</html>' })
   })
 
-  it('does nothing when layoutInstructions is absent', () => {
+  it('appends a system message on successful undo', async () => {
+    stateManager.getTabData.mockReturnValue({ '*.html': '<html>x</html>' })
+    stateManager.getGenerationState.mockReturnValue({ previewAvailable: true })
+    apiCall.mockResolvedValueOnce({
+      ok: true,
+      html: '<html>y</html>',
+      summary: 's',
+      safety_alert: null,
+      preview_outputs: null,
+      page_count_estimate: null,
+      page_count_exact: null,
+      page_count_confidence: null,
+      page_count_source: null,
+      page_length_warning: false,
+      preview_generated_at: '2026-01-01T00:00:00Z',
+      preview_request_id: null,
+    })
+    await submitLayoutInstruction('tweak')
+    appendMessage.mockReset()
+
+    undoInstruction(0)
+    expect(appendMessage).toHaveBeenCalledWith('system', expect.stringContaining('undone'))
+  })
+
+  it('does not throw when layoutInstructions is absent', () => {
     delete window.layoutInstructions
     expect(() => undoInstruction(0)).not.toThrow()
-  })
-
-  it('updates the DOM count after removal', () => {
-    undoInstruction(1)
-    expect(document.getElementById('instruction-count').textContent).toBe('1')
   })
 })
 
@@ -435,5 +542,28 @@ describe('renderLayoutPreviewStatus', () => {
     expect(container.style.display).toBe('block')
     expect(container.textContent).toContain('Ready for final files')
     expect(container.textContent).toContain('Confirmed preview matches the latest approved content')
+  })
+})
+
+describe('pxToPt', () => {
+  it('converts 13px to 9.8pt (default font size; 9.75 rounds up)', () => {
+    expect(pxToPt(13)).toBe(9.8)
+  })
+
+  it('converts 12px to 9pt', () => {
+    expect(pxToPt(12)).toBe(9)
+  })
+
+  it('converts 16px to 12pt', () => {
+    expect(pxToPt(16)).toBe(12)
+  })
+
+  it('converts 6px to 4.5pt (minimum allowed value)', () => {
+    expect(pxToPt(6)).toBe(4.5)
+  })
+
+  it('rounds to one decimal place', () => {
+    // 10.5px * 0.75 = 7.875 → rounds to 7.9
+    expect(pxToPt(10.5)).toBe(7.9)
   })
 })
