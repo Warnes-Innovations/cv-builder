@@ -32,7 +32,7 @@ function _findExperienceRecommendationRecord(expId) {
 
 const _STEP_ORDER = [
   'job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout',
-  'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
+  'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'finalise', 'harvest',
 ];
 const _STEP_DISPLAY = {
   job:            'Job Input',
@@ -46,6 +46,7 @@ const _STEP_DISPLAY = {
   screening:      'Screening',
   interview_prep: 'Interview Prep',
   thank_you:      'Thank You',
+  finalise:       'Finalise',
   harvest:        'Update Master CV',
 };
 const _ACTION_LABELS = {
@@ -922,6 +923,7 @@ const _STEP_FWD_PHASE_MIN = {
   screening:      7,
   interview_prep: 7,
   thank_you:      7,
+  finalise:       7,
   harvest:        7,
 };
 
@@ -950,6 +952,7 @@ function updateWorkflowSteps(status) {
     screening:      '📋 Screening',
     interview_prep: '🎤 Interview Prep',
     thank_you:      '🙏 Thank You',
+    finalise:       '✅ Finalise',
     harvest:        '🌾 Update Master CV',
   };
 
@@ -970,6 +973,7 @@ function updateWorkflowSteps(status) {
     screening:      postLayout,
     interview_prep: postLayout,
     thank_you:      postLayout,
+    finalise:       postLayout,
     harvest:        postLayout,
   };
 
@@ -1000,7 +1004,7 @@ function updateWorkflowSteps(status) {
 
   const stepIds = [
     'job', 'analysis', 'customizations', 'rewrite', 'spell', 'layout',
-    'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'harvest',
+    'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'finalise', 'harvest',
   ];
   const staleSteps = new Set(status.stale_steps || []);
   stateManager.setStaleSteps(staleSteps);
@@ -1126,6 +1130,7 @@ function _doStepNavigate(step) {
     screening:      'screening',
     interview_prep: 'interview-prep',
     thank_you:      'thank-you',
+    finalise:       'finalise',
     harvest:        'harvest',
   };
   const tabName = stepToTab[step];
@@ -1192,6 +1197,7 @@ function handleStepClick(step) {
     screening:      'screening',
     interview_prep: 'interview-prep',
     thank_you:      'thank-you',
+    finalise:       'finalise',
     harvest:        'harvest',
   };
   const tabName = stepToTab[step];

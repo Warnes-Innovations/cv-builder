@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 101)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 102)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,20 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 102) Implementation Notes
+
+The `feature/multi-user-deployment` branch merged to `main` via PR #127 this cycle, lifting the GAP-01 constraint that had blocked `web/index.html` and `web/master-cv.js` edits for many prior cycles. This cycle picked up 4 of the previously-blocked, highest-priority gaps:
+
+- GAP-341 (CRITICAL, OPEN→RESOLVED): Made the Finalise/Archive tab structurally reachable — added it to `STAGE_TABS`, gave it a workflow-step pill (`#step-finalise`), wired `updateWorkflowSteps()`/`stepToTab` maps, removed its hardcoded `display:none`, and added a secondary "Skip to Finalise" button on the File Review tab. Closes all 4 barriers from the original report.
+- GAP-325 (MEDIUM, PARTIAL→RESOLVED): The remaining nav-visibility half of this gap is resolved as a side effect of the GAP-341 fix.
+- GAP-309 (HIGH bug, OPEN→RESOLVED): Fixed the duplicate `id` on the publication modal heading and corrected `aria-labelledby` to reference the surviving canonical id.
+- GAP-346 (HIGH, OPEN→RESOLVED): Added a WCAG 2.4.1 skip-navigation link as the first focusable element in `<body>`, with a dedicated `.skip-link` CSS class (visible on focus, unlike `.sr-only`).
+- GAP-347 (HIGH bug, OPEN→PARTIAL): Fixed a genuine data-loss bug where multi-line extra-field values (e.g. `abstract`, `note`) silently truncated on save; the broader "unstructured free-text textarea with no diff/warning" design risk remains open.
+
+Test suite: 1526 Python + 1334 JS passing.
+
+---
 
 ## 2026-07-07 (Cycle 101) Implementation Notes
 
@@ -3893,7 +3907,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-309: Duplicate `id` Attributes on Publication Modal Heading — aria-labelledby Broken
 
 **Priority:** HIGH (Bug)
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 102) — Removed the duplicate `id`, keeping `pub-modal-title-heading` (the one the JS already references) as the sole canonical id, and updated the modal's `aria-labelledby` to point to it.
 **Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
 **Description:** `master-cv.js:316` sets two `id` attributes on the same `<h2>` element: `id="master-pub-modal-title-heading" id="pub-modal-title-heading"`. HTML parsers retain only the first `id` (`master-pub-modal-title-heading`). JavaScript at `master-cv.js:1497` and `1526` references `pub-modal-title-heading` (the second id) to update the title between "Add Publication" and "Edit Publication" — these calls silently fail (`getElementById()` returns `null`) in conformant parsers. Additionally, the modal's `aria-labelledby="master-pub-modal-title"` points to a non-existent id (neither of the two ids on the heading), so screen readers cannot announce the modal title programmatically.
 **Affected stories:** US-M4, US-X2
@@ -4069,7 +4083,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-325: Finalise Tab Hidden — Only Reachable Via Mislabeled "Package Application Files" Button
 
 **Priority:** MEDIUM
-**Status:** PARTIAL 2026-07-06 (cycle 86) — Relabeled the action button to "📦 Archive Application" with a clarifying `title` tooltip at startup via `web/app.js:setupEventListeners()` (index.html is off-limits until GAP-01 lands). The Finalise tab nav visibility deferral remains; that requires index.html changes blocked by GAP-01.
+**Status:** RESOLVED 2026-07-07 (cycle 102) — The remaining nav-visibility part is fixed by GAP-341's structural fix (see that entry): the Finalise tab is now a visible `STAGE_TABS` entry with its own workflow-step pill, resolving option (a) from the Fix below. The button relabel (cycle 86) already addressed option (b). The readiness-badge suggestion in the Fix note was not pursued in this cycle — the step pill itself now serves as the "archiving is available" signal.
 **Discovered:** 2026-07-06 (cycle 82) by recruiter-ops.
 **Description:** The Finalise tab (`index.html:227`) has `style="display:none"` and is absent from `STAGE_TABS` (`ui-core.js:353–366`). The archive flow is reachable only via the `finalise-action-btn` labeled "📦 Package Application Files" (`index.html:198`) — a label that sounds like a file-zipping operation, not an archival checkpoint. Recruiters and applicants reviewing the workflow nav see no "Finalise" or "Archive" step pill; the action button alone signals that archiving is available, and only after the user has visited the File Review tab. The readiness checklist (`finalise.js:163–214`) and the archive confirmation are fully implemented but inaccessible without knowing to click this button.
 **Affected stories:** US-O4 (proposed), US-O1, US-A9
@@ -4231,7 +4245,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-341: Finalise/Archive Tab Structurally Unreachable in Normal Workflow
 
 **Priority:** CRITICAL
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 102) — index.html/master-cv.js OFF-LIMITS constraint lifted (GAP-01 merged), enabling the structural fix. Added `finalise` to `STAGE_TABS` (`ui-core.js`) so `switchTab('finalise')` correctly shows the tab and calls `updateActionButtons('finalise')`. Added a `#step-finalise` workflow-step pill in `index.html` (between Thank You and Harvest) plus wiring in `workflow-steps.js`: `_STEP_ORDER`, `_STEP_DISPLAY`, `_STEP_FWD_PHASE_MIN` (7, matching the other post-generation steps), and both `stepToTab` maps (`_doStepNavigate` and `handleStepClick`) so clicking the pill navigates correctly. `updateWorkflowSteps()`'s `STEP_LABELS`/`done{}`/`stepIds` gained a `finalise` entry, gated the same way as `harvest`/`thank_you` (`postLayout`). Removed the hardcoded `style="display:none"` from `#tab-finalise` (all the other post-generation tabs rely on `updateTabBarForStage()` alone, not a hardcoded hidden state). Added a secondary "✅ Skip to Finalise" button on the File Review tab (`download-tab.js`) alongside the existing "Proceed to Cover Letter" button, giving users who don't need a cover letter a direct path forward. This also resolves the remaining part of GAP-325 (see below).
 **Discovered:** 2026-07-06 (cycle 93) by recruiter-ops.
 **Description:** The archive tab (`web/finalise.js`) has a complete implementation (readiness checklist, status dropdown, notes textarea, archive button) but four independent structural barriers make it inaccessible: (1) `tab-finalise` is hardcoded `display:none` in `index.html:227` and absent from `STAGE_TABS`; (2) `finalise-action-btn` is hardcoded `display:none` in `index.html:198` and `updateActionButtons('finalise')` is never called; (3) no phase in `PHASE_TO_STEP` maps to `'finalise'`; (4) the File Review tab's only navigation button leads to Cover Letter, not Archive. The only signal to users is a chat message "You can now finalise your application" with no matching UI affordance.
 **Affected stories:** US-O1, US-O2, US-O5
@@ -4281,7 +4295,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-346: No Skip Navigation Link — WCAG 2.4.1 Level A Violation
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 102) — Added `<a href="#document-content" class="skip-link">Skip to content</a>` as the first focusable element in `<body>`. Used a dedicated `.skip-link` class rather than plain `.sr-only` — `.sr-only` hides content even on focus, which would make the link invisible to the sighted keyboard users it's meant to serve; `.skip-link` is visually hidden by default and becomes visible on `:focus`.
 **Discovered:** 2026-07-06 (cycle 93) by accessibility-specialist.
 **Description:** `index.html` has no "Skip to main content" bypass link. A keyboard user must Tab through the fixed header (5 buttons), the position/ATS metrics bar, and all 13 workflow-step pills before reaching the Conversation input or Tab panel on every page load. WCAG 2.4.1 (Bypass Blocks) is a Level A mandatory criterion. Fix: add `<a href="#document-content" class="sr-only">Skip to content</a>` as the first focusable element in `<body>`.
 **Affected stories:** US-X1
@@ -4291,7 +4305,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-347: Publication Edit Modal Silently Drops Non-Hardcoded BibTeX Fields on Save
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-07 (cycle 102) — Fixed a demonstrable, unconditional data-loss bug in `editMasterPublication()`/`saveMasterPublication()` (`master-cv.js`): any extra field whose value contained an embedded newline (plausible for prose fields like `abstract`, `note`, `annote`) split into an unparseable continuation line on save, silently truncating the value to its first line even when the user never touched the textarea. Now escapes embedded newlines as literal `\n` when populating the textarea and unescapes them on save, so the round-trip is lossless for values the user doesn't edit. Regression tests added in `tests/js/master-cv.test.js`. **Not fixed:** the underlying design risk remains — the "Extra fields" textarea is still unstructured free text with no diff or "unchanged = safe" guard, so a curator who *does* accidentally edit/clear a line while changing other fields gets no warning. A structured per-field UI (or a pre-save diff) would close the remaining gap.
 **Discovered:** 2026-07-06 (cycle 93) by master-cv-curator.
 **Description:** The publication CRUD modal hard-codes a "known" field set (`author`, `editor`, `title`, `year`, `journal`, `booktitle`, `doi`). All other standard BibTeX fields — `volume`, `pages`, `publisher`, `number`, `series`, `isbn`, `url`, etc. — go into a raw "Extra fields (key=value)" textarea. When a curator opens an existing entry and saves, any content in that textarea that they do not explicitly preserve is silently dropped from `publications.bib`. No warning, no diff, no "unchanged = safe" guard. This directly violates US-M4: "Round-trip editing through the UI preserves existing BibTeX information." Location: `web/master-cv.js:1519–1567` (OFF-LIMITS until GAP-01 resolves).
 **Affected stories:** US-M4
