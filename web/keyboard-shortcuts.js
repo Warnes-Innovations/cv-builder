@@ -66,12 +66,14 @@ function _getCards() {
   const tab = typeof stateManager !== 'undefined' ? stateManager.getCurrentTab() : null;
   if (tab === 'rewrite') return [...document.querySelectorAll('.rewrite-card')];
   if (tab === 'spell')   return [...document.querySelectorAll('.spell-card')];
-  // DataTable review sub-tabs (Experiences, Skills, Achievements) — use visible rows.
+  // DataTable review sub-tabs (Experiences, Skills, Achievements, Publications) — use visible rows.
   if (tab === 'customizations') {
     const pane = window._activeReviewPane;
     if (pane === 'experience')   return [...document.querySelectorAll('#experience-review-table tbody tr[data-exp-id]')].filter(r => r.style.display !== 'none');
     if (pane === 'skills')       return [...document.querySelectorAll('#skills-review-table tbody tr[data-skill]')].filter(r => r.style.display !== 'none');
     if (pane === 'achievements') return [...document.querySelectorAll('#achievements-review-table tbody tr[data-ach-id]')].filter(r => r.style.display !== 'none');
+    // Publications sub-tab: A/R toggles include/exclude (GAP-332)
+    if (pane === 'publications') return [...document.querySelectorAll('#publications-review-table tbody tr[data-cite-key]:not(.pub-divider-row)')].filter(r => r.style.display !== 'none');
   }
   return [];
 }
@@ -120,17 +122,20 @@ function _acceptFocusedCard() {
     const btn = cards[_focusedCardIndex].querySelector('[data-action="keep"], .spell-keep-btn');
     if (btn) btn.click();
   } else if (tab === 'customizations') {
-    // DataTable review rows: A = include (GAP-324)
+    // DataTable review rows: A = include (GAP-324, GAP-332)
     const cards = _getCards();
     if (_focusedCardIndex < 0 || _focusedCardIndex >= cards.length) return;
     const row = cards[_focusedCardIndex];
-    const rowType = _getReviewPaneType();
-    if (rowType === 'experience') {
+    const pane = window._activeReviewPane;
+    if (pane === 'experience') {
       const id = row.dataset.expId;
       if (id && typeof handleActionClick === 'function') handleActionClick(id, 'include', 'experience');
-    } else if (rowType === 'skill') {
+    } else if (pane === 'skills') {
       const id = row.dataset.skill;
       if (id && typeof handleActionClick === 'function') handleActionClick(id, 'include', 'skill');
+    } else if (pane === 'publications') {
+      const citeKey = row.dataset.citeKey;
+      if (citeKey && typeof handlePubAction === 'function') handlePubAction(citeKey, true);
     } else {
       // Achievements: click the include/accept button if present
       const btn = row.querySelector('[data-action="include"], .ach-include-btn');
@@ -154,17 +159,20 @@ function _rejectFocusedCard() {
     const btn = cards[_focusedCardIndex].querySelector('[data-action="apply"], .spell-apply-btn');
     if (btn) btn.click();
   } else if (tab === 'customizations') {
-    // DataTable review rows: R = exclude (GAP-324)
+    // DataTable review rows: R = exclude (GAP-324, GAP-332)
     const cards = _getCards();
     if (_focusedCardIndex < 0 || _focusedCardIndex >= cards.length) return;
     const row = cards[_focusedCardIndex];
-    const rowType = _getReviewPaneType();
-    if (rowType === 'experience') {
+    const pane = window._activeReviewPane;
+    if (pane === 'experience') {
       const id = row.dataset.expId;
       if (id && typeof handleActionClick === 'function') handleActionClick(id, 'exclude', 'experience');
-    } else if (rowType === 'skill') {
+    } else if (pane === 'skills') {
       const id = row.dataset.skill;
       if (id && typeof handleActionClick === 'function') handleActionClick(id, 'exclude', 'skill');
+    } else if (pane === 'publications') {
+      const citeKey = row.dataset.citeKey;
+      if (citeKey && typeof handlePubAction === 'function') handlePubAction(citeKey, false);
     } else {
       // Achievements: click the exclude button if present
       const btn = row.querySelector('[data-action="exclude"], .ach-exclude-btn');

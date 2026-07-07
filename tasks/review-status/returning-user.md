@@ -8,7 +8,14 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-07-06 (source-verified cycle 82)
+**Last Updated:** 2026-07-06 17:00 ET (source-verified cycle 87)
+
+**Executive Summary (cycle 87, 2026-07-06):** Full fresh source re-read against all three US-S* stories. All nine pass criteria continue to hold. Two cycle-82 open gaps have improved:
+
+1. **GAP-RU-C82-A (welcome modal) partially mitigated** — `maybeShowWelcomeModal()` now has an active-session guard (GAP-314): if the backend session is at any phase other than `init`, the modal is suppressed entirely (`session-manager.js:179–185`). The gap remains only for sessions at `init` phase (job loaded but not yet analysed). Status updated to Partial.
+2. **GAP-RU-C82-C (root-URL navigation) partially resolved** — `ensureSessionContext()` now auto-resumes when exactly one active session exists (`session-manager.js:469–476`, GAP-323). Multi-session users still see the modal. Status updated to Partial.
+3. **GAP-RU-C82-B (Generated Files tab, no timestamps)** — remains open. `finalGeneratedAt` is in generation state but not rendered in the Generated Files tab UI.
+4. Line numbers corrected throughout for current codebase (session-manager.js shifted ~27 lines since cycle 82).
 
 **Executive Summary (cycle 82, 2026-07-06):** Full fresh source read against all three US-S* stories. The nine existing criteria hold as previously reported. Three new findings added from this read:
 
@@ -175,13 +182,15 @@ After session restore, the returning user receives a summary message (GAP-110 re
 
 ## Cycle 82 New Observations (2026-07-06)
 
-### GAP-RU-C82-A (MEDIUM) — Welcome modal fires for all returning users until dismissed
+### GAP-RU-C82-A (LOW, partial) — Welcome modal still fires for init-phase returning users
 
-`maybeShowWelcomeModal()` (`session-manager.js:175–201`) checks only `localStorage.getItem('cv-builder-welcome-dismissed')`. If the user has never actively checked the "Don't show automatically on startup" checkbox (`index.html:391–393`), the welcome modal fires on every `init()` call (`app.js:57`) — even when a live session with work in progress is being restored. The modal body is oriented at new users (3-step overview, prerequisites) and provides no value to a returning user mid-application. The checkbox is easy to miss because it sits left-aligned in the modal footer while the primary CTA ("Get Started") is right-aligned.
+**Cycle 87 update:** `maybeShowWelcomeModal()` (`session-manager.js:175–209`) now implements an active-session guard (GAP-314, `session-manager.js:179–185`): after checking the localStorage dismissed key, it fetches `/api/status` and returns early if `statusData?.phase && statusData.phase !== 'init'`. Users mid-application (analysis phase or later) no longer see the modal on reload.
 
-**Evidence:** `session-manager.js:175–201`, `app.js:57`, `index.html:390–395`
+The remaining narrow case: a user who has loaded a job description but not yet clicked "Analyse Job" remains at `init` phase. On reload, their session is not yet at a non-init phase, so the welcome modal fires. Additionally, the localStorage dismissed key (`cv-builder-welcome-dismissed`) is the permanent suppressor — but the "Don't show automatically on startup" checkbox (`index.html:391–393`) is easy to miss (left-aligned footer vs right-aligned CTA).
 
-**Proposed story — US-S7:** "As a returning user continuing an active application, the onboarding modal should not interrupt me when a live session is already loaded. It should only appear when there is no active session or no master CV."
+**Evidence:** `session-manager.js:175–209` (guard at line 179–185), `app.js:57`, `index.html:390–395`
+
+**Proposed story — US-S7:** "As a returning user continuing an active application, the onboarding modal should not interrupt me. It should only appear when there is genuinely no active session (including init-phase sessions that have a job description loaded)."
 
 ---
 
@@ -197,13 +206,15 @@ A returning user who edited content in one session and returns later sees identi
 
 ---
 
-### GAP-RU-C82-C (LOW) — Session landing requires manual modal navigation after root-URL access
+### GAP-RU-C82-C (RESOLVED for single-session users) — Session landing auto-resumes when one active session exists
 
-When a returning user navigates to the root URL without a `?session=` parameter, `ensureSessionContext()` (`session-manager.js:457–467`) calls `openSessionsModal({ required: true })` and blocks on session selection. There is no "resume most recent session" shortcut. Users who previously worked in a session must open the modal, find their session (possibly paginated), and click Load before any context appears. For the common case of one active session per user, this is unnecessary friction.
+**Cycle 87 update:** `ensureSessionContext()` (`session-manager.js:465–487`, GAP-323) now fetches `/api/sessions/active` and, if exactly one active session is found, calls `loadSessionFile(activeSessions[0].path)` and returns true — bypassing the sessions modal entirely. Single-session returning users now land directly in their session on root-URL access.
 
-**Evidence:** `session-manager.js:457–467`, `session-switcher-ui.js:442–480` (recents strip exists but does not auto-navigate)
+Multi-session users still see the modal. The sessions modal itself has a "recent sessions" list sorted by last modified (`session-switcher-ui.js`), but no keyboard-accessible "Resume top session" one-click shortcut.
 
-**Proposed story — US-S4:** "As a returning user arriving at the root URL, if I have exactly one recently-active session, I should be taken to it directly (or offered a single-click 'Resume' option) instead of being required to navigate a full sessions modal."
+**Evidence:** `session-manager.js:465–487` (GAP-323 auto-resume at lines 468–478), comment: "Auto-resume when exactly one active session exists — skip the modal (GAP-323)."
+
+**Proposed story — US-S4 (updated scope):** "As a returning user with multiple sessions arriving at the root URL, the most recently active session should be surfaced with a single-click Resume affordance before the full sessions list."
 
 ---
 
@@ -231,6 +242,8 @@ When a returning user navigates to the root URL without a `?session=` parameter,
 
 ---
 
+**Reviewed against (cycle 87, 2026-07-06):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/session-actions.js, web/session-switcher-ui.js
+
 **Reviewed against (cycle 10, 2026-07-01):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/session-switcher-ui.js, web/utils.js
 
 **Reviewed against (cycle 9, 2026-06-30):** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-manager.js, web/workflow-steps.js, web/rewrite-review.js, web/session-actions.js, web/session-switcher-ui.js
@@ -242,14 +255,17 @@ When a returning user navigates to the root URL without a `?session=` parameter,
 | US-S3   | 3       | 0          | 0       | 0           | 0     |
 | **Total** | **9** | **0**      | **0**   | **0**       | **0** |
 
-**Key evidence references:**
+**Key evidence references (cycle 87 line numbers):**
 
-- US-S1.1: job identity on restore — `session-manager.js:704` (updatePositionTitle call), `session-manager.js:71–78` (buildSessionSwitcherLabel), `session-actions.js:132–179`
-- US-S1.2: stage visible on restore — `session-manager.js:409–451` (`_restoreTabForPhase` + `_resolveRestoredPhase`), `workflow-steps.js:637–774`
-- US-S1.3: prior work visible with summary (GAP-110 resolved) — `session-manager.js:469–488` (_appendRestoredDecisionsSummary), `session-manager.js:541–542` (call site)
-- US-S2.1: back-nav warnings (✅ cycle 65 correction) — `workflow-steps.js:1113–1123` shows back-nav confirmation modal; `workflow-steps.js:138–188` (both ↻ and back-nav modals)
-- US-S2.2: context preserved on re-entry — `conversation_manager.py:1435–1468`, `workflow-steps.js:98–128`
-- US-S2.3: re-run vs nav distinction (✅ cycle 65 correction) — `workflow-steps.js:147–149` (distinct modal titles for re-run vs back-nav); ↻ button at `opacity:0.55` rest; iterating badge at `workflow-steps.js:720–721`
-- US-S3.1: decisions re-observable (GAP-166 + GAP-186 resolved) — `rewrite-review.js:52–79` (localStorage + cold-restore from `_backendRewriteAudit`)
-- US-S3.2: outputs connected to state — `state-manager.js:120–178`, `workflow-steps.js:60–93`, `session-manager.js:622–730`
-- US-S3.3: restore does not mislead (GAP-112 resolved) — `session-manager.js:430–451`, `workflow-steps.js:707, 738`, `utils.js:SESSION_PHASE_LABELS_SHORT`
+- US-S1.1: job identity on restore — `session-manager.js:731` (updatePositionTitle call in restoreBackendState), `session-actions.js:158–219` (updatePositionTitle; includes session-age indicator at 207–218)
+- US-S1.2: stage visible on restore — `session-manager.js:417–459` (`_restoreTabForPhase` + `_resolveRestoredPhase`), `workflow-steps.js:1001–1080`
+- US-S1.3: prior work visible with summary (GAP-110 resolved) — `session-manager.js:489–516` (_appendRestoredDecisionsSummary), `session-manager.js:566–569` (call site when serverHasData)
+- US-S2.1: back-nav warnings — `workflow-steps.js:1205–1219` (downstream-check + modal trigger in handleStepClick); `workflow-steps.js:138–188` (_showReRunConfirmModal, both modes)
+- US-S2.2: context preserved on re-entry — `conversation_manager.py:1653–1686` (back_to_phase), `conversation_manager.py:1610–1651` (_build_downstream_context), `workflow-steps.js:98–128` (backToPhase JS)
+- US-S2.3: re-run vs nav distinction — `workflow-steps.js:147–149` (distinct modal titles); ↻ button at `opacity:0.55` rest; iterating badge at `workflow-steps.js:1018–1021`
+- US-S3.1: decisions re-observable (GAP-166 + GAP-186 resolved) — `session-manager.js:585–630` (_hydrateStatusDerivedState), `rewrite-review.js:52–79` (localStorage + cold-restore)
+- US-S3.2: outputs connected to state — `state-manager.js:120–178` (getLayoutFreshnessFromState), `session-manager.js:674–724` (generation state restore)
+- US-S3.3: restore does not mislead (GAP-112 resolved) — `session-manager.js:438–459` (_resolveRestoredPhase guards), `workflow-steps.js:1041–1056` (stale step rendering with sr-only text)
+- GAP-RU-C82-A: welcome modal — `session-manager.js:175–209`, active-session guard at 179–185 (GAP-314)
+- GAP-RU-C82-B: no file timestamps — `state-manager.js:333` (finalGeneratedAt field stored), `session-manager.js:701` (restored from backend); absent in `final-generate.js:107–200`
+- GAP-RU-C82-C resolved: `session-manager.js:465–487` (single-session auto-resume, GAP-323)

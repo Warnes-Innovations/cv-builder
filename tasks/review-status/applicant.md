@@ -8,9 +8,9 @@
 
 # Applicant Review Status
 
-**Last Updated:** 2026-07-06 ET
+**Last Updated:** 2026-07-06 15:30 ET
 
-**Executive Summary:** Source-verified applicant persona review against US-A1–US-A12. The core job-intake-through-generation pipeline is implemented and functional. US-A3b (skill category management) is partially implemented — category creation and drag-and-drop reordering are absent. US-A2 mismatch analysis is in the LLM prompt but not surfaced as a structured UI section. US-A12 re-run affordance is hover-only, not persistently visible. US-A10 natural-language master CV update and document ingestion are not implemented. Several UX terminology issues identified.
+**Executive Summary:** Source-verified applicant persona review against US-A1–US-A12 based on the seven mandated files plus route files. The core job-intake-through-generation pipeline is substantially implemented: URL fetch with protected-site warnings, intake confirmation, cover letter, screening questions, harvest, and finalise-with-git-commit are all end-to-end. Key gaps: (1) no automatic `status: "queued"` set after intake confirmation (US-A1 ❌); (2) post-analysis mismatch surfacing relies on LLM inference rather than explicit master-CV cross-check (US-A2 ⚠️); (3) harvest is a manual nav step, not auto-prompted after Finalise (US-A11 ⚠️); (4) the re-run affordance in the workflow bar carries no explicit "Re-analyse" label (US-A12 ⚠️). Several developer-centric terminology items ("LLM:", "Non-confidential", Settings thermal-noise fields) require applicant-friendly alternatives.
 
 ---
 
@@ -20,12 +20,13 @@
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| URL and paste-text paths both work | ✅ Pass | `web/job-input.js:109–150` — three tabs: Paste Text, From URL, Upload File |
-| Protected-site warning surfaced with manual-copy fallback | ✅ Pass | `web/job-input.js:143–149` — inline grid showing LinkedIn/Indeed/Glassdoor as "Copy manually from" |
-| Company name, role title, and date auto-extracted and editable | ✅ Pass | `web/message-dispatch.js:436–463` — `_showIntakeConfirmCard()` renders editable card with Role/Job Title, Company, Date Applied inputs |
-| Session persisted immediately after confirmation | ✅ Pass | `web/message-dispatch.js:474–479` — POST to `/api/confirm-intake` persists extracted values |
+| URL and paste-text paths both work | ✅ Pass | `web/job-input.js:109–150` — three tabs: Paste Text, From URL, Upload File. Backend: `scripts/routes/job_routes.py:221` — `/api/fetch-job-url` |
+| Protected-site warning surfaced with manual-copy fallback | ✅ Pass | `web/job-input.js:143–149` — inline grid showing LinkedIn/Indeed/Glassdoor as "Copy manually from". Backend: `job_routes.py:266–300` — named warnings with step-by-step fallback instructions for LinkedIn, Indeed, Glassdoor |
+| Company name, role title, and date auto-extracted and editable | ✅ Pass | `web/message-dispatch.js:436–463` — `_showIntakeConfirmCard()` renders editable card with Role/Job Title, Company, Date Applied inputs. Backend: `status_routes.py:1054` — `/api/intake-metadata` runs heuristic extraction; `status_routes.py:1092` — `/api/confirm-intake` persists confirmed values |
+| Session persisted immediately after confirmation | ✅ Pass | `web/message-dispatch.js:474–479` — POST to `/api/confirm-intake` persists extracted values; `apply_confirmed_intake()` triggers session save |
+| Session saved with `status: "queued"` after intake | ❌ Fail | `status: "queued"` is a valid enum value at finalise time (`generation_routes.py:2169`) but is **not** automatically assigned after intake confirmation. Sessions begin with no status field and remain statusless until the user explicitly sets one at Finalise. The Sessions panel cannot distinguish "just started" from "queued and waiting." |
 
-**Terminology note:** The tab in the viewer is "📋 Job" while the step is "📥 Job Input" — minor inconsistency. File-upload tab correctly shows supported extensions.
+**Terminology note:** The tab in the viewer is "📋 Job" while the workflow step is "📥 Job Input" — minor inconsistency. File-upload tab correctly shows supported extensions.
 
 ---
 

@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Recruiter/Ops Review Status
 
-**Last Updated:** 2026-07-06 14:30 ET
+**Last Updated:** 2026-07-06 13:45 ET
 
-**Executive Summary:** Source-verified recruiter/ops persona review against US-O1 (submission readiness), US-O2 (metadata & tracking), and US-O3 (file naming & package hygiene). All three story items have meaningful partial implementations but each carries one or more gaps that limit recruiter confidence at the point of final package handoff. Nine additional gaps proposed.
+**Executive Summary:** The application broadly supports submission-readiness checking and application-tracking metadata, but the finalization checkpoint is buried behind a hidden tab and a chat-area button rather than appearing as a visible workflow step. File naming is job-relevant and consistent across formats, but the two-tab split between "Generated Files" and "File Review" creates a confusing duplicate surface that makes it harder to identify which step is the definitive completeness check. Application-status and notes fields work well at finalisation but their appearance in the sessions modal is underexplored in the UI.
 
 ---
 

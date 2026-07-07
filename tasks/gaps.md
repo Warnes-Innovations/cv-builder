@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 87)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 88)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -8,7 +8,11 @@
 - independent heuristic UX evaluation (all cycles through 2026-07-06 cycle 82)
 - aggregate synthesis in `tasks/ui-review.md`
 
-This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325.
+This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340.
+
+## 2026-07-06 (Cycle 88) Implementation Notes
+
+Cycle 88 addressed 6 gaps: GAP-326 (ATS DOCX candidate_to_confirm skill filter), GAP-328 (window.confirm → confirmDialog at app.js:138), GAP-332 (publications tab keyboard A/R navigation), GAP-338 (cover letter exec/academic word count ranges aligned to story spec), GAP-341 (ATS Score modal raw basis strings replaced with human-readable labels). Cycle 88 also discovered 15 new gaps (GAP-326 through GAP-340).
 
 ## 2026-07-06 (Cycle 87) Implementation Notes
 
@@ -3896,3 +3900,164 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 **Description:** The Finalise tab (`index.html:227`) has `style="display:none"` and is absent from `STAGE_TABS` (`ui-core.js:353–366`). The archive flow is reachable only via the `finalise-action-btn` labeled "📦 Package Application Files" (`index.html:198`) — a label that sounds like a file-zipping operation, not an archival checkpoint. Recruiters and applicants reviewing the workflow nav see no "Finalise" or "Archive" step pill; the action button alone signals that archiving is available, and only after the user has visited the File Review tab. The readiness checklist (`finalise.js:163–214`) and the archive confirmation are fully implemented but inaccessible without knowing to click this button.
 **Affected stories:** US-O4 (proposed), US-O1, US-A9
 **Fix:** Either (a) expose the Finalise tab as a visible step in `STAGE_TABS` (making it part of the workflow nav), or (b) rename the action button to "Archive Application" / "Finalise & Archive" to accurately signal the step's purpose. Additionally, surface a compact readiness badge (e.g., "3/3 required files ready ✅") in the position bar or File Review tab so users know their package status before reaching the hidden finalise step.
+
+---
+
+## GAP-326: ATS DOCX Includes `candidate_to_confirm` (Weak-Evidence) Skills
+
+**Priority:** HIGH (Bug — data integrity)
+**Status:** RESOLVED 2026-07-06 (cycle 88) — Added `ats_skills = [s for s in content['skills'] if not s.get('candidate_to_confirm')]` filter before `_optimize_skills_for_ats()` call in `cv_orchestrator.py:3918`. Both the skill name list and the skill_map now exclude weak-evidence additions.
+**Discovered:** 2026-07-06 (cycle 88) by resume-expert.
+**Description:** `_generate_ats_docx()` at `cv_orchestrator.py:3918` called `_optimize_skills_for_ats(content['skills'], ...)` without pre-filtering. The HTML/PDF template correctly guards with `{% if not skill.candidate_to_confirm %}` but the ATS DOCX path bypassed this, allowing unverified skill additions to appear in the recruiter-facing ATS document.
+**Affected stories:** US-R5, US-H2, US-C9
+**Fix:** Pre-filter `content['skills']` to exclude `candidate_to_confirm: True` entries before passing to `_optimize_skills_for_ats()` in `_generate_ats_docx()`.
+
+---
+
+## GAP-327: `aria-hidden` Not Toggled on Primary Modals Opened Outside `openModal()`
+
+**Priority:** HIGH (Accessibility)
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by accessibility-specialist.
+**Description:** The `openModal()` helper in `ui-core.js` sets `aria-hidden="true"` on the main content when a modal is shown. However, many modal open paths use `overlay.style.display = 'flex'` directly (e.g., settings modal, sessions modal, publication modal in master-cv.js) rather than calling `openModal()`. Background landmark content remains visible to screen readers while a dialog is active, causing virtual cursor confusion for screen reader users.
+**Affected stories:** US-X2, US-X3
+**Fix:** Audit all modal open/close pairs and ensure each calls `openModal()`/`closeModal()` (or manually toggles `aria-hidden` on the background container). Alternatively, add a MutationObserver in `openModal()` that also handles direct `display` style changes.
+
+---
+
+## GAP-328: `window.confirm()` at Critical Rewrite Gate Is Suppressible by Browsers
+
+**Priority:** MEDIUM (Accessibility / correctness)
+**Status:** RESOLVED 2026-07-06 (cycle 88) — Replaced `window.confirm()` at `web/app.js:138` with `await confirmDialog(...)` using `{ confirmLabel: 'Proceed', cancelLabel: 'Go back and review' }`. The custom dialog is keyboard-accessible and cannot be suppressed by browsers.
+**Discovered:** 2026-07-06 (cycle 88) by accessibility-specialist, trust-compliance, heuristic.
+**Description:** The "unreviewed items" gate before Rewrite Review (`app.js:138`) used the native `window.confirm()` dialog. Browsers can silently suppress native dialogs after the user clicks "Don't allow more dialogs," causing the gate to pass `true` without user awareness — at exactly the point where AI decisions most affect CV quality.
+**Affected stories:** US-X2, US-C1, US-A4
+
+---
+
+## GAP-329: Finalise Tab ATS Readiness Always Shows "Not Yet Run"
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by hr-ats.
+**Description:** The Finalise readiness checklist (`finalise.js:174`) reads `statusData?.ats_checks` from `/api/status`. However, `StatusResponse` in `web_app.py:164` has `ats_score: Optional[int]` but no `ats_checks` field. ATS validation results live in `conversation.state['validation_results']` (written by `/api/ats-validate`) and are never forwarded to `/api/status`. Users who correctly ran the File Review ATS check see "not yet run" in the Finalise checklist regardless.
+**Affected stories:** US-H6, US-O4
+**Fix:** Add `ats_checks: Optional[List[Dict]]` to `StatusResponse` and populate it from `conversation.state.get('validation_results', [])` in the `/api/status` route handler.
+
+---
+
+## GAP-330: No Extracted-Field Confirmation Before Job Analysis
+
+**Priority:** HIGH (UX — Fail)
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by ux-expert.
+**Description:** All three input paths (paste at `job-input.js:307`, URL at `job-input.js:385`, file upload at `job-input.js:495`) call `analyzeJob()` directly without a confirmation or editing step. If the LLM misparses company name, role title, or domain, the user has no way to correct it without restarting the entire job analysis step. The story requires an extracted-field preview with inline correction before analysis proceeds.
+**Affected stories:** US-U2.4, US-A1
+**Fix:** After extracting the job description text, display an inline preview card showing parsed company name, role title, and job type with an "Edit before analyzing" affordance. Proceed to `analyzeJob()` only after confirmation.
+
+---
+
+## GAP-331: Sessions Modal Focus-Restore Stack Mismatch
+
+**Priority:** MEDIUM (Accessibility)
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by accessibility-specialist.
+**Description:** `openSessionsModal2` in `session-switcher-ui.js` saves the triggering element to `window._focusedElementBeforeModal`, but `closeSessionsModal` calls `restoreFocus()` which pops from `_focusStack`. These are disconnected stacks — focus is never returned to the element that opened the sessions modal, violating WCAG 2.1 AA focus management requirements.
+**Affected stories:** US-X2, US-S1
+**Fix:** Either use `pushFocusStack()` in `openSessionsModal2` (so `restoreFocus()` pops correctly) or change `closeSessionsModal` to directly focus `window._focusedElementBeforeModal` instead of calling `restoreFocus()`.
+
+---
+
+## GAP-332: Publications Tab A/R Keyboard Navigation Absent
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-07-06 (cycle 88) — Extended `_getCards()` in `web/keyboard-shortcuts.js` to return `tr[data-cite-key]:not(.pub-divider-row)` rows when `window._activeReviewPane === 'publications'`. Extended `_acceptFocusedCard()` (A = `handlePubAction(citeKey, true)`) and `_rejectFocusedCard()` (R = `handlePubAction(citeKey, false)`) for the publications pane.
+**Discovered:** 2026-07-06 (cycle 88) by power-user.
+**Description:** `_getCards()` had branches for `experience`, `skills`, and `achievements` but no branch for `publications`. The A/R keyboard shortcuts were silently non-functional on the Publications sub-tab.
+**Affected stories:** US-W4, US-W1
+
+---
+
+## GAP-333: Session Notes Field Not Displayed in Sessions Modal
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by recruiter-ops.
+**Description:** The sessions archive stores up to 2000 characters of `notes` per session (`generation_routes.py:2183–2190`) and `application_status` is surfaced in the sessions list. However, the `notes` field does not appear to be rendered in the sessions modal UI, limiting cross-session tracking value for users managing multiple applications.
+**Affected stories:** US-O2, US-S3
+**Fix:** Render the notes field (truncated with expand/collapse) in the sessions list entry in `session-switcher-ui.js`, at minimum showing whether notes exist with a preview.
+
+---
+
+## GAP-334: No Pre-Archive Readiness Signal Outside the Finalise Tab
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by recruiter-ops.
+**Description:** The 7-item readiness checklist (`finalise.js:163–214`) is rendered only inside the hidden Finalise tab. There is no compact signal in the position bar, File Review tab, or elsewhere showing "3/3 required files ready ✅" before the user navigates to the Finalise step. Users who click "Archive Application" without checking readiness first cannot pre-assess their package status.
+**Affected stories:** US-O4, US-O1
+**Fix:** Surface a compact readiness chip (e.g., "Files ready: 3/3 ✅" or "Files missing: 1 ⚠") in the position bar or File Review tab header, computed from the same readiness data used by the Finalise checklist.
+
+---
+
+## GAP-335: LLM Disclosure Flag Never Resets on Provider Switch
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by trust-compliance.
+**Description:** The one-time `LLM_DISCLOSURE_SHOWN` flag (stored in `localStorage`) is never cleared when the user switches LLM providers. If a user initially accepted a disclosure for a confidential provider (e.g., GitHub Copilot) and later switches to a non-confidential provider (e.g., Gemini free tier), the disclosure for the new provider never fires. The semantics of "data may be used for training" differ significantly between providers.
+**Affected stories:** US-C3, US-C5
+**Fix:** Key the disclosure flag by provider ID: `LLM_DISCLOSURE_SHOWN_${provider}` — or clear the flag on provider change so the disclosure fires once per provider.
+
+---
+
+## GAP-336: Harvest Bullet Provenance (AI-Accepted vs. User-Edited) Not Shown on Harvest Cards
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by trust-compliance.
+**Description:** The rewrite audit records `outcome: 'accept' | 'edit'` in `conversation_manager.py:1290–1294`, distinguishing AI-accepted rewrites from user-edited ones. However, Harvest cards do not surface this distinction — users cannot identify which bullets were accepted as-is from AI and which they personally edited.
+**Affected stories:** US-C9, US-C1
+**Fix:** Add a small provenance indicator ("AI accepted" vs. "User-edited") to each Harvest card, reading from the `outcome` field in the rewrite audit log.
+
+---
+
+## GAP-337: Publications CRUD and Batch Import Routes Lack Pre-Write Backup
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by master-cv-curator.
+**Description:** The raw `PUT` endpoint for master data (`master_data_routes.py:1273–1283`) creates a timestamped backup before writing. However, the single-entry CRUD route (`1327–1387`) and the BibTeX batch import route (`1457–1465`) do not create backups. A corrupt write via CRUD or import is unrecoverable from the Backup History modal.
+**Affected stories:** US-M6, US-M9
+**Fix:** Add a pre-write backup call (matching the pattern in the raw PUT handler) to both the CRUD route and the BibTeX import route before modifying `Master_CV_Data.json`.
+
+---
+
+## GAP-338: Cover Letter Exec and Academic Word Count Ranges Diverge from Story Spec
+
+**Priority:** MEDIUM
+**Status:** RESOLVED 2026-07-06 (cycle 88) — Backend `_cover_letter_word_count_instruction()` in `master_data_routes.py:118–122` updated: exec `350–450` → `400–500 words`; academic `400–500` → `500–600 words`. Frontend `_validateCoverLetter()` in `cover-letter.js:623–625` updated to matching ranges.
+**Discovered:** 2026-07-06 (cycle 88) by hiring-manager.
+**Description:** Standard cover letter range already matched story spec (300–400w). Executive range was `350–450w` (story spec: `400–500w`); academic range was `400–500w` (story spec: `500–600w`).
+**Affected stories:** US-M6, US-P5
+
+---
+
+## GAP-339: Persuasion Checks Not Run on Generated Professional Summary or Cover Letter
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-06 (cycle 88) by persuasion-expert.
+**Description:** The 10 persuasion checks in `_run_persuasion_checks()` (`conversation_manager.py`) apply only to proposed rewrite candidates shown during the Rewrite Review tab. Freshly generated professional summaries and cover letter body text are never run through these checks — only the narrower `_validate_summary()` and `_validateCoverLetter()` gates apply to generated output. Persuasion issues in generated content (passive framing, weak verb choice, hedge words) go undetected.
+**Affected stories:** US-P1, US-P4
+**Fix:** After `generate_professional_summary()` and cover letter generation, pass the generated text through a subset of persuasion checks (e.g., weak_verbs, hedge_words, passive_framing) and surface findings in the generation review panel.
+
+---
+
+## GAP-340: ATS Score Modal Shows Raw `basis` Enum Strings
+
+**Priority:** LOW
+**Status:** RESOLVED 2026-07-06 (cycle 88) — Replaced raw `score.basis` in `web/ats-modals.js:240` with a lookup map: `review_checkpoint` → "During review", `post_generation` → "After generation", `analysis` → "After job analysis". Label now reads "Scored: During review" etc.
+**Discovered:** 2026-07-06 (cycle 88) by hr-ats.
+**Description:** The ATS Score modal rendered `Basis: review_checkpoint` / `Basis: post_generation` / `Basis: analysis` — internal enum values exposed as user-facing text. `ats-modals.js:240` used `escapeHtml(score.basis || 'review')` directly.
+**Affected stories:** US-H3, US-U4

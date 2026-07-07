@@ -237,7 +237,7 @@ function _renderAtsReport(score, synMap) {
         <div>
           <div style="font-size:0.9em;color:#475569;">Hard requirements: <strong>${hard}%</strong></div>
           <div style="font-size:0.9em;color:#475569;">Preferred skills: <strong>${soft}%</strong></div>
-          <div style="font-size:0.75em;color:#94a3b8;margin-top:2px;">Basis: ${escapeHtml(score.basis || 'review')}</div>
+          <div style="font-size:0.75em;color:#94a3b8;margin-top:2px;">Scored: ${escapeHtml({ review_checkpoint: 'During review', post_generation: 'After generation', analysis: 'After job analysis' }[score.basis] || 'During review')}</div>
           <div style="font-size:0.75em;color:#94a3b8;margin-top:4px;" title="Score thresholds">
             <span aria-hidden="true" style="color:#10b981;">●</span> ≥75% Strong match &nbsp;
             <span aria-hidden="true" style="color:#f59e0b;">●</span> 50–74% Partial match &nbsp;

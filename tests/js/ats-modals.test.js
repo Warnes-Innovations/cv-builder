@@ -144,7 +144,7 @@ describe('_renderAtsReport', () => {
     })
 
     expect(html).toContain('49%')
-    expect(html).toContain('Basis: post_generation')
+    expect(html).toContain('Scored: After generation')
     expect(html).toContain('python')
     expect(html).toContain('Preferred Skills')
     expect(html).toContain('kubernetes')

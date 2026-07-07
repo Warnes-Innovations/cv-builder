@@ -8,9 +8,9 @@
 
 # HR/ATS Review Status
 
-**Last Updated:** 2026-07-06 14:45 ET
+**Last Updated:** 2026-07-06 17:00 ET
 
-**Executive Summary:** Source-verified HR/ATS persona review. The application is substantially ATS-compliant with strong implementations of DOCX structure, JSON-LD metadata, keyword scoring, and hard/soft skill classification. Five gaps remain: (1) no hyperlink-to-plain-text validation check in `validate_ats_report` (US-H1 partial), (2) no dual acronym+full-form keyword injection (US-H4 not implemented), (3) US-H6 blocking rules treat several structural failures as advisory only, (4) US-H7 score update is a debounced server round-trip, not a true client-side live update, and (5) US-H8 user classification override does not retroactively update already-generated DOCX files.
+**Executive Summary:** Source-verified HR/ATS persona review (refreshed). The application is substantially ATS-compliant with strong implementations of DOCX structure, JSON-LD metadata, keyword scoring, and hard/soft skill classification. Six gaps remain: (1) no hyperlink-to-plain-text validation check in `validate_ats_report` (US-H1 partial), (2) no dual acronym+full-form keyword injection (US-H4 not implemented), (3) US-H6 blocking rules treat several structural failures as advisory only, (4) US-H7 score update is a debounced server round-trip, not a true client-side live update, (5) US-H8 user classification override does not retroactively update already-generated DOCX files, and (6) the Finalise tab readiness checklist always shows "ATS validation not yet run" because `/api/status` does not expose `ats_checks` (US-H16 proposed).
 
 ---
 
@@ -201,6 +201,9 @@ US-H3 requires credentials (Ph.D.) appear after name with comma separator. No co
 
 **US-H15 (Proposed): "Basis" Label Translation**
 The `basis` string ("review_checkpoint", "post_generation", "analysis") is surfaced verbatim in the ATS Score modal (`ats-modals.js:241`). These are internal labels that should map to user-readable equivalents: "During review", "After generation", "After job analysis".
+
+**US-H16 (Proposed): Finalise Tab ATS Validation Readiness Check Always Shows "Not Yet Run"**
+`finalise.js:174` reads `statusData?.ats_checks || []` from `/api/status` to drive the readiness checklist. `StatusResponse` in `web_app.py:164` exposes `ats_score: Optional[int]` but has no `ats_checks` field. The ATS validation results are stored in `conversation.state['validation_results']` (set by `/api/ats-validate` at `review_routes.py:2421`) and never forwarded to `/api/status`. As a result, the finalise tab's ATS readiness checklist always shows "ATS validation not yet run" even after the user has run validation in the File Review tab. Fix: add `ats_checks` (list of check dicts from `validation_results`) to `StatusResponse` and the `/api/status` serialisation path, or have the finalise tab call `/api/ats-validate` directly to read cached `validation_results`.
 
 ---
 

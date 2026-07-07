@@ -135,8 +135,9 @@ function setupEventListeners() {
       const parts = [];
       if (unreviewedExp > 0) parts.push(`${unreviewedExp} experience entr${unreviewedExp === 1 ? 'y' : 'ies'}`);
       if (unreviewedSkill > 0) parts.push(`${unreviewedSkill} skill${unreviewedSkill === 1 ? '' : 's'}`);
-      const ok = window.confirm(
-        `${parts.join(' and ')} not individually reviewed — the AI's recommendation will be used for these.\n\nProceed anyway?`
+      const ok = await confirmDialog(
+        `${parts.join(' and ')} not individually reviewed — the AI's recommendation will be used for these. Proceed anyway?`,
+        { confirmLabel: 'Proceed', cancelLabel: 'Go back and review' }
       );
       if (!ok) return;
     }

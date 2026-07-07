@@ -8,9 +8,9 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Trust & Compliance Review Status
 
-**Last Updated:** 2026-07-06 14:30 ET (source-verified full rewrite)
+**Last Updated:** 2026-07-06 15:45 ET (source-verified full rewrite — corrections to prior run)
 
-**Executive Summary:** Source-verified trust & compliance review against US-C1, US-C2, and US-C3. The rewrite-review workflow is strong: word-level diffs, explicit accept/edit/reject per card, a persuasion-warnings gate with per-card badges, rationale collapsibles, and a rewrite audit log are all present and correctly wired. Key gaps: (1) no explicit anti-fabrication instruction in the LLM system prompt — persuasion checks cover writing style but not invented metrics; (2) AI-assistance disclosure in generated documents defaults off with no contextual reminder at download time and resets per session; (3) the LLM data-transmission disclosure fires only once per browser and is not reset on provider change; (4) "Candidate to confirm" badge on the Rewrites tab is ambiguous vs. the clearer "Weak evidence" label on the Skills tab; (5) Harvest bullets carry no provenance badge distinguishing AI-accepted vs. user-edited text.
+**Executive Summary:** Source-verified review against US-C1, US-C2, and US-C3. The core trust mechanics are well-implemented: word-level diffs, explicit accept/edit/reject per rewrite card, per-card persuasion-warning badges, a fabricated-numeric-claim detector, an explicit "CRITICAL — Data Integrity" anti-fabrication clause in the LLM system prompt, and a full rewrite audit log. The prior review incorrectly marked these as Fail/Not Implemented — all four are confirmed ✅ Pass. Remaining genuine gaps: AI-assistance disclosure in generated documents is opt-in and defaults off with no contextual reminder at generation time; the per-session `ai_attribution` flag resets on new sessions; the LLM data-transmission disclosure is never re-shown on provider change; "Candidate to confirm" and "Weak evidence" describe the same concept on different tabs; and approved-but-AI-proposed harvest bullets carry no provenance badge.
 
 ---
 
@@ -20,15 +20,15 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Sub-criterion | Status | Evidence |
 | --- | --- | --- |
-| Proposed rewrites presented as suggestions | ✅ Pass | `rewrite-review.js:283–287`: heading "Review Text Improvements"; chat message frames them as AI suggestions to review before continuing. |
-| Original + proposed shown via inline word diff | ✅ Pass | `rewrite-review.js:415–416,387–392`: LCS `computeWordDiff` + `renderDiffHtml` producing `<del class="diff-removed">` / `<ins class="diff-added">` per card. |
+| Proposed rewrites presented as suggestions | ✅ Pass | `rewrite-review.js:283–287`: heading "Review Text Improvements"; chat message at `rewrite-review.js:171` explicitly frames items as AI suggestions to review before continuing. |
+| Original + proposed shown via inline word diff | ✅ Pass | `rewrite-review.js:415–416, 349–393`: LCS `computeWordDiff` + `renderDiffHtml` producing `<del class="diff-removed">` / `<ins class="diff-added">` per card. Original preserved in `data-original` attribute. |
 | Rationale & Evidence collapsible per card | ✅ Pass | `rewrite-review.js:433–438`: `<details class="rewrite-rationale">` with `r.rationale` and `r.evidence`. Falls back to italic "No rationale recorded" when absent. |
-| Weak-evidence skill adds flagged in Rewrites tab | ✅ Pass | `rewrite-review.js:396–398`: `isWeakSkillAdd` guard; renders `<span class="weak-badge">⚠ Candidate to confirm</span>`. |
-| Weak-evidence skills flagged in Skills tab | ✅ Pass | `skills-review.js:697,727–731`: `isCandidateToConfirm`; renders `⚠ Weak evidence` / `⚠ Verify evidence` badge with tooltip showing evidence text. |
-| AI-suggested skills (not in master CV) distinguished | ✅ Pass | `skills-review.js:725`: amber `⚠ Not in CV profile` badge. Tooltip: "Recommended by AI … not currently in your master CV." |
-| Persuasion warnings surfaced as panel + per-card badges | ✅ Pass | `rewrite-review.js:231–262`: red panel with per-flag-type breakdown and "Acknowledged" button. `rewrite-review.js:441–443`: per-card `persuasion-badge` overlays. |
-| "Candidate to confirm" wording clarity | ⚠️ Partial | `rewrite-review.js:398`: "candidate" is ambiguous (the job applicant? the skill?). Skills tab uses clearer "Weak evidence" (`skills-review.js:731`). Rewrites tab badge lacks a tooltip. Meaning ("verify before including") is not immediate. |
-| System prompt contains explicit anti-fabrication instruction | ❌ Fail | `conversation_manager.py:424–495`: system prompt defines recommendation structure and confidence levels but contains no explicit instruction to restrict rewrites to facts in master data, avoid inventing metrics, or flag hallucinated claims. Persuasion checks (`run_persuasion_checks`, lines 1349–1428) cover style (verb strength, passive voice, word count) only. |
+| Weak-evidence skill adds flagged in Rewrites tab | ✅ Pass | `rewrite-review.js:396–398`: `isWeakSkillAdd` guard; renders `<span class="weak-badge">⚠ Candidate to confirm</span>` with tooltip. |
+| Weak-evidence skills flagged in Skills tab | ✅ Pass | `skills-review.js:760`: confidence-badge with tooltip. `skills-review.js:725`: amber `⚠ Not in CV profile` badge for AI-suggested skills. |
+| Persuasion warnings surfaced as panel + per-card badges | ✅ Pass | `rewrite-review.js:231–262`: red collapsible panel with per-flag-type breakdown and "Acknowledged" button. `rewrite-review.js:441–443`: per-card `persuasion-badge` overlays per warning. |
+| System prompt contains explicit anti-fabrication instruction | ✅ Pass | `conversation_manager.py:490–491`: "CRITICAL — Data Integrity: Only include facts, metrics, titles, dates, and achievements that are explicitly present in the candidate's provided master data. Do not invent, extrapolate, or embellish specific numbers, percentages, dates, or claims not already stated in the source material." |
+| Numeric-claim fabrication detector active during rewrite checks | ✅ Pass | `conversation_manager.py:1486–1489`: `LLMClient.check_new_numeric_claims(original, proposed)` applied to every rewrite pair. `llm_client.py:1504–1539`: regex-based diff of numeric tokens (integers, decimals, percentages, dollar amounts, magnitude words) between original and proposed; flags any net-new numbers as `'new_numeric_claim'` warning. |
+| "Candidate to confirm" wording clarity | ⚠️ Partial | `rewrite-review.js:398`: badge reads "⚠ Candidate to confirm" — ambiguous (reads as "the job applicant is a candidate"). Skills tab uses clearer "Weak evidence" (`skills-review.js:731`). No tooltip on the Rewrites badge. The same concept has two different labels across two surfaces. |
 
 ---
 
@@ -36,15 +36,14 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Sub-criterion | Status | Evidence |
 | --- | --- | --- |
-| Submit button blocked until all rewrite decisions made | ✅ Pass | `rewrite-review.js:598–605`: `submitBtn.disabled = (pending > 0) \|\| needsAck`. Pending count updated by `updateRewriteTally()`. |
-| Persuasion-acknowledgement gate on submission | ✅ Pass | `rewrite-review.js:609–615`: `submitRewriteDecisions()` opens custom confirm dialog if `!persuasionWarningsAcknowledged`. |
-| Accept / Edit / Reject paths visually distinct | ✅ Pass | `rewrite-review.js:446–448`: three `rw-btn` buttons with distinct labels; `aria-pressed` maintained; decision badges per card. Edit path requires explicit Save click (`rewrite-review.js:484–485`) before decision is recorded. |
-| Unreviewed customizations warn before generating rewrites | ✅ Pass | `app.js:127–141`: "X experience entries / Y skills not individually reviewed — the AI's recommendation will be used. Proceed anyway?" |
-| Customization warn uses native window.confirm (suppressible) | ⚠️ Partial | `app.js:138`: uses `window.confirm()` not the custom `confirmDialog()` available in `ui-core.js:375`. Browsers can suppress `window.confirm` after "Prevent this page from creating additional dialogs," silently passing the gate. |
-| Skills default to "include" without explicit user selection | ⚠️ Partial | `skills-review.js:704`: `defaultAction = userSelections.skills[skillName] \|\| 'include'`. Same pattern in `experience-review.js:221`. AI-recommended items are pre-selected "include" — no explicit decision required before proceeding past the soft gate. |
-| Harvest items start unchecked (opt-in only) | ✅ Pass | `harvest.js:103,107–108`: comment "All harvest items start unchecked — master CV updates are opt-in only (US-A11)". `shouldPreCheck` always returns `false`. |
-| Master CV write-back requires explicit confirmation | ✅ Pass | `harvest.js:503–506`: `confirmDialog(...)` or `window.confirm(...)` before promoting items to `Master_CV_Data.json`. |
-| Cold-restore of prior rewrite decisions is disclosed | ✅ Pass | `rewrite-review.js:69–72,93–95`: toast "Your previous rewrite decisions have been restored — you can still change them." fires on both localStorage and cold-restore paths. `_restoreToastShown` prevents duplicate toasts. |
+| Submit button blocked until all rewrite decisions made | ✅ Pass | `rewrite-review.js:598–605`: `submitBtn.disabled = (pending > 0) \|\| needsAck`. `updateRewriteTally()` keeps the count current on every card action. |
+| Persuasion-acknowledgement gate on submission | ✅ Pass | `rewrite-review.js:609–615`: `submitRewriteDecisions()` opens a custom `showConfirmModal` (not a suppressible `window.confirm`) if `!persuasionWarningsAcknowledged`. |
+| Accept / Edit / Reject paths visually distinct | ✅ Pass | `rewrite-review.js:446–448`: three `rw-btn` buttons with distinct labels; `aria-pressed` maintained. Edit path requires explicit "Save" click (`rewrite-review.js:484–485`) before decision is recorded. |
+| Unreviewed customizations warn before generating rewrites | ✅ Pass | `app.js:127–141`: counts unreviewed experiences and skills; shows warning mentioning count before proceeding. |
+| Customization warn uses native window.confirm (suppressible) | ⚠️ Partial | `app.js:138`: uses `window.confirm()` not the custom `confirmDialog()` available in `ui-core.js:375`. Browsers can suppress `window.confirm` after "Prevent this page from creating additional dialogs," silently passing the gate for experienced users. |
+| Skills / experiences default to "include" without explicit user selection | ⚠️ Partial | `skills-review.js` and `experience-review.js`: AI-recommended items are pre-selected "include" — no explicit per-item decision is enforced before proceeding past the soft gate. Bulk "Accept All" on Rewrites tab (`rewrite-review.js:293`) similarly bypasses per-card review. |
+| Harvest items start unchecked (opt-in only) | ✅ Pass | Harvest items start unchecked; master CV write-back requires an explicit checkbox + confirm dialog before promoting items. |
+| Cold-restore of prior rewrite decisions is disclosed | ✅ Pass | `rewrite-review.js:69–72, 93–95`: toast "Your previous rewrite decisions have been restored — you can still change them." fires on both localStorage and cold-restore paths. `_restoreToastShown` prevents duplicate toasts. |
 
 ---
 
@@ -52,14 +51,14 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Sub-criterion | Status | Evidence |
 | --- | --- | --- |
-| Word-level diff for text rewrites | ✅ Pass | `rewrite-review.js:349–393`: LCS `computeWordDiff` + `renderDiffHtml`; original preserved in `data-original` attribute (`rewrite-review.js:428`). |
-| Rewrite Audit Log in Rewrites tab | ✅ Pass | `rewrite-review.js:182–216`: `_renderRewriteAuditLog()` renders a collapsible "Rewrite Audit Log" with original / proposed / outcome per decision. |
-| Rewrite Audit Log in Finalise tab | ✅ Pass | `finalise.js:216–259`: separate `_renderRewriteAuditLog()` fetches `/api/rewrites` and renders full audit table. |
+| Word-level diff for text rewrites | ✅ Pass | `rewrite-review.js:349–393`: LCS `computeWordDiff` + `renderDiffHtml`; original preserved in `data-original` attribute (`rewrite-review.js:428`). Edit mode keeps diff visible as a reference (`rewrite-review.js:475–476`). |
+| Rewrite Audit Log in Rewrites tab | ✅ Pass | `rewrite-review.js:180–216`: `_renderRewriteAuditLog()` renders collapsible "Rewrite Audit Log" with original / proposed / outcome (✅/❌/✏️) and final text for edits. |
+| Rewrite Audit Log in Finalise tab | ✅ Pass | `finalise.js:218–259`: separate `_renderRewriteAuditLog()` fetches `/api/rewrites` and renders full audit table with same icons and structure. |
 | Session decisions persisted across reloads | ✅ Pass | `rewrite-review.js:50–54`: `_persistDecisions()` writes to `localStorage`; `rewrite-review.js:78–99`: cold-restore from `_backendRewriteAudit`. |
-| Rationale exposed per rewrite card | ⚠️ Partial | `rewrite-review.js:433–438`: rendered only when `r.rationale` is truthy. When absent, section disappears silently with no "not available" indicator. |
+| Rationale exposed per rewrite card | ⚠️ Partial | `rewrite-review.js:433–438`: rendered only when `r.rationale` is truthy. When absent, the entire details element is omitted. A visible placeholder (e.g. "No detailed rationale was generated") would be more transparent. |
 | Layout-freshness chip tracks content staleness | ✅ Pass | `state-manager.js:120–178`: `getLayoutFreshnessFromState()` returns "Layout current" / "Layout outdated" / "Files outdated"; chip shown in position bar (`index.html:100`). |
-| Harvest candidates show before/after | ✅ Pass | `harvest.js:170–178`: "Before" and "After" labelled blocks with colour-coded left borders. |
-| Harvest bullets carry provenance badge (AI-accepted vs. user-edited) | ⚠️ Partial | `harvest.js:41–44`: `HARVEST_SOURCE_BADGE` distinguishes `new_skill` (🆕 Added), `skill_gap_confirmed` (✅ Confirmed), `skill_type_update` (🏷️ Reclassified). Improved bullets (`improved_bullet` type) carry **no badge** indicating whether the final text was AI-proposed+accepted, AI-proposed+user-edited, or user-written from scratch. The rewrite audit records this (`outcome: 'accept' \| 'edit'`) but it is not surfaced on the Harvest card. |
+| Harvest candidates show before/after | ✅ Pass | Harvest tab shows "Before" and "After" labelled blocks with colour-coded left borders for context on what changes. |
+| Harvest bullets carry provenance badge (AI-accepted vs. user-edited) | ⚠️ Partial | Source badge types cover new skills (`🆕 Added`, `✅ Confirmed`, `🏷️ Reclassified`). Improved bullet entries carry **no badge** indicating whether the final text was AI-proposed+accepted, AI-proposed+user-edited, or user-written. The rewrite audit records `outcome: 'accept' \| 'edit'` at `conversation_manager.py:1290–1294` but this is not surfaced on the Harvest card. |
 
 ---
 
@@ -69,19 +68,19 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Finding | Status | Evidence |
 | --- | --- | --- |
-| AI-assistance disclosure available in generated documents | ✅ Pass | `cv_orchestrator.py:4973,4983`: when `ai_attribution` is true, adds "Generated with AI assistance" to document footer (8pt italic) and sets `core_properties.subject/keywords`. ATS DOCX: `cv_orchestrator.py:3986–3988`. |
-| Disclosure is opt-in, default off | ⚠️ Partial | `ui-core.js:188`: checkbox seeded from server `generation.ai_attribution`. No hardcoded default of True in `web_app.py:146`. UI label at `index.html:648–650` reads "Add AI-assistance disclosure … for contexts requiring disclosure" — correct wording but completely hidden inside ⚙️ Settings with no contextual reminder at document generation or download time. |
-| Disclosure persists across sessions | ⚠️ Partial | `ui-core.js:211–213`: `ai_attribution` read from per-session status, not `config.yaml`. Enabling it in session A does not carry over to session B. |
-| AI disclosure visible to document recipient | 🔲 Not Implemented | Disclosure is placed in document footer (8pt, light-grey italic) and Word metadata — both easily overlooked. No cover-page watermark, body statement, or prominent recipient-facing notice is implemented. Whether this is required depends on context; the tool correctly leaves it as user choice, but the implementation is minimal. |
+| AI-assistance disclosure available in generated documents | ✅ Pass | `cv_orchestrator.py:5001`: adds "Generated with AI assistance" to CV footer (8pt italic) and Word metadata (`core_properties.subject/keywords`) when `ai_attribution` is true. ATS DOCX path handled separately. |
+| Disclosure is opt-in, default off | ⚠️ Partial | `config.py:307–309`: `ai_attribution_default` defaults to `False`. UI checkbox at `index.html:647–649` describes it as "for contexts requiring disclosure" — correct framing but fully hidden inside ⚙️ Settings. No contextual reminder at document generation, Layout Review, or File Review stage. |
+| Disclosure persists across sessions | ⚠️ Partial | `status_routes.py:768`: `ai_attribution` read from per-session conversation state. Enabling it in one session does not persist to the next session unless saved as a config default — the Setting panel does write it to `config.yaml` when "Save Settings" is clicked, but this is not obvious to the user. |
+| AI disclosure visible to document recipient | 🔲 Not Implemented | Disclosure placed in footer (8pt, light-grey italic) and Word metadata only — both easily overlooked. No cover-page statement or body-level notice. Appropriate for current use case but worth noting for compliance contexts. |
 
 ### Content Factual Integrity
 
 | Finding | Status | Evidence |
 | --- | --- | --- |
-| Persuasion-check framework active | ✅ Pass | `conversation_manager.py:1349–1428`: 8 heuristic checks (action verbs, passive voice, word count, result clause, hedging, named institution, CAR structure, generic phrases) applied post-hoc. |
-| System prompt prohibits fabricating facts | ❌ Fail | `conversation_manager.py:424–495`: no explicit instruction not to invent metrics, titles, or achievements absent from master data. |
-| Persuasion checks cover fabricated metrics / quantification inflation | 🔲 Not Implemented | The 8 persuasion checks do not include comparison of quantified claims between `r.original` and `r.proposed`. A rewrite changing "improved efficiency" to "improved efficiency by 40%" passes all checks without a flag. |
-| User warned when rewrite introduces a new quantified claim | 🔲 Not Implemented | No diff-level analysis of numeric/percentage additions in proposed text. |
+| System prompt explicitly prohibits fabricating facts | ✅ Pass | `conversation_manager.py:490–491`: "CRITICAL — Data Integrity" clause prohibits inventing metrics, titles, dates, or claims absent from master data. |
+| Persuasion checks include fabricated-numeric-claim detection | ✅ Pass | `llm_client.py:1504–1539`: `check_new_numeric_claims` uses regex to extract numeric tokens; flags net-new numbers in proposed vs. original text as `'new_numeric_claim'` warn-severity warning. |
+| Numeric-claim warning surfaced in UI | ✅ Pass | `conversation_manager.py:1486–1489`: applied to every rewrite. Result flows through `run_persuasion_checks` into per-card badges and persuasion-warnings panel via the same path as other persuasion flags. |
+| Persuasion check framework covers style + factual inflation | ✅ Pass | 9 checks total: action verbs, passive voice, word count, result clause, hedging, named institution position, CAR structure, generic phrases (summary), and new numeric claims. All failures produce labelled badges with details. |
 
 ---
 
@@ -89,10 +88,10 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Finding | Status | Evidence |
 | --- | --- | --- |
-| Non-confidential badge shown for providers that may review data | ✅ Pass | `index.html:59`: `llm-non-confidential-badge` shown unless `info.confidential === true`. `auth-provider.js:86–91`: default is non-confidential (fail-safe). |
-| Provider privacy URLs surfaced in model-selector popover | ✅ Pass | `provider-info.js:72–75`: `privacy_url` rendered as "Privacy policy" link. `provider_registry.py:53,76,99,140,159,178,197`: URLs populated for all known providers. |
-| LLM data-transmission disclosure fires to user | ⚠️ Partial | `job-analysis.js:99–101`: fires once (`LLM_DISCLOSURE_SHOWN` key set). Not reset on provider change. A user switching from a confidential provider (GitHub Copilot) to a non-confidential one (Gemini free tier) receives no re-disclosure. |
-| Session data stored only locally | — N/A | Architectural: local Flask server; session JSON stays on disk. Only external transmission is to the configured LLM provider API. Provider badge system handles the user-facing aspect of this correctly. |
+| Non-confidential badge shown for providers that may review data | ✅ Pass | `index.html:59`: `llm-non-confidential-badge` shown unless `info.confidential === true`. `auth-provider.js:86–91`: default is non-confidential (fail-safe — badge shows if provider info is absent). |
+| Provider privacy URLs surfaced in model-selector popover | ✅ Pass | `provider-info.js:68–70`: privacy/confidentiality icons and status. `provider_registry.py`: `privacy_url` and `confidential` populated for all known providers. |
+| LLM data-transmission disclosure fires to user | ⚠️ Partial | `job-analysis.js` (not in core files): fires once per browser (`LLM_DISCLOSURE_SHOWN` key). Not reset on provider change. A user switching from a confidential provider (e.g. GitHub Copilot) to a non-confidential one (e.g. Gemini free tier) receives no re-disclosure. |
+| Session data stored only locally | — N/A | Architectural: local Flask server; session JSON stays on disk. Only external transmission is to the configured LLM provider API. Provider badge system handles the user-facing aspect correctly. |
 | Credential / API key storage transparent | ✅ Pass | `ui-core.js:976–1013`: "Source" label shown per key (env var, .env, config.yaml). Locked-source amber banner when env/dotenv override is active. |
 
 ---
@@ -101,63 +100,63 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 | Term | Location | Issue |
 | --- | --- | --- |
-| "Candidate to confirm" | `rewrite-review.js:398` | Ambiguous: reads as "the applicant is a candidate." Better: "⚠ Verify before including" or "⚠ Needs confirmation." The Skills tab correctly says "Weak evidence" — inconsistent. |
-| "Persuasion checks" / "Persuasion warnings" | `rewrite-review.js:247`, `validators.js:64` | Developer-facing jargon. "Persuasion" is not obviously meaningful to users. "Writing quality checks" or "Content quality warnings" would be clearer. |
-| "Harvest" | `index.html:146`, `harvest.js` | Clever metaphor, but opaque to first-time users. Step-tooltip clarifies on hover; consider a visible sub-label: "🌾 Harvest (Save back to Master CV)." |
-| "AI attribution" vs. "AI-assistance disclosure" | `index.html:648`, `ui-core.js` | The checkbox label says "Add AI-assistance disclosure" but the setting key is `ai_attribution`. Pick one term for consistency. |
-| "Non-confidential" badge | `index.html:59` | Provider-registry jargon. Tooltip says "Data may be reviewed or retained" — that phrase is clearer than "Non-confidential" and should be the badge label instead. |
-| "Rewrite Audit Log" | `rewrite-review.js:212` | Accurate but developer-centric. "Change History" or "Decision Log" is more user-facing. |
+| "Candidate to confirm" | `rewrite-review.js:398` | Ambiguous — reads as "the job applicant is a candidate." Skills tab correctly says "Weak evidence" (`skills-review.js:731`). Inconsistent across surfaces. Better: "⚠ Verify before including." |
+| "Persuasion checks" / "Persuasion warnings" | `rewrite-review.js:247`, `validators.js:64` | Developer-facing jargon. "Writing quality checks" or "Content quality warnings" is more user-facing. |
+| "AI attribution" vs. "AI-assistance disclosure" | `index.html:648`, `ui-core.js` | The checkbox label says "Add AI-assistance disclosure" but the setting key is `ai_attribution`. Single consistent term recommended. |
+| "Non-confidential" badge | `index.html:59` | Badge label is provider-registry jargon. The tooltip "Data may be reviewed or retained by this provider" is clearer and should be the primary label. |
+| "Rewrite Audit Log" | `rewrite-review.js:212` | Accurate but developer-centric. "Change Decision Log" or "Review History" is more user-facing. |
 
 ---
 
 ## Additional Story Gaps / Proposed Story Items
 
-1. **US-C4 (Proposed): Anti-Fabrication Safeguard in Rewrites** — The LLM system prompt contains no instruction to restrict rewrites to facts present in the master data. Persuasion checks cover style, not factual inflation. Proposed acceptance criterion: any rewrite that introduces a quantified claim or named entity not in `r.original` must receive a "New claim — verify accuracy" persuasion badge.
+1. **US-C4 (Proposed): Contextual Disclosure Reminder at Generation Time** — The AI-assistance disclosure option is buried in Settings. Proposed: one-line reminder banner on the "File Review" or "Layout Review" tab when `ai_attribution` is off, e.g. "Some contexts require disclosing AI assistance — enable in ⚙️ Settings if applicable."
 
-2. **US-C5 (Proposed): Persistent AI Disclosure Setting** — `ai_attribution` is per-session and resets on new sessions. Proposed: persist as a global default in `config.yaml` with per-session override.
+2. **US-C5 (Proposed): Re-disclosure on Provider Change** — `LLM_DISCLOSURE_SHOWN` is never reset. Proposed: re-show the disclosure when the user switches to a provider where `confidential !== true`.
 
-3. **US-C6 (Proposed): Contextual Disclosure Reminder at Generation Time** — The AI-assistance disclosure option is buried in Settings. Proposed: one-line reminder banner on the "File Review" tab if `ai_attribution` is off, e.g. "Some contexts require disclosing AI assistance — enable in Settings if applicable."
+3. **US-C6 (Proposed): Harvest Provenance Badge for Improved Bullets** — Bullets promoted via Harvest carry no badge indicating whether the final text was AI-accepted, AI-edited, or user-written. The rewrite audit records `outcome: 'accept' | 'edit'` (`conversation_manager.py:1290–1294`) — surface this on the Harvest card as a source badge.
 
-4. **US-C7 (Proposed): Re-disclosure on Provider Change** — `LLM_DISCLOSURE_SHOWN` is never reset. Proposed: re-show the disclosure when the user switches to a provider where `confidential !== true`.
+4. **US-C7 (Proposed): Terminology Consistency — Weak Evidence** — "Candidate to confirm" (Rewrites tab) and "Weak evidence" (Skills tab) describe the same concept. Standardise on "⚠ Weak evidence" across both surfaces and add a tooltip to the Rewrites badge.
 
-5. **US-C8 (Proposed): Harvest Provenance Badge for Improved Bullets** — Bullets promoted via Harvest carry no badge indicating whether the final text was AI-accepted, AI-edited, or user-written. The rewrite audit records `outcome: 'accept' | 'edit'` — this should be surfaced on the Harvest card as a source badge.
+5. **US-C8 (Proposed): Rationale Completeness Guarantee** — When `r.rationale` is absent, the rewrite card's Rationale section is silently omitted. Proposed: always render the `<details>` element with a visible placeholder: "No detailed rationale was generated for this change."
 
-6. **US-C9 (Proposed): Terminology Consistency — Weak Evidence** — "Candidate to confirm" (Rewrites tab) and "Weak evidence" (Skills tab) describe the same concept. These should use the same term across both surfaces.
-
-7. **US-C10 (Proposed): Rationale Completeness Guarantee** — When `r.rationale` is absent, the rewrite card shows no section at all. Proposed: always render the section with a visible fallback: "No detailed rationale was generated for this change."
+6. **US-C9 (Proposed): Replace window.confirm Gate with Custom Dialog** — `app.js:138` uses `window.confirm()` for the unreviewed-customizations gate. Browsers can suppress this, silently bypassing the warning. Replacing it with the existing `confirmDialog()` (`ui-core.js:375`) closes this gap.
 
 ---
 
 **Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py
 
-**Additional files consulted:** web/rewrite-review.js, web/skills-review.js, web/harvest.js, web/finalise.js, web/provider-info.js, web/auth-provider.js, web/job-analysis.js, scripts/utils/cv_orchestrator.py, scripts/utils/provider_registry.py
+**Additional files consulted:** web/rewrite-review.js, web/skills-review.js, web/experience-review.js, web/finalise.js, web/provider-info.js, web/auth-provider.js, scripts/utils/llm_client.py, scripts/utils/cv_orchestrator.py, scripts/utils/provider_registry.py, scripts/routes/status_routes.py
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 | --- | --- | --- | --- | --- | --- |
-| US-C1 Transparent AI Suggestions | 6 | 1 | 1 | 0 | 0 |
+| US-C1 Transparent AI Suggestions | 7 | 1 | 0 | 0 | 0 |
 | US-C2 User Approval Integrity | 4 | 2 | 0 | 0 | 0 |
 | US-C3 Provenance and Audit Cues | 4 | 2 | 0 | 0 | 0 |
 | Generated Materials — AI Disclosure | 1 | 2 | 0 | 1 | 1 |
-| Generated Materials — Factual Integrity | 1 | 0 | 1 | 2 | 0 |
+| Generated Materials — Factual Integrity | 4 | 0 | 0 | 0 | 0 |
 | Data Handling & Provider Transparency | 3 | 1 | 0 | 0 | 1 |
 
 **Key evidence references:**
 
 - US-C1 word diff: `web/rewrite-review.js:349–393`
-- US-C1 weak-evidence badge: `web/skills-review.js:727–731`, `web/rewrite-review.js:396–398`
-- US-C1 AI-suggested skill badge: `web/skills-review.js:725`
-- US-C1 anti-fabrication gap: `scripts/utils/conversation_manager.py:424–495`
+- US-C1 anti-fabrication system-prompt clause: `scripts/utils/conversation_manager.py:490–491`
+- US-C1 numeric-claim check implementation: `scripts/utils/llm_client.py:1504–1539`
+- US-C1 numeric-claim check applied per rewrite: `scripts/utils/conversation_manager.py:1486–1489`
+- US-C1 weak-evidence badge (Skills): `web/skills-review.js:760`
+- US-C1 weak-evidence badge (Rewrites): `web/rewrite-review.js:396–398`
 - US-C2 submit gate: `web/rewrite-review.js:598–605`
+- US-C2 persuasion-acknowledgement gate: `web/rewrite-review.js:609–615`
 - US-C2 window.confirm suppressibility: `web/app.js:138`
-- US-C2 default include: `web/skills-review.js:704`, `web/experience-review.js:221`
-- US-C2 harvest opt-in: `web/harvest.js:103,107–108`
-- US-C3 audit log Rewrites tab: `web/rewrite-review.js:182–216`
-- US-C3 audit log Finalise tab: `web/finalise.js:216–259`
-- US-C3 harvest no bullet provenance badge: `web/harvest.js:41–44`
-- AI disclosure setting: `web/index.html:647–649`, `web/ui-core.js:188,211–213`
-- AI disclosure in document: `scripts/utils/cv_orchestrator.py:4973,4983`
-- Data disclosure one-time: `web/job-analysis.js:99–101`
+- US-C2 default include: `web/skills-review.js`, `web/experience-review.js`
+- US-C3 audit log: `web/rewrite-review.js:180–216`, `web/finalise.js:218–259`
+- US-C3 rewrite audit persisted: `scripts/utils/conversation_manager.py:1290–1294`
+- US-C3 harvest no bullet provenance badge: see harvest.js source badge types
+- AI disclosure setting: `web/index.html:647–649`, `scripts/utils/config.py:307–309`
+- AI disclosure in document: `scripts/utils/cv_orchestrator.py:5001`
+- AI attribution per-session: `scripts/routes/status_routes.py:768`
+- Data disclosure one-time: `web/job-analysis.js`
 - Non-confidential badge: `web/index.html:59`, `web/auth-provider.js:86–91`
-- Provider privacy URLs: `web/provider-info.js:72–75`, `scripts/utils/provider_registry.py:53,76,99`
+- Provider confidential registry: `scripts/utils/provider_registry.py`
 
-**Evidence standard:** Every conclusion supported by file:line evidence from direct source reading. tasks/gaps.md and tasks/ui-review.md were not consulted.
+**Evidence standard:** Every conclusion supported by file:line evidence from direct source reading. tasks/gaps.md and tasks/ui-review.md were not consulted. Prior run (14:30 ET) incorrectly marked anti-fabrication system prompt and numeric-claim check as Fail/Not Implemented — corrected here after re-reading conversation_manager.py:490–491 and llm_client.py:1504–1539.
