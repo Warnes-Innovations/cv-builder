@@ -2,7 +2,7 @@
 
 # 2026-03-25 19:30:48Z
 
-<!-- copilotide Session a0f58d65-03ec-4723-ab26-0cd44e2ef138 (2026-03-25 19:30:48Z) -->
+<!-- VS Code Copilot IDE Session a0f58d65-03ec-4723-ab26-0cd44e2ef138 (2026-03-25 19:30:48Z) -->
 
 _**User (2026-03-25 19:30:48Z)**_
 
@@ -94,4 +94,4 @@ _**User (2026-03-25 19:55:33Z)**_
 
 Try again.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
+<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
