@@ -473,7 +473,11 @@ async function ensureSessionContext() {
         const activeSessions = activeData.sessions || [];
         if (activeSessions.length === 1 && activeSessions[0].path) {
           const loaded = await loadSessionFile(activeSessions[0].path);
-          if (loaded) return true;
+          if (loaded) {
+            // Explain the auto-resume so users know they can switch (GAP-369).
+            appendMessage('system', 'ℹ️ Only one active session found — auto-resumed. Open <strong>Sessions</strong> to switch or start a new one.');
+            return true;
+          }
         }
       }
     } catch (_) { /* fall through to modal */ }

@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 95)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 96)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,22 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 96) Implementation Notes
+
+Cycle 96 addressed 7 gaps (2 source-verified as already resolved):
+
+- GAP-357 (MEDIUM): Source-verified already implemented — `required_skills` +8 bonus and first-author +10 bonus both present in `cv_orchestrator.py:3805–3820` with `# GAP-357` comment. Marked RESOLVED.
+- GAP-358 (MEDIUM): Added pre-generation page length estimate to customization message in `conversation_manager.py:_handle_recommend_customizations`. Appends `📏 Estimated CV length: X.X pages` (with ⚠️ prefix if > 3.5 or < 1.5 pages) after recommendations are finalized.
+- GAP-369 (LOW): Added auto-resume explanation in `session-manager.js:ensureSessionContext` — appends `ℹ️ Only one active session found — auto-resumed. Open Sessions to switch or start a new one.` after `loadSessionFile` succeeds.
+- GAP-370 (LOW): Changed default archive status from `queued` to `ready` in `finalise.js:103–105` — "Ready to send" is the appropriate default at the finalisation checkpoint.
+- GAP-372 (LOW): Source-verified already correct — backend `master_data_routes.py:119–121` returns 400–500 (exec) / 500–600 (academic) / 300–400 (standard); frontend `cover-letter.js:650–651` validates to matching ranges. GAP-338 was fully resolved in cycle 88. Marked RESOLVED.
+- GAP-374 (LOW): Added LLM disclosure check to `generateCoverLetter()` (cover-letter.js), `generateScreeningResponse()` (screening-questions.js), and `fetchAnalysis()` (harvest.js) — uses same provider-scoped `disclosureKey` pattern from job-analysis.js; fires once per provider; appends system message if `appendMessage` is in scope.
+- GAP-375 (LOW): Added 2 new checks to `_validate_summary()` in `cv_orchestrator.py`: Check 5 (job title words should appear in summary) and Check 6 (years-of-experience quantification pattern e.g. "10+ years").
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
 
 ## 2026-07-06 (Cycle 95) Implementation Notes
 
@@ -4313,7 +4329,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-357: Publication Scoring Over-Weights Recency, Ignores `required_skills`; First-Author 0-Weight
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 96) — Source-verified: `required_skills` bonus (+8 per match) and first-author bonus (+10) are both implemented in `cv_orchestrator.py:3805–3820` (added by cycle 94 GAP-318 fix, annotated with `# GAP-357` comment). Status was incorrectly left as OPEN.
 **Discovered:** 2026-07-06 (cycle 93) by resume-expert. (Related to GAP-318, which added a first-author bonus detection but left its point value at 0.)
 **Description:** In `_select_publications()` (`cv_orchestrator.py:3764–3806`): Year ≥ 2020 yields +30 points; first-author status is detected but contributes 0 points; `required_skills` is not consulted (only `ats_keywords`). A 2022 paper on an unrelated topic scores the same as a 2014 paper with four required-skill matches. Fix: add `required_skills` bonus (+8 per match) and first-author bonus (+10, consistent with GAP-318 intent).
 **Affected stories:** US-R2
@@ -4323,7 +4339,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-358: No User-Visible Pre-Generation Page Length Estimate
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 96) — Added page length estimate to the customization recommendations message in `conversation_manager.py:_handle_recommend_customizations`. After finalizing recommendations, calls `_estimate_cv_body_pages()` and appends `📏 Estimated CV length: X.X pages` (or `⚠️` prefix if < 1.5 or > 3.5 pages) to the assistant message visible to the user.
 **Discovered:** 2026-07-06 (cycle 93) by resume-expert.
 **Description:** `_estimate_cv_body_pages()` and `_cap_cv_body_to_pages()` run internally during `_handle_recommend_customizations` but neither the estimate nor any intermediate warning is surfaced as a visible UI message to the user before generation is initiated. Page count warnings fire only after generation via `validate_ats_report`. US-R2 criterion 2.5 states "System warns if estimated CV length exceeds 3 pages or is under 1.5 pages" — this should be visible pre-generation.
 **Affected stories:** US-R2
@@ -4433,7 +4449,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-369: Single-Session Auto-Resume Has No Explicit Notification
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 96) — Added auto-resume notification in `session-manager.js:ensureSessionContext()`: after `loadSessionFile` succeeds, appends `ℹ️ Only one active session found — auto-resumed. Open Sessions to switch or start a new one.`
 **Discovered:** 2026-07-06 (cycle 93) by returning-user.
 **Description:** When auto-resume fires (GAP-323 fixed), the only messages are generic "🔄 Restoring session from file..." and "✅ Session restored: {name} ({phase})". There is no "Auto-resumed — only one active session found. Use Sessions to switch." Users who arrive expecting to choose a session may be confused about why they landed in a specific session.
 **Affected stories:** US-S1 (proposed US-S9)
@@ -4443,7 +4459,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-370: Default Archive Status Dropdown Value Is "queued" — Wrong for Completed Workflow
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 96) — Moved `selected` attribute from `value="queued"` to `value="ready"` in `finalise.js:103–105`. Default is now "Ready to send" which is appropriate at the point of finalising a completed package.
 **Discovered:** 2026-07-06 (cycle 93) by recruiter-ops.
 **Description:** The Finalise tab status dropdown (`finalise.js:102`) defaults to `queued` ("Queued — will apply soon"). At the moment of archiving a completed package, "queued" describes a pre-submission state — the default should be `ready` (or a neutral "unset"). Separately, the values `queued` and `parked` use informal jargon; plain-language equivalents ("Ready to Send", "On Hold") would improve clarity.
 **Affected stories:** US-O1, US-O2
@@ -4463,7 +4479,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-372: Executive/Academic Cover Letter Word Count Bounds Possibly Still Below Story Spec
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 96) — Source-verified: backend `master_data_routes.py:119–121` returns 400–500 (exec) / 500–600 (academic); frontend `cover-letter.js:650–651` validates `{ lo: 400, hi: 500 }` (exec) / `{ lo: 500, hi: 600 }` (academic). Both match story spec. GAP-338 was fully resolved in cycle 88. Status was incorrectly left as OPEN.
 **Discovered:** 2026-07-06 (cycle 93) by hiring-manager. (Check against GAP-338 resolution from cycle 88.)
 **Description:** The hiring manager review found that executive word-count target is set at 350–450 words and academic at 400–500 words (`master_data_routes.py:118–120`; `cover-letter.js:621–625`), while the story spec requires 400–500 for executive and 500–600 for research/academic. GAP-338 was marked resolved in cycle 88 ("cover letter exec/academic word count ranges aligned to story spec") — either the fix was incomplete or the story spec numbers differ from what was implemented. Needs code verification.
 **Affected stories:** US-M6
@@ -4483,7 +4499,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-374: LLM Disclosure Fires Only at analyzeJob() — Not at Cover Letter/Harvest/Screening
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 96) — Added provider-scoped `disclosureKey` disclosure check to: `generateCoverLetter()` in `cover-letter.js` (via `_showLlmDisclosure()` helper), `generateScreeningResponse()` in `screening-questions.js`, and `fetchAnalysis()` in `harvest.js`. All use the same `disclosureKey(provider)` pattern from job-analysis.js; fires once per provider via localStorage flag; uses `appendMessage` if available in scope.
 **Discovered:** 2026-07-06 (cycle 93) by trust-compliance.
 **Description:** The provider-scoped LLM disclosure (`disclosureKey(provider)` in `api-client.js:31–34`) is implemented and correct, but it fires only when `analyzeJob()` runs in `web/job-analysis.js:99–108`. Cover letter generation, harvest analysis, and screening question generation are all LLM calls that do not trigger the disclosure. A user who navigates directly to cover letter generation without running job analysis would never see the disclosure.
 **Affected stories:** US-C3
@@ -4493,7 +4509,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-375: `_validate_summary()` Does Not Check for Job Title or Years-of-Experience Mention
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 96) — Added Check 5 (job title partial match: at least one word > 3 chars from `job_analysis.title` must appear in summary) and Check 6 (years-of-experience regex: `\d+\+?\s+year`, `over N years`, `more than N years`) to `cv_orchestrator.py:_validate_summary`. Both produce advisory warnings surfaced in the download tab quality report.
 **Discovered:** 2026-07-06 (cycle 93) by hiring-manager.
 **Description:** `_validate_summary()` in `cv_orchestrator.py:3607–3656` runs four checks (no "I" opener, word count, dense paragraph, top-3 skills) but never verifies that the summary mentions the target job title or quantifies years of experience. Both are US-M1 acceptance criteria. A hiring manager expects to read "10+ years in data science" and the specific role title in the opening paragraph — the current validator will pass a summary that omits both.
 **Affected stories:** US-M1

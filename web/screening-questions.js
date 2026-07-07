@@ -9,8 +9,10 @@
  * Screening questions tab: parse, search, generate, save responses.
  *
  * Dependencies (resolved through globalThis at runtime):
- *   escapeHtml, showAlertModal
+ *   escapeHtml, showAlertModal, appendMessage
  */
+
+import { disclosureKey, StorageKeys } from './api-client.js';
 
 // ── Module-level state ────────────────────────────────────────────────────────
 
@@ -225,6 +227,19 @@ async function generateScreeningResponse(idx) {
    *   - window:_screeningState.format
    *   notes: Generates a single screening response from the selected format, prior-response seed, and chosen experience evidence, then stores the draft back into UI state for editing.
    */
+  // GAP-374: fire LLM disclosure on first use per provider
+  try {
+    const provider = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA) || '{}').currentModelProvider || null;
+    const key = disclosureKey(provider);
+    if (!localStorage.getItem(key)) {
+      const label = provider ? ` (${provider})` : '';
+      if (typeof appendMessage === 'function') {
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis. Review your provider's data policy for details.`);
+      }
+      localStorage.setItem(key, '1');
+    }
+  } catch (_) { /* non-fatal */ }
+
   const btn      = document.getElementById(`sc-gen-btn-${idx}`);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
 

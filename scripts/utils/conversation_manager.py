@@ -918,6 +918,26 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         n_sk  = len(recommendations.get('recommended_skills', []))
         msg   = f"✓ Customization recommendations generated ({n_exp} experiences, {n_sk} skills)."
 
+        # Surface pre-generation page length estimate (GAP-358).
+        try:
+            est_pages = self._estimate_cv_body_pages(
+                recommendations, self.orchestrator.master_data
+            )
+            if est_pages >= 3.5:
+                msg += (
+                    f"\n\n⚠️ **Estimated CV length: {est_pages:.1f} pages** — consider trimming "
+                    "some entries (De-emphasise or Exclude) before generating."
+                )
+            elif est_pages < 1.5:
+                msg += (
+                    f"\n\n⚠️ **Estimated CV length: {est_pages:.1f} pages** — consider including "
+                    "more entries (change De-emphasise → Include) for a fuller CV."
+                )
+            else:
+                msg += f"\n\n📏 Estimated CV length: {est_pages:.1f} pages."
+        except Exception:
+            pass  # Non-fatal; estimate is advisory
+
         # Proactively surface top publications shortlist when publications exist (GAP-319).
         pubs = getattr(self.orchestrator, 'publications', None)
         include_pubs = self.state.get('customizations', {}).get('include_publications', True)

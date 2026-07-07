@@ -13,6 +13,7 @@
  */
 
 import { stateManager } from './state-manager.js';
+import { disclosureKey, StorageKeys } from './api-client.js';
 
 // ── Module-level state ────────────────────────────────────────────────────────
 
@@ -222,6 +223,20 @@ function _restoreCoverLetterFormState() {
 
 // ── Generate cover letter ─────────────────────────────────────────────────────
 
+function _showLlmDisclosure() {
+  try {
+    const provider = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA) || '{}').currentModelProvider || null;
+    const key = disclosureKey(provider);
+    if (!localStorage.getItem(key)) {
+      const label = provider ? ` (${provider})` : '';
+      if (typeof appendMessage === 'function') {
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis. Review your provider's data policy for details.`);
+      }
+      localStorage.setItem(key, '1');
+    }
+  } catch (_) { /* non-fatal */ }
+}
+
 async function generateCoverLetter() {
   /* duckflow:
    *   id: cover_letter_ui_generate_live
@@ -249,6 +264,7 @@ async function generateCoverLetter() {
    *   - dom:#cl-letter-textarea.value
    *   notes: Submits cover-letter prompt inputs (including configurable opening style) and optional reuse text, then writes the generated body into the editable cover-letter textarea.
    */
+  _showLlmDisclosure(); // GAP-374: fire disclosure on first LLM use per provider
   const btn = document.getElementById('cl-generate-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Generating…';

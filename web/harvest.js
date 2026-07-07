@@ -14,6 +14,7 @@
  */
 
 import { getLogger } from './logger.js';
+import { disclosureKey, StorageKeys } from './api-client.js';
 
 const log = getLogger('harvest');
 
@@ -360,6 +361,19 @@ async function fetchCandidates() {
 }
 
 async function fetchAnalysis(forceRefresh = false) {
+  // GAP-374: fire LLM disclosure on first use per provider
+  try {
+    const provider = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA) || '{}').currentModelProvider || null;
+    const key = disclosureKey(provider);
+    if (!localStorage.getItem(key)) {
+      const label = provider ? ` (${provider})` : '';
+      if (typeof appendMessage === 'function') {
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis. Review your provider's data policy for details.`);
+      }
+      localStorage.setItem(key, '1');
+    }
+  } catch (_) { /* non-fatal */ }
+
   const res  = await fetch('/api/harvest/analyze', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -3653,6 +3653,25 @@ Include one entry per candidate. Do not omit any candidate."""
                     'Consider weaving them in naturally.'
                 )
 
+        # Check 5: target job title should appear in summary (GAP-375)
+        job_title = (job_analysis or {}).get('title', '').strip()
+        if job_title:
+            title_lower = job_title.lower()
+            # Accept partial match (e.g. "data scientist" matches "Senior Data Scientist")
+            title_words = [w for w in title_lower.split() if len(w) > 3]
+            if title_words and not any(w in text.lower() for w in title_words):
+                warnings.append(
+                    f'Summary does not reference the target role ("{job_title}"). '
+                    'Hiring managers scan for role-title alignment in the first sentence.'
+                )
+
+        # Check 6: years-of-experience quantification (GAP-375)
+        if not re.search(r'\d+\+?\s+year|\d+\s*-\s*\d+\s+year|over\s+\d+\s+year|more\s+than\s+\d+\s+year', text.lower()):
+            warnings.append(
+                'Summary does not quantify years of experience (e.g., "10+ years in …"). '
+                'Including this anchors seniority immediately for the hiring manager.'
+            )
+
         return warnings
 
     def _cap_cv_body_to_pages(
