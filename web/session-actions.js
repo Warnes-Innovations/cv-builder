@@ -200,6 +200,18 @@ function updatePositionTitle(status = {}) {
 
   const renameBtn = document.getElementById('rename-session-btn');
   if (renameBtn) renameBtn.style.display = label ? '' : 'none';
+
+  // Session notes indicator — surfaces notes left on the session (stored in
+  // metadata.json) so they follow the user into the active workspace instead
+  // of only being visible in the Sessions modal (GAP-352).
+  const notesIndicator = document.getElementById('position-notes-indicator');
+  const notesTextEl    = document.getElementById('position-notes-text');
+  if (notesIndicator && notesTextEl) {
+    const notes = (status.notes || '').toString().trim();
+    notesTextEl.textContent = notes;
+    notesIndicator.title = notes;
+    notesIndicator.style.display = notes ? '' : 'none';
+  }
   if (typeof _updateSessionSwitcherHeader === 'function') {
     _updateSessionSwitcherHeader({ position_name: label, phase: status.phase || null });
   }

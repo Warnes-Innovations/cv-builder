@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 102)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 103)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,28 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 103) Implementation Notes
+
+Follow-on cycle targeting the remaining OPEN/PARTIAL gap backlog after cycle 102. Addressed 8 gaps:
+
+- GAP-311 (MEDIUM, OPEN→RESOLVED): Backup restore now calls `populateMasterTab()` automatically instead of asking the user to reload.
+- GAP-312 (LOW, OPEN→RESOLVED): Phase-lock banner now shows the human-readable phase label instead of the raw `Phase` enum value.
+- GAP-352 (MEDIUM, PARTIAL→RESOLVED): Added `notes` to `GET /api/status` (reading the session's `metadata.json` sidecar directly) and a position-bar indicator, so session notes now follow the user into the active workspace.
+- GAP-359 (MEDIUM, OPEN→RESOLVED): Added the missing `domain_relevance` field to the Master CV experience modal, mirroring the existing `tags` field.
+- GAP-367 (LOW, PARTIAL→RESOLVED): Finished the remaining index.html jargon cleanup (header, onboarding, busy-indicator, and — found during a final sweep, not in the original report — the model/settings modal titles). No user-visible "LLM"/"Reasoning…" text remains.
+- GAP-368 (LOW, PARTIAL→RESOLVED): Updated the static "Harvest" step-pill and tab text to "Update Master CV", matching the dynamic label set since cycle 95.
+- GAP-347 (HIGH bug, PARTIAL→RESOLVED): Added a confirm-before-save guard when an extra BibTeX field present at open time would be silently removed, closing the "no warning" design gap left after cycle 102's multi-line-value fix.
+- GAP-371 (LOW, OPEN→PARTIAL): Found the customisation-workflow picker already title-cases summary variant keys; added the same treatment to the Master CV tab's own list for parity. A true `display_name` field remains a deferred schema change, disproportionate to a LOW-priority gap.
+- GAP-310 (MEDIUM, OPEN→FALSE POSITIVE/RESOLVED): Source-verified that a full achievement-bullet CRUD editor already exists in the experience modal (added under GAP-19, before this gap was even filed) — no code change needed.
+- GAP-133 (MEDIUM, remains PARTIAL): Assessed the remaining ~161 inline styles in `index.html` (down from ~227) — mostly unique one-off values, not systematic duplication a utility class would meaningfully consolidate. The core "design token layer" ask (a `:root{}` CSS custom-property system) is already complete (cycle 52). Converting the rest is a large, mechanical, regression-prone effort without visual regression testing infrastructure to verify against; left as a dedicated follow-up rather than a rushed, unverified pass.
+- GAP-03, GAP-04 (DEFERRED, reviewed and left as-is): Legitimately out-of-scope deferrals (Google Drive sync; extended JSON-LD field validation), not oversights.
+
+A mid-cycle regression: `vi.stubGlobal('confirmDialog', ...)` in new GAP-347 tests leaked into the unrelated `undoMasterDataChange`/`redoMasterDataChange` describe block (which relies on `confirmDialog` being undefined so it falls through to `window.confirm`), breaking 3 previously-passing tests. Fixed with a scoped `afterEach` reset; full suite re-verified green afterward.
+
+Test suite: 1528 Python + 1340 JS passing.
+
+---
 
 ## 2026-07-07 (Cycle 102) Implementation Notes
 
@@ -3918,7 +3940,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-310: Experience Bullets Not Editable in Master CV Tab
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** FALSE POSITIVE — RESOLVED (already, before this gap was filed) 2026-07-07 (cycle 103 source-verification). The requested feature already exists in full: clicking "✏️ Edit" on any experience row (`editMasterExperience()`, `master-cv.js`) opens a modal containing a complete achievement-bullet CRUD editor — `_renderExpAchievementsEditor()` renders each bullet as an editable text input with move-up/move-down/delete buttons, backed by `_addExpAchievement()`, `_moveExpAchievement()`, `_deleteExpAchievement()`, and `_syncExpAchievementsFromInputs()` (which preserves in-progress edits across reorders). This was implemented as part of GAP-19's resolution (2026-07-02, "experience achievements editor + skill aliases/years", commit a1aabc5) — before this gap was filed by master-cv-curator on 2026-07-06 (cycle 82), so the original review finding was already stale at filing time. Covered by existing passing tests in `tests/js/master-cv.test.js` ("experience achievements editor" describe block).
 **Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
 **Description:** The Work Experience section in the Master CV tab (`master-cv.js:904`) shows a "Bullets" count column displaying `exp.achievements.length`, but provides no interface to view, add, edit, or reorder the individual achievement bullet entries. Users who need to durably edit experience bullets outside the session-specific Harvest flow must edit `Master_CV_Data.json` directly. This creates an asymmetry: all other master data sections (skills, education, publications, certifications) have CRUD interfaces in the tab.
 **Affected stories:** US-M5 (proposed), US-A10
@@ -3929,7 +3951,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-311: Backup Restore Requires Manual Tab Reload — No Auto-Refresh
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 103) — `restoreBackup()` now calls `await populateMasterTab()` immediately after a successful restore, matching every other mutating handler in the file. Replaced the "Reload the tab..." instruction with a plain success message.
 **Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
 **Description:** After a backup restore succeeds, `master-cv.js:2529` displays "Reload the tab to see the updated data" rather than automatically calling `populateMasterTab()` (or equivalent). The user must manually navigate away from the tab and back, or reload the page, to see the restored data. During this window the user sees stale data that no longer reflects the restored state, creating a risk of editing over the restored content.
 **Affected stories:** US-M6 (proposed)
@@ -3940,7 +3962,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-312: Phase Lock Banner Exposes Internal Enum Value "refinement"
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 103) — The lock banner now looks up `SESSION_PHASE_LABELS[currentPhase]` (the full-form label map — a full sentence banner reads better with "Finalise" than the abbreviated form) falling back to the raw phase string if unmapped.
 **Discovered:** 2026-07-06 (cycle 82) by master-cv-curator.
 **Description:** The phase-lock banner in the Master CV tab (`master-cv.js:88`) renders "The current stage is **refinement**". "refinement" is the internal `Phase` enum value (`conversation_manager.py:48`). Users who see this message during an active application workflow do not understand what "refinement" means. `SESSION_PHASE_LABELS_SHORT` in `utils.js` already maps `refinement` → "Finalise" (confirmed in GAP-112 resolution). The same map should be used in the lock banner.
 **Affected stories:** US-M8 (proposed)
@@ -4305,7 +4327,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-347: Publication Edit Modal Silently Drops Non-Hardcoded BibTeX Fields on Save
 
 **Priority:** HIGH
-**Status:** PARTIAL 2026-07-07 (cycle 102) — Fixed a demonstrable, unconditional data-loss bug in `editMasterPublication()`/`saveMasterPublication()` (`master-cv.js`): any extra field whose value contained an embedded newline (plausible for prose fields like `abstract`, `note`, `annote`) split into an unparseable continuation line on save, silently truncating the value to its first line even when the user never touched the textarea. Now escapes embedded newlines as literal `\n` when populating the textarea and unescapes them on save, so the round-trip is lossless for values the user doesn't edit. Regression tests added in `tests/js/master-cv.test.js`. **Not fixed:** the underlying design risk remains — the "Extra fields" textarea is still unstructured free text with no diff or "unchanged = safe" guard, so a curator who *does* accidentally edit/clear a line while changing other fields gets no warning. A structured per-field UI (or a pre-save diff) would close the remaining gap.
+**Status:** RESOLVED 2026-07-07 (cycle 102–103) — Cycle 102 fixed a demonstrable, unconditional data-loss bug in `editMasterPublication()`/`saveMasterPublication()` (`master-cv.js`): any extra field whose value contained an embedded newline (plausible for prose fields like `abstract`, `note`, `annote`) split into an unparseable continuation line on save, silently truncating the value to its first line even when the user never touched the textarea. Escaped embedded newlines as literal `\n` when populating the textarea and unescaped them on save, so the round-trip is lossless for values the user doesn't edit. Cycle 103 closed the remaining "no warning" design risk: `editMasterPublication()` now records the set of extra-field keys present at open time (`_pubModalOriginalExtraKeys`); `saveMasterPublication()` compares that against what's about to be saved and, if any originally-present field would be silently removed, shows a confirm dialog listing the specific field(s) before proceeding — save is blocked if the curator declines. Adding or renaming fields needs no confirmation; only unintended removal does. Regression tests added in `tests/js/master-cv.test.js` (round-trip + both confirm/decline paths + no-prompt-when-nothing-dropped).
 **Discovered:** 2026-07-06 (cycle 93) by master-cv-curator.
 **Description:** The publication CRUD modal hard-codes a "known" field set (`author`, `editor`, `title`, `year`, `journal`, `booktitle`, `doi`). All other standard BibTeX fields — `volume`, `pages`, `publisher`, `number`, `series`, `isbn`, `url`, etc. — go into a raw "Extra fields (key=value)" textarea. When a curator opens an existing entry and saves, any content in that textarea that they do not explicitly preserve is silently dropped from `publications.bib`. No warning, no diff, no "unchanged = safe" guard. This directly violates US-M4: "Round-trip editing through the UI preserves existing BibTeX information." Location: `web/master-cv.js:1519–1567` (OFF-LIMITS until GAP-01 resolves).
 **Affected stories:** US-M4
@@ -4355,7 +4377,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-352: Session Notes Invisible During Active Session Workspace
 
 **Priority:** MEDIUM
-**Status:** PARTIAL 2026-07-06 (cycle 95) — Added _active_notes() helper in session_routes.py:sessions_active() that reads metadata.json sidecar and returns notes field; session-switcher-ui.js already reads s.notes at line 268 and renders notesPreview for all row types, so notes now appear in the Sessions modal row for active sessions. Full "follow into workspace" banner would require a new DOM element in index.html (OFF-LIMITS until GAP-01).
+**Status:** RESOLVED 2026-07-07 (cycle 103) — Added a `notes` field to `StatusResponse`/`GET /api/status` (`status_routes.py`), reading the current session's own `metadata.json` sidecar directly (parallel to the existing `_active_notes()` helper used by the Sessions modal list). Added a `#position-notes-indicator` element next to the position title in `index.html`, populated by `updatePositionTitle()` (`session-actions.js`) whenever status is refreshed — notes now follow the user into the active workspace instead of only being visible in the Sessions modal. Regression tests added in `tests/test_concurrent_sessions.py`.
 **Discovered:** 2026-07-06 (cycle 93) by returning-user.
 **Description:** Notes and application status are stored in a `metadata.json` sidecar file, not in the in-memory session. The `/api/sessions/active` endpoint (`session_routes.py:747–768`) never returns `notes`. `_normalizeSessionsForTable()` (`session-switcher-ui.js:238–280`) includes `notes` only for saved-type rows. `loadSessionFile()` does not read `metadata.json`. Result: a returning user who left themselves notes must open the Sessions modal to recall them — notes do not follow the user into the active workspace.
 **Affected stories:** US-S5 (proposed US-S8)
@@ -4425,7 +4447,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-359: Experience `domain_relevance` Field Absent From Master CV CRUD Modal
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 103) — Added a "Domain Relevance (comma-separated)" field to the add/edit Experience modal (`master-cv.js`), mirroring the existing `tags` field's UI and parsing exactly (comma-split, trimmed, empty entries filtered). Populate/clear/save logic all updated. Regression tests added in `tests/js/master-cv.test.js`.
 **Discovered:** 2026-07-06 (cycle 93) by master-cv-curator.
 **Description:** The `experience` entries support a `domain_relevance` array (e.g. `["pharma", "clinical"]`) that the backend correctly reads and persists (`master_data_routes.py:591, 614`). The add/edit experience modal exposes only title, company, location, dates, employment type, importance, and tags — `domain_relevance` has no UI field (`web/master-cv.js:519–585`, OFF-LIMITS). Curators must edit `Master_CV_Data.json` directly to set this field, silently degrading domain-specific AI recommendations.
 **Affected stories:** US-M3
@@ -4505,7 +4527,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-367: "LLM" and Implementation-Centric Jargon Throughout Header and Status Copy
 
 **Priority:** LOW
-**Status:** PARTIAL 2026-07-07 (cycle 101) — Jargon fixed in editable files: (1) `fetch-utils.js` busy overlay changed from `'Reasoning…'` to `'Working…'` (3 call sites). (2) `message-dispatch.js` error-state labels: `'Authentication required'` → `'Sign in required'`, `'Rate limited'` → `'Too many requests'`; tooltips reworded for non-engineers. (3) `auth-provider.js` Copilot unauthenticated label: `'Not authenticated'` → `'Sign in required'`; tooltip updated. (4) `ui-core.js` default tooltips for `auth-required` and `rate-limited` updated to match. Remaining jargon blocked by index.html OFF-LIMITS: header "LLM: [provider]", onboarding modal "use the ⚙ LLM button", initial `llm-busy-label` text.
+**Status:** RESOLVED 2026-07-07 (cycle 103) — Completed the remaining index.html jargon fixes now that it's editable: header "LLM:" → "AI Model:"; onboarding modal "use the ⚙ LLM button" → "use the AI Model button" (also fixed the stale ⚙ gear-icon reference — that icon actually belongs to the Settings button, not the model selector); `llm-busy-label` and `llm-step-label` initial static text "Reasoning…" → "Working…" (matching what the JS already sets dynamically, closing a flash-of-stale-text gap on slow connections); modal/settings titles "LLM Configuration Wizard" → "AI Model Configuration Wizard", "LLM Defaults" → "AI Model Defaults", "LLM Retry Policy (Browser)" → "AI Model Retry Policy (Browser)" (found during a final sweep — same jargon class, not in the original report, fixed for consistency). Combined with cycle 101's JS-side fixes, no user-visible "LLM"/"Reasoning…" text remains; only internal HTML comments and element IDs (never shown to users) still say "LLM".
 **Discovered:** 2026-07-06 (cycle 93) by applicant, first-time-user, ux-expert, heuristic.
 **Description:** The header permanently displays "LLM: [provider] ⚠ Not ready" before setup. The onboarding modal directs the user to "use the ⚙ LLM button" but no button has that label. "LLM" is never spelled out anywhere. The busy overlay says "Reasoning…" — a technical AI term. The connection-status badge uses "auth-required", "rate-limited", "unconfigured" — vocabulary familiar to engineers but opaque to job seekers. Sources: `index.html:51–62`, `index.html:355`, `ui-core.js:776–810`. Suggested replacements: "LLM" → "AI Model", "Reasoning…" → "Working…", "auth-required" → "Sign in required".
 **Affected stories:** US-F1, US-A1, US-U1
@@ -4515,7 +4537,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-368: "Harvest" Step Label Is an Opaque Metaphor for Job Seekers
 
 **Priority:** LOW
-**Status:** PARTIAL 2026-07-06 (cycle 95) — Updated STEP_SHORT_LABELS[harvest] and dynamic STEP_LABELS[harvest] in workflow-steps.js to 'Update Master CV'. Static step div and tab label in index.html remain (OFF-LIMITS until GAP-01).
+**Status:** RESOLVED 2026-07-07 (cycle 103) — Updated the static `#step-harvest` and `#tab-harvest` text in `index.html` from "Harvest" to "Update Master CV" (🌾 icon kept), matching the dynamic label workflow-steps.js has set since cycle 95. No test asserted on the literal old label text.
 **Discovered:** 2026-07-06 (cycle 93) by applicant, first-time-user.
 **Description:** The workflow step "🌾 Harvest" is an agricultural metaphor with no inline definition. An explanation exists only in a hover tooltip. This violates the US-F1 failure-mode guard: "Terms like rewrites, customisations, layout review, or harvest appearing without context." The meaning ("Save approved rewrites back to your master CV") would be immediately understood if the label were "Update Master CV". Source: `index.html:122–148`, `workflow-steps.js:196–208`.
 **Affected stories:** US-F1, US-A11
@@ -4545,7 +4567,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-371: Summary Variant Key Exposed as Display Label — No Display-Name Field
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-07 (cycle 103) — Found that the customisation-workflow picker (`_renderStoredSummaryRadios` in `summary-review.js`) already title-cases the key for display (`ml_engineering` → "Ml Engineering") — the original report's specific complaint about that picker no longer reflects current code. The Master CV tab's own management list (`_renderSummariesList`, the file cited in the original report) did not have this treatment; added the same title-case transform there too, with the raw key kept as a small parenthetical for curators who need it for reference. **Not fixed:** genuinely custom display names ("VP / Executive" from key `vp_executive`) still aren't possible without a real `display_name` field — that requires a schema change (`professional_summaries` is currently a flat `{key: text}` map) touching the schema, `master_data_routes.py`, and both display sites. Deferred as disproportionate to a LOW-priority gap; the title-case transform closes the actual jargon/readability complaint cheaply.
 **Discovered:** 2026-07-06 (cycle 93) by master-cv-curator.
 **Description:** Professional summary variants are stored as `{ key: text }` pairs with `lowercase_underscore` keys. This key is the label shown in the Summary Focus picker during customisation — there is no separate display-name field. A curator creating variants for "Machine Learning Engineering" and "VP / Executive" roles must either accept that the workflow shows `ml_engineering` and `vp_executive` as picker labels, or encode long readable strings as keys with potential downstream handling issues. Location: `web/master-cv.js:807–811` (OFF-LIMITS).
 **Affected stories:** US-M2

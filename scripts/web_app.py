@@ -134,6 +134,7 @@ class StatusResponse:
     highest_phase: Optional[str]
     session_last_modified: Optional[str] = None
     ats_checks: Optional[List[Any]] = None
+    notes: Optional[str] = None
 
 
 @dataclass

@@ -1714,6 +1714,49 @@ def test_status_route_merges_session_summary_variants(build_app):
         assert payload['summary_focus_override'] == 'ai_generated'
 
 
+def test_status_route_surfaces_session_notes_from_metadata_sidecar(build_app):
+    """GAP-352: notes follow the user into the active workspace via /api/status,
+    not just the Sessions modal."""
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.save_session()
+        metadata_path = manager.session_dir / "metadata.json"
+        metadata_path.write_text(
+            json.dumps({"notes": "Follow up with recruiter next week"}),
+            encoding="utf-8",
+        )
+
+        response = client.get(
+            '/api/status',
+            query_string={'session_id': session_id},
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['notes'] == "Follow up with recruiter next week"
+
+
+def test_status_route_omits_notes_when_no_metadata_sidecar(build_app):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        manager = _manager_for_session(tracker, session_id)
+        manager.save_session()
+
+        response = client.get(
+            '/api/status',
+            query_string={'session_id': session_id},
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['notes'] is None
+
+
 def test_cover_letter_and_screening_routes_enforce_ownership(build_app):
     app, tracker = build_app()
 

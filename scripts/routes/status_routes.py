@@ -676,6 +676,19 @@ def create_blueprint(deps):
             })
         conversation = entry.manager
         orchestrator = entry.orchestrator
+        # Notes live in the session's metadata.json sidecar, not in-memory
+        # state, so a returning user's notes follow them into the active
+        # workspace rather than only being visible in the Sessions modal
+        # (GAP-352).
+        session_notes = None
+        session_dir = getattr(conversation, 'session_dir', None)
+        if session_dir:
+            meta_path = Path(session_dir) / 'metadata.json'
+            if meta_path.exists():
+                try:
+                    session_notes = (json.loads(meta_path.read_text(encoding='utf-8')) or {}).get('notes') or None
+                except Exception:
+                    session_notes = None
         all_experience_ids = []
         all_experiences = []
         all_skills = []
@@ -772,6 +785,7 @@ def create_blueprint(deps):
                 .get("ats_validation", {})
                 .get("checks") or []
             ) or None,
+            notes=session_notes,
         )))
 
     @bp.get("/api/context-stats")

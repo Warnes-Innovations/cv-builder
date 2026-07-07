@@ -105,7 +105,7 @@ async function populateMasterTab(container = null) {
                 padding:10px 14px;margin-bottom:16px;font-size:0.88em;color:#991b1b;">
       <strong>🔒 Read-only — editing locked</strong><br>
       Master CV editing is only available before job analysis begins or during the
-      Refinement stage. The current stage is <strong>${escapeHtml(currentPhase || 'unknown')}</strong>.
+      Refinement stage. The current stage is <strong>${escapeHtml((typeof SESSION_PHASE_LABELS !== 'undefined' && SESSION_PHASE_LABELS[currentPhase]) || currentPhase || 'unknown')}</strong>.
       Save or complete the current stage to re-enable editing.
     </div>`;
 
@@ -618,6 +618,12 @@ async function populateMasterTab(container = null) {
               <input type="text" id="exp-tags-input" class="edit-input" style="width:100%;"
                   placeholder="e.g. ml, leadership, python" />
             </div>
+            <div style="grid-column:1/-1;">
+              <label for="exp-domain-relevance-input" style="display:block;font-weight:600;margin-bottom:4px;">Domain Relevance (comma-separated)</label>
+              <input type="text" id="exp-domain-relevance-input" class="edit-input" style="width:100%;"
+                  placeholder="e.g. pharma, clinical"
+                  title="Domains this experience is especially relevant to — improves domain-specific AI recommendations" />
+            </div>
             <div style="grid-column:1/-1;border-top:1px solid var(--cv-border);padding-top:14px;margin-top:4px;">
               <label style="display:block;font-weight:600;margin-bottom:6px;">Achievements</label>
               <div id="exp-achievements-editor-list"></div>
@@ -1085,6 +1091,10 @@ let _pubSortMode = 'year_desc';
 let _pubGroupMode = 'none';
 /** True when the entry being edited had an `editor` field but no `author`. */
 let _pubModalUsesEditorField = false;
+/** Extra (non-hardcoded) field keys present when the edit modal was opened —
+ * used to warn before silently dropping a field the curator didn't intend
+ * to remove (GAP-347). Empty for "Add Publication" (nothing to lose yet). */
+let _pubModalOriginalExtraKeys = [];
 
 function togglePublicationsView() {
   _pubViewMode = _pubViewMode === 'crud' ? 'raw' : 'crud';
@@ -1539,6 +1549,7 @@ async function importConvertedPublicationText() {
 
 function showAddPublicationModal() {
   _pubModalUsesEditorField = false;
+  _pubModalOriginalExtraKeys = [];
   document.getElementById('pub-modal-key').value    = '';
   document.getElementById('pub-modal-type').value   = 'article';
   document.getElementById('pub-modal-author').value = '';
@@ -1577,8 +1588,9 @@ function editMasterPublication(pub) {
   // this, a value spanning multiple lines would split into an unparseable
   // continuation line and silently lose everything after the first line.
   const known = new Set(['author','editor','title','year','journal','booktitle','doi']);
-  const extra = Object.entries(fields)
-    .filter(([k]) => !known.has(k))
+  const extraEntries = Object.entries(fields).filter(([k]) => !known.has(k));
+  _pubModalOriginalExtraKeys = extraEntries.map(([k]) => k);
+  const extra = extraEntries
     .map(([k, v]) => `${k}=${String(v).replace(/\n/g, '\\n')}`)
     .join('\n');
   document.getElementById('pub-modal-extra').value   = extra;
@@ -1626,6 +1638,20 @@ async function saveMasterPublication() {
       const v = line.slice(eq + 1).trim().replace(/\\n/g, '\n');
       if (k && v) fields[k] = v;
     }
+  }
+  // Warn before silently dropping an extra field the curator didn't intend to
+  // remove — the "Extra fields" textarea is unstructured free text with no
+  // other safety net (GAP-347). Only fires when a field present at open time
+  // is now missing; adding/renaming fields needs no confirmation.
+  const droppedKeys = _pubModalOriginalExtraKeys.filter((k) => !(k in fields));
+  if (droppedKeys.length > 0) {
+    const proceed = await (typeof confirmDialog === 'function'
+      ? confirmDialog(
+          `These fields will be removed from "${key}":\n\n${droppedKeys.map((k) => `• ${k}`).join('\n')}\n\nContinue saving?`,
+          { confirmLabel: 'Save anyway', cancelLabel: 'Go back', danger: true },
+        )
+      : Promise.resolve(window.confirm(`Remove fields: ${droppedKeys.join(', ')}?`)));
+    if (!proceed) return;
   }
   const body = { action, key, type, fields };
   try {
@@ -1798,10 +1824,15 @@ function _renderSummariesList(summaries) {
     const text    = typeof summaries[key] === 'string' ? summaries[key] : JSON.stringify(summaries[key]);
     const preview = escapeHtml(text.slice(0, 200));
     const keyEsc  = escapeHtml(key);
+    // Show a friendly title-cased label (matching the picker in the
+    // customisation workflow) with the raw key underneath for curators who
+    // need it for reference — no separate display-name field yet (GAP-371),
+    // this keeps the two views consistent in the meantime.
+    const prettyLabel = escapeHtml(key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
     return `
       <div class="master-summary-card">
         <div class="master-summary-header">
-          <span class="master-summary-key">${keyEsc}</span>
+          <span class="master-summary-key" title="Variant key: ${keyEsc}">${prettyLabel}<span style="font-weight:400;color:#9ca3af;font-size:0.85em;"> (${keyEsc})</span></span>
           <div class="action-btns" style="gap:4px;">
             <button class="icon-btn" onclick="editMasterSummary(${escapeHtml(JSON.stringify({key, text}))})"
                 aria-label="Edit summary: ${keyEsc}" title="Edit">✏️</button>
@@ -2004,6 +2035,7 @@ function showAddExperienceModal() {
   document.getElementById('exp-type-input').value      = 'full_time';
   document.getElementById('exp-importance-input').value = '5';
   document.getElementById('exp-tags-input').value      = '';
+  document.getElementById('exp-domain-relevance-input').value = '';
   document.getElementById('master-exp-modal-title').textContent = 'Add Work Experience';
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
   _masterExpModalAchievements = [];
@@ -2099,6 +2131,8 @@ function editMasterExperience(id) {
   document.getElementById('exp-importance-input').value  = exp.importance || 5;
   document.getElementById('exp-tags-input').value       = typeof exp.tags === 'string' ? exp.tags
                                                          : (exp.tags || []).join(', ');
+  document.getElementById('exp-domain-relevance-input').value = typeof exp.domain_relevance === 'string' ? exp.domain_relevance
+                                                         : (exp.domain_relevance || []).join(', ');
   document.getElementById('master-exp-modal-title').textContent = 'Edit Work Experience';
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
   _masterExpModalAchievements = JSON.parse(JSON.stringify(exp.achievements || []));
@@ -2122,17 +2156,19 @@ async function saveMasterExperience() {
     return;
   }
   const tagsRaw = document.getElementById('exp-tags-input').value;
+  const domainRelevanceRaw = document.getElementById('exp-domain-relevance-input').value;
   _syncExpAchievementsFromInputs();
   const expData = {
     title, company,
-    city:            document.getElementById('exp-city-input').value.trim(),
-    state:           document.getElementById('exp-state-input').value.trim(),
-    start_date:      document.getElementById('exp-start-input').value.trim(),
-    end_date:        document.getElementById('exp-end-input').value.trim(),
-    employment_type: document.getElementById('exp-type-input').value,
-    importance:      parseInt(document.getElementById('exp-importance-input').value, 10) || 5,
-    tags:            tagsRaw.split(',').map(s => s.trim()).filter(Boolean),
-    achievements:    _masterExpModalAchievements,
+    city:              document.getElementById('exp-city-input').value.trim(),
+    state:             document.getElementById('exp-state-input').value.trim(),
+    start_date:        document.getElementById('exp-start-input').value.trim(),
+    end_date:          document.getElementById('exp-end-input').value.trim(),
+    employment_type:   document.getElementById('exp-type-input').value,
+    importance:        parseInt(document.getElementById('exp-importance-input').value, 10) || 5,
+    tags:              tagsRaw.split(',').map(s => s.trim()).filter(Boolean),
+    domain_relevance:  domainRelevanceRaw.split(',').map(s => s.trim()).filter(Boolean),
+    achievements:      _masterExpModalAchievements,
   };
   const action = id ? 'update' : 'add';
   const body   = action === 'update' ? { action, id, experience: expData } : { action, experience: expData };
@@ -2686,7 +2722,8 @@ async function restoreBackup(filename) {
     if (data.ok) {
       document.getElementById('backup-history-overlay')?.remove();
       if (typeof restoreFocus === 'function') restoreFocus();
-      showAlertModal('✅ Restored', 'Master CV restored from backup. Reload the tab to see the updated data.');
+      await populateMasterTab();
+      showAlertModal('✅ Restored', 'Master CV restored from backup.');
     } else {
       showAlertModal('❌ Error', data.error || 'Restore failed.');
     }

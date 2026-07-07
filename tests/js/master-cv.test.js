@@ -284,6 +284,15 @@ describe('_renderSummariesList', () => {
     expect(html).toContain('ml_engineering')
   })
 
+  // GAP-371: no separate display-name field exists yet, but the key should
+  // read as a friendly title, not a raw lowercase_underscore token — matching
+  // the picker in the customisation workflow (summary-review.js).
+  it('shows a title-cased label with the raw key kept as a reference', () => {
+    const html = _renderSummariesList({ ml_engineering: 'Expert in ML.' })
+    expect(html).toContain('Ml Engineering')
+    expect(html).toContain('(ml_engineering)')
+  })
+
   it('renders a preview of the summary text', () => {
     const html = _renderSummariesList({ leadership: 'I lead teams effectively.' })
     expect(html).toContain('I lead teams effectively.')
@@ -627,6 +636,7 @@ describe('experience achievements editor', () => {
       <select id="exp-type-input"><option value="full_time">Full-time</option></select>
       <input id="exp-importance-input" value="5" />
       <input id="exp-tags-input" />
+      <input id="exp-domain-relevance-input" />
       <div id="exp-achievements-editor-list"></div>
       <input id="exp-ach-new-input" />
     `
@@ -752,6 +762,34 @@ describe('experience achievements editor', () => {
     const expCall = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/experience')
     const body = JSON.parse(expCall[1].body)
     expect(body.experience.achievements).toEqual(['First (edited)'])
+  })
+
+  // GAP-359: domain_relevance had no UI field even though the backend
+  // fully supports it (same shape/handling as tags).
+  it('editMasterExperience populates domain_relevance as a comma-joined string', () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      domain_relevance: ['pharma', 'clinical'],
+    }]
+
+    editMasterExperience('exp_1')
+
+    expect(document.getElementById('exp-domain-relevance-input').value).toBe('pharma, clinical')
+  })
+
+  it('saveMasterExperience parses domain_relevance from the comma-separated input', async () => {
+    showAddExperienceModal()
+    document.getElementById('exp-title-input').value = 'Engineer'
+    document.getElementById('exp-company-input').value = 'Acme'
+    document.getElementById('exp-domain-relevance-input').value = 'pharma,  clinical , '
+    const mockFetch = makeExpFetchMock({ ok: true, action: 'added' })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterExperience()
+
+    const expCall = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/experience')
+    const body = JSON.parse(expCall[1].body)
+    expect(body.experience.domain_relevance).toEqual(['pharma', 'clinical'])
   })
 })
 
@@ -1285,6 +1323,15 @@ describe('publications UI flows', () => {
   // split into an unparseable continuation line on save, silently losing
   // everything after the first line with no warning.
   describe('publication edit modal — extra field round-trip (GAP-347)', () => {
+    // Several tests here stub the `confirmDialog` global, which otherwise
+    // does not exist in this file's scope (other describe blocks rely on
+    // `typeof confirmDialog === 'function'` being false so their code falls
+    // through to `window.confirm`). Reset it after every test so the stub
+    // doesn't leak into later, unrelated describe blocks.
+    afterEach(() => {
+      vi.stubGlobal('confirmDialog', undefined)
+    })
+
     it('preserves a multi-line extra field value through edit -> save', () => {
       const pub = {
         key: 'doe2025',
@@ -1340,6 +1387,74 @@ describe('publications UI flows', () => {
         expect(body.fields.volume).toBe('12')
         expect(body.fields.pages).toBe('100-110')
       })
+    })
+
+    it('warns before saving when a field present at open time is now missing, and blocks the save if the curator declines', async () => {
+      const pub = {
+        key: 'lee2023',
+        type: 'article',
+        fields: {
+          author: 'Lee, K.', title: 'Original', year: '2023',
+          volume: '3', pages: '1-10',
+        },
+      }
+      editMasterPublication(pub)
+      // Curator accidentally deletes the "pages" line while editing.
+      document.getElementById('pub-modal-extra').value = 'volume=3'
+      const confirmDialogMock = vi.fn().mockResolvedValue(false)
+      vi.stubGlobal('confirmDialog', confirmDialogMock)
+      const mockFetch = vi.fn()
+      vi.stubGlobal('fetch', mockFetch)
+
+      await saveMasterPublication()
+
+      expect(confirmDialogMock).toHaveBeenCalledWith(
+        expect.stringContaining('pages'),
+        expect.objectContaining({ confirmLabel: 'Save anyway' }),
+      )
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('proceeds with the save when the curator confirms removing a dropped field', async () => {
+      const pub = {
+        key: 'lee2023',
+        type: 'article',
+        fields: {
+          author: 'Lee, K.', title: 'Original', year: '2023',
+          volume: '3', pages: '1-10',
+        },
+      }
+      editMasterPublication(pub)
+      document.getElementById('pub-modal-extra').value = 'volume=3'
+      vi.stubGlobal('confirmDialog', vi.fn().mockResolvedValue(true))
+      const mockFetch = vi.fn().mockResolvedValue({ json: async () => ({ ok: true, action: 'updated' }) })
+      vi.stubGlobal('fetch', mockFetch)
+
+      await saveMasterPublication()
+
+      expect(mockFetch).toHaveBeenCalled()
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.fields.pages).toBeUndefined()
+    })
+
+    it('does not prompt when no originally-present extra field is removed', async () => {
+      const pub = {
+        key: 'lee2023',
+        type: 'article',
+        fields: { author: 'Lee, K.', title: 'Original', year: '2023', volume: '3' },
+      }
+      editMasterPublication(pub)
+      // Adding a new extra field, not removing an existing one.
+      document.getElementById('pub-modal-extra').value = 'volume=3\nissue=2'
+      const confirmDialogMock = vi.fn()
+      vi.stubGlobal('confirmDialog', confirmDialogMock)
+      const mockFetch = vi.fn().mockResolvedValue({ json: async () => ({ ok: true, action: 'updated' }) })
+      vi.stubGlobal('fetch', mockFetch)
+
+      await saveMasterPublication()
+
+      expect(confirmDialogMock).not.toHaveBeenCalled()
+      expect(mockFetch).toHaveBeenCalled()
     })
   })
 })
@@ -1749,6 +1864,7 @@ describe('Master CV editor workflow smoke test', () => {
       <select id="exp-type-input"><option value="full_time">Full-time</option></select>
       <input id="exp-importance-input" value="5" />
       <input id="exp-tags-input" />
+      <input id="exp-domain-relevance-input" />
       <div id="exp-achievements-editor-list"></div>
       <input id="exp-ach-new-input" />
     `
