@@ -448,6 +448,12 @@ def _setup_global_state(page: Page, phase: str = 'customization') -> None:
             window.tabData.analysis = { required_skills: [], responsibilities: [] };
             window.achievementDecisions = window.achievementDecisions || {};
             window.userSelections = window.userSelections || {};
+            // Seed stateManager's internal closure so getTabData() passes guards in
+            // review-table-base.js (populateReviewTab reads stateManager, not window.tabData).
+            if (typeof stateManager !== 'undefined' && stateManager.setTabData) {
+                stateManager.setTabData('customizations', {});
+                stateManager.setTabData('analysis', { required_skills: [], responsibilities: [] });
+            }
         }
         """,
         phase,
