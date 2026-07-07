@@ -2498,9 +2498,9 @@ def create_blueprint(deps):
                 max_skills=inputs['max_skills'],
                 use_semantic_match=False,
             )
-        except Exception as exc:
+        except Exception:
             current_app.logger.exception("propose-content-change: failed to build content")
-            return jsonify({"error": f"Failed to build CV content: {exc}"}), 500
+            return jsonify({"error": "Failed to build CV content."}), 500
 
         result = conv.orchestrator.propose_content_change(instruction_text, content)
 
@@ -2624,9 +2624,9 @@ def create_blueprint(deps):
                     spell_audit=inputs['spell_audit'],
                     max_skills=inputs['max_skills'],
                 )
-            except Exception as exc:
+            except Exception:
                 current_app.logger.exception("smart-instruction: failed to build content")
-                return jsonify({"error": f"Failed to build CV content: {exc}"}), 500
+                return jsonify({"error": "Failed to build CV content."}), 500
 
             result = conv.orchestrator.propose_content_change(instruction_text, content)
             if result.get('error'):

@@ -65,6 +65,11 @@ def test_achievements_review_table_loads(seeded_page: Page):
             window.tabData.customizations = {};
             window._achievementsOrdered = achievements;
             window.achievementDecisions = {};
+            // Seed stateManager so populateReviewTab('achievements') passes its
+            // null-customizations guard and creates #achievements-table-container.
+            if (typeof stateManager !== 'undefined' && stateManager.setTabData) {
+                stateManager.setTabData('customizations', {});
+            }
         }
         """,
         master_fields["selected_achievements"],
