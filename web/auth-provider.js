@@ -68,8 +68,8 @@ function updateAuthBadge(authStatus, provider = null) {
         configured: 'Provider/model is configured. Connectivity not yet verified.',
         connecting: 'Testing or connecting to the selected provider.',
         connected: 'Provider responded successfully to a live request.',
-        'auth-required': 'Authentication is required. Check API key or sign in.',
-        'rate-limited': 'Rate limit reached. Wait before retrying requests.',
+        'auth-required': 'API key or sign-in credentials are invalid. Open Settings to reconfigure.',
+        'rate-limited': 'The AI provider received too many requests. Wait a moment before retrying.',
         unavailable: 'Provider is temporarily unavailable or unreachable.',
         error: 'Connection failed. Open model settings for details.',
       };
@@ -101,7 +101,7 @@ function updateAuthBadge(authStatus, provider = null) {
   } else if (authStatus.polling) {
     applyState('connecting', 'Waiting for approval…', '⧗');
   } else {
-    applyState('auth-required', 'Not authenticated', '🔑');
+    applyState('auth-required', 'Sign in required', '🔑');
   }
 }
 

@@ -129,7 +129,7 @@ function _updateLLMOverlay(loading, label) {
     overlay.classList.remove('slow');
     if (labelEl) {
       if (!labelEl.getAttribute('aria-live')) labelEl.setAttribute('aria-live', 'polite');
-      labelEl.textContent = label || 'Reasoning…';
+      labelEl.textContent = label || 'Working…';
     }
     if (elapsed)  elapsed.textContent = '0:00';
 
@@ -149,7 +149,7 @@ function _updateLLMOverlay(loading, label) {
     _llmElapsedTimer = null;
     _llmStartTime    = null;
     overlay.classList.remove('visible', 'slow');
-    if (labelEl) labelEl.textContent = 'Reasoning…';
+    if (labelEl) labelEl.textContent = 'Working…';
     if (elapsed)  elapsed.textContent = '0:00';
     _refreshContextStats();
   }
@@ -168,7 +168,7 @@ function _updateLLMStatusBar(loading, label) {
   if (loading) {
     bar.style.display = 'flex';
     if (thinking) thinking.style.display = 'flex';
-    if (stepLabel) stepLabel.textContent = label || 'Reasoning…';
+    if (stepLabel) stepLabel.textContent = label || 'Working…';
     if (abortBtn) {
       abortBtn.style.display = '';
       abortBtn.disabled = false;

@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 100)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 101)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,16 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 101) Implementation Notes
+
+Cycle 101 addressed 1 gap (partial):
+
+- GAP-367 (LOW, OPEN→PARTIAL): Replaced `'Reasoning…'` with `'Working…'` in `fetch-utils.js` (3 call sites — the busy overlay the user sees during all LLM requests). In `message-dispatch.js`: changed auth error label from `'Authentication required'` → `'Sign in required'` and rate-limit label from `'Rate limited'` → `'Too many requests'`; reworded both tooltips for non-engineers. In `auth-provider.js`: Copilot unauthenticated label from `'Not authenticated'` → `'Sign in required'`; tooltip updated. In `ui-core.js`: matching default tooltip updates. Updated test assertion in `message-dispatch.test.js`. Remaining jargon in index.html (`"LLM: [provider]"`, `"Reasoning…"` initial DOM text, onboarding copy) blocked by OFF-LIMITS constraint.
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
 
 ## 2026-07-07 (Cycle 100) Implementation Notes
 
@@ -132,7 +142,7 @@ Full 15-persona + heuristic review cycle (discovery only — no code fixes in th
 - **ux-expert** — Layout sub-phase has 4 sequential action buttons with no sub-step indicator (GAP-364, MEDIUM)
 - **ux-expert** — `.intake-confirm-card` CSS exists but extracted-field confirmation is unwired (GAP-365, MEDIUM) ✅ cycle 97
 - **power-user** — Publications and rewrite bulk actions lack undo path (GAP-366, MEDIUM)
-- **multi-persona** — "LLM" / developer jargon in header and status copy (GAP-367, LOW)
+- **multi-persona** — "LLM" / developer jargon in header and status copy (GAP-367, LOW) ⚠️ partial cycle 101
 - **multi-persona** — "Harvest" step label is an opaque metaphor for job seekers (GAP-368, LOW)
 - **returning-user** — Single-session auto-resume fires without explaining why user landed in that session (GAP-369, LOW)
 - **recruiter-ops** — Default archive status dropdown value is "queued" — wrong for a completed package (GAP-370, LOW)
@@ -4470,7 +4480,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-367: "LLM" and Implementation-Centric Jargon Throughout Header and Status Copy
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-07 (cycle 101) — Jargon fixed in editable files: (1) `fetch-utils.js` busy overlay changed from `'Reasoning…'` to `'Working…'` (3 call sites). (2) `message-dispatch.js` error-state labels: `'Authentication required'` → `'Sign in required'`, `'Rate limited'` → `'Too many requests'`; tooltips reworded for non-engineers. (3) `auth-provider.js` Copilot unauthenticated label: `'Not authenticated'` → `'Sign in required'`; tooltip updated. (4) `ui-core.js` default tooltips for `auth-required` and `rate-limited` updated to match. Remaining jargon blocked by index.html OFF-LIMITS: header "LLM: [provider]", onboarding modal "use the ⚙ LLM button", initial `llm-busy-label` text.
 **Discovered:** 2026-07-06 (cycle 93) by applicant, first-time-user, ux-expert, heuristic.
 **Description:** The header permanently displays "LLM: [provider] ⚠ Not ready" before setup. The onboarding modal directs the user to "use the ⚙ LLM button" but no button has that label. "LLM" is never spelled out anywhere. The busy overlay says "Reasoning…" — a technical AI term. The connection-status badge uses "auth-required", "rate-limited", "unconfigured" — vocabulary familiar to engineers but opaque to job seekers. Sources: `index.html:51–62`, `index.html:355`, `ui-core.js:776–810`. Suggested replacements: "LLM" → "AI Model", "Reasoning…" → "Working…", "auth-required" → "Sign in required".
 **Affected stories:** US-F1, US-A1, US-U1
