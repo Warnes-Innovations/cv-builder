@@ -2,7 +2,7 @@
 
 # 2026-03-20 17:40:04Z
 
-<!-- copilotide Session c8b78863-bb0f-45dd-aa99-f078d63ec8d9 (2026-03-20 17:40:04Z) -->
+<!-- VS Code Copilot IDE Session c8b78863-bb0f-45dd-aa99-f078d63ec8d9 (2026-03-20 17:40:04Z) -->
 
 _**User (2026-03-20 17:40:04Z)**_
 
@@ -95,4 +95,4 @@ _**Agent (copilot/gpt-5-mini)**_
 
 I need to start my process with a message: "I'll accept origin/devel for the conflicts and then finish the merge locally." After that, I'll push to the main branch and update the PR. I also have to update the statuses of my todo list tasks. I’ll use the manage_todo_list tool again to mark the merge as completed, even though I've used it earlier. So, I’ll proceed with that!
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=cv-builder target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
+<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
