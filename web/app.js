@@ -162,6 +162,7 @@ function setupEventListeners() {
   }
 
   if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
+  if (typeof initEarlyPreviewPanel === 'function') initEarlyPreviewPanel();
 
   // Redirect the "? Help" header button from the welcome wizard to the keyboard
   // shortcuts panel — the `?` key opens shortcuts, so the button should match

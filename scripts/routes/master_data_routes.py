@@ -1,9 +1,12 @@
 """Master data management, summary, cover letter, and screening routes."""
+import copy
 import logging
 import json
+import math
 import re
 import shutil
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,7 +22,11 @@ from utils.bibtex_parser import (
     parse_bibtex_file,
     serialize_publications_to_bibtex,
 )
+from utils.backup_helpers import prune_backups as _prune_backups
+from utils.git_helpers import git_commit_error as _git_commit_error, git_push_if_remote as _git_push_if_remote
 from utils.llm_client import LLMClient, LLMError
+from utils.master_data_mutations import _apply_master_data_change
+from utils.master_data_validator import MasterDataSaveError, validate_master_data
 
 
 logger = logging.getLogger(__name__)
@@ -54,10 +61,17 @@ def _save_master(master: Dict[str, Any], master_path: Path) -> None:
     if not result.valid:
         if backup_path.exists():
             shutil.copy2(backup_path, master_path)
-        raise ValueError(
-            f"Master data failed schema validation after write; backup restored. "
-            f"Errors: {'; '.join(result.errors)}"
-        )
+        raise MasterDataSaveError(result.errors)
+
+    # Prune only after a successful write+validation, so a pruning bug can
+    # never run concurrently with the rollback path above that depends on
+    # backup_path still existing.
+    try:
+        from utils.config import get_config
+        cfg = get_config()
+        _prune_backups(backup_dir, cfg.master_data_backup_retention_days, cfg.master_data_backup_max_count)
+    except Exception:
+        logger.warning("Backup pruning failed", exc_info=True)
 
     git_result = subprocess.run(
         ['git', '-C', str(master_path.parent), 'add', master_path.name],
@@ -141,6 +155,36 @@ def _text_similarity(query: str, target: str) -> float:
     return len(q_tok & t_tok) / max(len(q_tok), len(t_tok))
 
 
+def _section_item_count(value: Any) -> int:
+    """Rough size indicator for a top-level master-data section, for the
+    import-preview summary. Not a full recursive diff — item/field-level
+    diffing within a changed section is a known v1 limitation (GAP-19
+    16.16); this gives the user enough signal ("Experience: 5 -> 7 entries")
+    to decide whether the uploaded file looks right before confirming."""
+    if isinstance(value, (list, dict)):
+        return len(value)
+    if value in (None, '', {}):
+        return 0
+    return 1
+
+
+def _import_diff_summary(current: Dict[str, Any], new: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Per-top-level-key changed/count summary comparing current vs. an
+    uploaded full master-data document (GAP-19 16.16)."""
+    all_keys = sorted(set(current.keys()) | set(new.keys()))
+    summary = []
+    for key in all_keys:
+        cur_val = current.get(key)
+        new_val = new.get(key)
+        summary.append({
+            'section':       key,
+            'changed':       cur_val != new_val,
+            'current_count': _section_item_count(cur_val),
+            'new_count':      _section_item_count(new_val),
+        })
+    return summary
+
+
 def create_blueprint(deps):
     bp = Blueprint('master_data_routes', __name__)
 
@@ -193,7 +237,7 @@ def create_blueprint(deps):
                 "professional_summaries":  data.get('professional_summaries', {}),
                 "experiences":             data.get('experience', []),
             })
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to load data for finalise endpoint")
             return jsonify({
                 "ok": False,
@@ -285,7 +329,7 @@ def create_blueprint(deps):
                 action = 'added'
             save_master(master, master_path)
             return jsonify({"ok": True, "action": action, "id": ach_id})
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to update achievement")
             return jsonify({"ok": False, "error": "Failed to update achievement"}), 500
 
@@ -324,7 +368,7 @@ def create_blueprint(deps):
             master['professional_summaries'] = summaries
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "added" if is_new else "updated", "key": key})
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to update summary")
             return jsonify({"ok": False, "error": "Failed to update summary"}), 500
 
@@ -346,7 +390,7 @@ def create_blueprint(deps):
                 "selected_achievements":  master.get('selected_achievements', []),
                 "professional_summaries": master.get('professional_summaries', {}),
             })
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update achievement"}), 500
 
@@ -469,9 +513,374 @@ def create_blueprint(deps):
                         changes.append({'field': f'skills.{cat_key}', 'old': skill_name, 'new': None})
 
             return jsonify({'ok': True, 'section': section, 'changed': bool(changes), 'changes': changes})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update skill"}), 500
+
+    # ------------------------------------------------------------------
+    # AI-driven master-data update (GAP-01): NL instruction / document
+    # ingestion -> proposed diff -> confirm-and-write. See the reviewed
+    # plan for full design rationale (committee-reviewed, 3 rounds, 17
+    # personas): natural-language + document-ingestion updates that always
+    # require explicit per-item confirmation before any write.
+    # ------------------------------------------------------------------
+
+    _PENDING_PROPOSAL_TTL_SECONDS = 3600
+
+    def _mdu_prune_pending(conversation) -> None:
+        """Drop pending proposals older than the TTL. Called at the start of every propose."""
+        pending = conversation.state.get('pending_master_data_proposals')
+        if not isinstance(pending, dict):
+            return
+        now = datetime.now(timezone.utc)
+        stale_ids = []
+        for pid, entry_data in pending.items():
+            created_at = entry_data.get('created_at')
+            try:
+                created = datetime.fromisoformat(created_at) if created_at else None
+            except (TypeError, ValueError):
+                created = None
+            if created is None or (now - created).total_seconds() > _PENDING_PROPOSAL_TTL_SECONDS:
+                stale_ids.append(pid)
+        for pid in stale_ids:
+            pending.pop(pid, None)
+
+    def _mdu_run_propose(entry, source: str, text: str, prior_clarifications):
+        """Shared propose logic for both the nl-update and ingest-document routes."""
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        llm = llm_client_ref['value']
+        if llm is None:
+            return jsonify({"ok": False, "error": "No LLM configured"}), 503
+
+        try:
+            master, _ = load_master(str(orchestrator.master_data_path))
+        except Exception:
+            logger.exception("Failed to load master data for propose")
+            return jsonify({"ok": False, "error": "Failed to load master data"}), 500
+
+        try:
+            result = orchestrator.propose_master_data_update(
+                text, master, source=source, prior_clarifications=prior_clarifications,
+            )
+        except Exception:
+            logger.exception("propose_master_data_update failed")
+            return jsonify({"ok": False, "error": "Failed to generate proposal", "changes": []}), 500
+
+        if result.get('error') == 'clarify':
+            return jsonify({
+                "ok": True,
+                "requires_clarification": True,
+                "clarification_question": result.get('clarification_question', ''),
+                "confidence": result.get('confidence'),
+            })
+        if result.get('error'):
+            return jsonify({"ok": False, "error": result['error'], "changes": []}), 200
+
+        changes = result.get('changes') or []
+        _mdu_prune_pending(conversation)
+        pending = conversation.state.setdefault('pending_master_data_proposals', {})
+        proposal_id = f'mdup_{uuid.uuid4().hex[:16]}'
+        pending[proposal_id] = {
+            'source':     source,
+            'changes':    changes,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+        }
+        conversation._save_session()
+        return jsonify({"ok": True, "changes": changes, "proposal_id": proposal_id})
+
+    @bp.post("/api/master-data/nl-update/propose")
+    def master_data_nl_update_propose():
+        """Propose a structured master-data diff from a natural-language instruction."""
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        with entry.lock:
+            body = request.get_json(silent=True) or {}
+            instruction = str(body.get('instruction') or '').strip()
+            if not instruction:
+                return jsonify({"ok": False, "error": "instruction is required"}), 400
+            if len(instruction) > 4000:
+                return jsonify({"ok": False, "error": "instruction is too long (max 4000 characters)"}), 400
+            return _mdu_run_propose(entry, 'nl_instruction', instruction, body.get('prior_clarifications'))
+
+    @bp.post("/api/master-data/ingest-document/propose")
+    def master_data_ingest_document_propose():
+        """Propose a structured master-data diff from bulk document text (old CV / LinkedIn export)."""
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        with entry.lock:
+            body = request.get_json(silent=True) or {}
+            text = str(body.get('text') or '').strip()
+            if not text:
+                return jsonify({"ok": False, "error": "text is required (paste or upload a document first)"}), 400
+            if len(text) > 60000:
+                return jsonify({"ok": False, "error": "document text is too long (max 60,000 characters)"}), 400
+            return _mdu_run_propose(entry, 'document_ingestion', text, body.get('prior_clarifications'))
+
+    @bp.post("/api/master-data/confirm-update")
+    def master_data_confirm_update():
+        """Apply a previously-proposed set of AI-driven master-data changes, write, and git-commit.
+
+        Two-phase staleness handling: if any selected change no longer applies
+        cleanly against the freshly-loaded master data (e.g. its parent_id was
+        removed via a structured editor since the proposal was made), nothing
+        is written this call — the caller must resubmit with a reduced
+        `selected_ids` as an explicit, separate confirmation.
+        """
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
+        with entry.lock:
+            body = request.get_json(silent=True) or {}
+            proposal_id = str(body.get('proposal_id') or '').strip()
+            selected_ids = body.get('selected_ids') or []
+
+            pending = conversation.state.get('pending_master_data_proposals') or {}
+            proposal = pending.get(proposal_id)
+            if not proposal:
+                return jsonify({"ok": False, "error": "Proposal not found or expired. Please regenerate the proposal."}), 404
+
+            all_changes = {c['id']: c for c in proposal.get('changes', [])}
+            selected = [all_changes[cid] for cid in selected_ids if cid in all_changes]
+            if not selected:
+                return jsonify({'ok': True, 'written_count': 0, 'diff_summary': [], 'commit_hash': None})
+
+            try:
+                master, master_path = load_master(str(orchestrator.master_data_path))
+            except Exception:
+                logger.exception("Failed to load master data for confirm-update")
+                return jsonify({"ok": False, "error": "Failed to load master data"}), 500
+
+            # Re-validate every selected change against the FRESH master data —
+            # it may have drifted since the proposal was generated (a structured
+            # editor could have removed the target entry in another tab).
+            stale_changes: List[Dict[str, Any]] = []
+            applicable_changes: List[Dict[str, Any]] = []
+            for change in selected:
+                trial = copy.deepcopy(master)
+                applied = _apply_master_data_change(trial, change)
+                if not applied:
+                    stale_changes.append({'id': change['id'], 'label': change.get('label', ''), 'reason': 'target no longer exists or is no longer applicable'})
+                    continue
+                schema_result = validate_master_data(trial)
+                if not schema_result.valid:
+                    stale_changes.append({'id': change['id'], 'label': change.get('label', ''), 'reason': 'would break master data validation'})
+                    continue
+                applicable_changes.append(change)
+
+            if stale_changes:
+                return jsonify({
+                    'ok': False,
+                    'stale_changes': stale_changes,
+                    'applicable_changes': [{'id': c['id'], 'label': c.get('label', '')} for c in applicable_changes],
+                })
+
+            proposal_source = proposal.get('source', 'nl_instruction')
+            diff_summary: List[Dict[str, Any]] = []
+            commit_lines: List[str] = []
+            for change in selected:
+                provenance = {
+                    'source':      change.get('source', proposal_source),
+                    'rationale':   change.get('rationale', ''),
+                    'proposal_id': proposal_id,
+                }
+                applied = _apply_master_data_change(master, change, provenance=provenance)
+                diff_summary.append({
+                    'id':      change['id'],
+                    'section': change.get('section'),
+                    'op':      change.get('op'),
+                    'applied': applied,
+                    'label':   change.get('label', ''),
+                })
+                if applied:
+                    commit_lines.append(
+                        f"- {change['id']} [{change.get('section')}/{change.get('op')}] "
+                        f"{change.get('label', '')} — {change.get('rationale', '')}"
+                    )
+
+            try:
+                save_master(master, master_path)
+            except MasterDataSaveError as e:
+                # _save_master already restored the backup on schema-validation failure.
+                return jsonify({
+                    "ok": False,
+                    "error": "Master data failed schema validation after write; backup restored.",
+                    "validation_errors": e.errors,
+                }), 422
+            except Exception:
+                logger.exception("Failed to save master data during confirm-update")
+                return jsonify({"ok": False, "error": "Failed to save master data"}), 500
+
+            orchestrator.master_data = master
+
+            label = 'natural-language update' if proposal_source == 'nl_instruction' else 'document ingestion'
+            commit_subject = f"chore: Update master CV data via {label} ({datetime.now().strftime('%Y-%m-%d')})"
+            commit_msg = commit_subject + ('\n\n' + '\n'.join(commit_lines) if commit_lines else '')
+
+            commit_hash = None
+            git_error = None
+            push_error = None
+            try:
+                subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                    check=True, capture_output=True,
+                )
+                result = subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'commit', '-m', commit_msg],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    m = re.search(r'\b([0-9a-f]{7,40})\b', result.stdout)
+                    commit_hash = m.group(1) if m else None
+                    push_error = _git_push_if_remote(str(master_path.parent))
+                else:
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        result.stderr.strip() or result.stdout.strip(),
+                    )
+            except Exception as git_exc:
+                logger.warning("Git commit raised unexpectedly: %s", git_exc)
+                git_error = _git_commit_error('Git commit failed. See server logs for details.', str(git_exc))
+
+            pending.pop(proposal_id, None)
+            conversation._save_session()
+
+            written_count = sum(1 for d in diff_summary if d.get('applied'))
+            session_registry.touch(sid)
+            return jsonify({
+                'ok':            True,
+                'written_count': written_count,
+                'diff_summary':  diff_summary,
+                'commit_hash':   commit_hash,
+                'git_error':     git_error,
+                'push_error':    push_error,
+            })
+
+    @bp.post("/api/master-data/import-preview")
+    def master_data_import_preview():
+        """Read-only section-level diff summary for a full-file JSON import (GAP-19 16.16).
+
+        Does not write anything. The client resends the same `data` payload to
+        /api/master-data/import-confirm to actually apply it — no server-side
+        staging, since the uploaded document is already held client-side.
+        """
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        orchestrator = entry.orchestrator
+        req = request.get_json(silent=True) or {}
+        new_data = req.get('data')
+        if not isinstance(new_data, dict):
+            return jsonify({"ok": False, "error": "data must be a JSON object"}), 400
+
+        result = validate_master_data(new_data)
+        if not result.valid:
+            return jsonify({
+                "ok": False,
+                "error": "Uploaded data failed schema validation",
+                "validation_errors": result.errors,
+            }), 400
+
+        try:
+            current, _ = load_master(orchestrator.master_data_path)
+        except Exception:
+            logger.exception("Failed to load current master data for import preview")
+            return jsonify({"ok": False, "error": "Failed to load current master data"}), 500
+
+        return jsonify({"ok": True, "sections": _import_diff_summary(current, new_data)})
+
+    @bp.post("/api/master-data/import-confirm")
+    def master_data_import_confirm():
+        """Replace the entire master CV data file with an uploaded, previously-
+        previewed document, then back up, validate, and git-commit (GAP-19 16.16).
+
+        This is a full-file replace, not a merge — the import-preview step's
+        section-level diff is the user's chance to catch an unintended
+        overwrite before this call, since there is no per-item undo for a
+        full-file replace beyond the existing Backup History / Undo affordance.
+        """
+        entry = get_session()
+        validate_owner(entry)
+        phase_error = _require_master_data_write_phase(entry)
+        if phase_error is not None:
+            return phase_error
+        orchestrator = entry.orchestrator
+        with entry.lock:
+            req = request.get_json(silent=True) or {}
+            new_data = req.get('data')
+            if not isinstance(new_data, dict):
+                return jsonify({"ok": False, "error": "data must be a JSON object"}), 400
+
+            result = validate_master_data(new_data)
+            if not result.valid:
+                return jsonify({
+                    "ok": False,
+                    "error": "Uploaded data failed schema validation",
+                    "validation_errors": result.errors,
+                }), 400
+
+            master_path = Path(orchestrator.master_data_path)
+            try:
+                save_master(new_data, master_path)
+            except MasterDataSaveError as e:
+                # save_master already restored the backup on schema-validation failure.
+                return jsonify({
+                    "ok": False,
+                    "error": "Master data failed schema validation after write; backup restored.",
+                    "validation_errors": e.errors,
+                }), 422
+            except Exception:
+                logger.exception("Failed to save master data during import-confirm")
+                return jsonify({"ok": False, "error": "Failed to save master data"}), 500
+
+            orchestrator.master_data = new_data
+
+            commit_subject = f"chore: Import full master CV data ({datetime.now().strftime('%Y-%m-%d')})"
+            commit_hash = None
+            git_error = None
+            push_error = None
+            try:
+                subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'add', master_path.name],
+                    check=True, capture_output=True,
+                )
+                result_proc = subprocess.run(
+                    ['git', '-C', str(master_path.parent), 'commit', '-m', commit_subject],
+                    capture_output=True, text=True,
+                )
+                if result_proc.returncode == 0:
+                    m = re.search(r'\b([0-9a-f]{7,40})\b', result_proc.stdout)
+                    commit_hash = m.group(1) if m else None
+                    push_error = _git_push_if_remote(str(master_path.parent))
+                else:
+                    git_error = _git_commit_error(
+                        'Git commit failed. See server logs for details.',
+                        result_proc.stderr.strip() or result_proc.stdout.strip(),
+                    )
+            except Exception as git_exc:
+                logger.warning("Git commit raised unexpectedly: %s", git_exc)
+                git_error = _git_commit_error('Git commit failed. See server logs for details.', str(git_exc))
+
+            session_registry.touch(entry.session_id)
+            return jsonify({
+                'ok':          True,
+                'commit_hash': commit_hash,
+                'git_error':   git_error,
+                'push_error':  push_error,
+            })
 
     @bp.post("/api/master-data/personal-info")
     def master_data_update_personal_info():
@@ -511,7 +920,7 @@ def create_blueprint(deps):
                     address['state'] = req['state']
             save_master(master, master_path)
             return jsonify({"ok": True})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Operation failed"}), 500
 
@@ -548,6 +957,13 @@ def create_blueprint(deps):
             }
             if employment_type not in allowed_types:
                 return jsonify({"error": "employment_type is invalid"}), 400
+
+            if 'achievements' in exp_data:
+                achievements_val = exp_data.get('achievements')
+                if not isinstance(achievements_val, list):
+                    return jsonify({"error": "achievements must be a list"}), 400
+                if not all(isinstance(item, (str, dict)) for item in achievements_val):
+                    return jsonify({"error": "each achievement must be a string or object"}), 400
 
             start_year = _extract_year(exp_data.get('start_date'))
             end_year = _extract_year(exp_data.get('end_date'))
@@ -589,7 +1005,7 @@ def create_blueprint(deps):
                     'importance':       int(exp_data.get('importance') or 5),
                     'tags':             exp_data.get('tags') or [],
                     'domain_relevance': exp_data.get('domain_relevance') or [],
-                    'achievements':     [],
+                    'achievements':     exp_data.get('achievements') or [],
                 }
                 experiences.append(new_exp)
                 save_master(master, master_path)
@@ -611,12 +1027,14 @@ def create_blueprint(deps):
                     exp_loc['city'] = exp_data['city']
                 if 'state' in exp_data:
                     exp_loc['state'] = exp_data['state']
+            if 'achievements' in exp_data:
+                existing_exp['achievements'] = exp_data['achievements']
             for field in ('tags', 'domain_relevance'):
                 if field in exp_data:
                     existing_exp[field] = exp_data[field]
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "id": exp_id})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update experience"}), 500
 
@@ -686,13 +1104,52 @@ def create_blueprint(deps):
                     return g if g else None
                 return None
 
-            def _skill_payload(name: str, experience_ids: List[str], group: Optional[str]) -> Any:
-                if experience_ids or group:
+            def _skill_aliases(item: Any) -> List[str]:
+                if isinstance(item, dict) and isinstance(item.get('aliases'), list):
+                    return [str(a).strip() for a in item['aliases'] if str(a).strip()]
+                return []
+
+            def _skill_years(item: Any) -> Optional[float]:
+                if isinstance(item, dict):
+                    return item.get('years')
+                return None
+
+            def _sanitize_aliases(raw_aliases: Any) -> List[str]:
+                if raw_aliases is None:
+                    return []
+                if isinstance(raw_aliases, str):
+                    raw_aliases = [x.strip() for x in raw_aliases.split(',') if x.strip()]
+                if not isinstance(raw_aliases, list):
+                    return []
+                cleaned: List[str] = []
+                seen = set()
+                for item in raw_aliases:
+                    if not isinstance(item, str):
+                        continue
+                    alias = item.strip()
+                    if not alias or alias.lower() in seen:
+                        continue
+                    cleaned.append(alias)
+                    seen.add(alias.lower())
+                return cleaned
+
+            def _skill_payload(
+                name: str,
+                experience_ids: List[str],
+                group: Optional[str],
+                aliases: Optional[List[str]] = None,
+                years: Optional[float] = None,
+            ) -> Any:
+                if experience_ids or group or aliases or years is not None:
                     d: Dict[str, Any] = {'name': name}
                     if experience_ids:
                         d['experiences'] = experience_ids
                     if group:
                         d['group'] = group
+                    if aliases:
+                        d['aliases'] = aliases
+                    if years is not None:
+                        d['years'] = years
                     return d
                 return name
 
@@ -734,17 +1191,37 @@ def create_blueprint(deps):
             new_skill_name = (req.get('skill_new') or skill_name).strip()
             has_experience_field = 'experiences' in req
             has_group_field = 'group' in req
+            has_aliases_field = 'aliases' in req
+            has_years_field = 'years' in req
             requested_experience_ids = _sanitize_experience_ids(req.get('experiences'))
             requested_group = (req.get('group') or '').strip() if has_group_field else None
             if requested_group == '':
                 requested_group = None
+            requested_aliases = _sanitize_aliases(req.get('aliases')) if has_aliases_field else None
+            requested_years = None
+            if has_years_field and req.get('years') not in (None, ''):
+                try:
+                    requested_years = float(req.get('years'))
+                except (TypeError, ValueError):
+                    return jsonify({"error": "years must be a number"}), 400
+                # float() also accepts "inf"/"nan"-style strings; both would
+                # serialize as bare (invalid) JSON tokens via json.dump and
+                # break every subsequent /api/master-data/full read of the
+                # whole file, not just this one skill.
+                if not math.isfinite(requested_years):
+                    return jsonify({"error": "years must be a finite number"}), 400
+                if requested_years < 0:
+                    return jsonify({"error": "years must not be negative"}), 400
 
             if isinstance(skills, list):
                 existing_lower = {_skill_name(s).strip().lower() for s in skills}
                 if action == 'add':
                     if skill_lower in existing_lower:
                         return jsonify({"ok": False, "error": "Skill already exists"}), 409
-                    skills.append(_skill_payload(skill_name, requested_experience_ids, requested_group))
+                    skills.append(_skill_payload(
+                        skill_name, requested_experience_ids, requested_group,
+                        requested_aliases, requested_years,
+                    ))
                     master['skills'] = skills
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
@@ -758,7 +1235,12 @@ def create_blueprint(deps):
                         requested_experience_ids if has_experience_field else _skill_experiences(skills[idx])
                     )
                     effective_group = requested_group if has_group_field else _skill_group(skills[idx])
-                    skills[idx] = _skill_payload(new_skill_name, effective_experience_ids, effective_group)
+                    effective_aliases = requested_aliases if has_aliases_field else _skill_aliases(skills[idx])
+                    effective_years = requested_years if has_years_field else _skill_years(skills[idx])
+                    skills[idx] = _skill_payload(
+                        new_skill_name, effective_experience_ids, effective_group,
+                        effective_aliases, effective_years,
+                    )
                     master['skills'] = skills
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "updated"})
@@ -791,7 +1273,10 @@ def create_blueprint(deps):
                 if action == 'add':
                     if skill_lower in cat_existing_lower:
                         return jsonify({"ok": False, "error": "Skill already exists in category"}), 409
-                    cat_list.append(_skill_payload(skill_name, requested_experience_ids, requested_group))
+                    cat_list.append(_skill_payload(
+                        skill_name, requested_experience_ids, requested_group,
+                        requested_aliases, requested_years,
+                    ))
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "added"})
                 if action == 'update':
@@ -804,7 +1289,12 @@ def create_blueprint(deps):
                         requested_experience_ids if has_experience_field else _skill_experiences(cat_list[idx])
                     )
                     effective_group = requested_group if has_group_field else _skill_group(cat_list[idx])
-                    cat_list[idx] = _skill_payload(new_skill_name, effective_experience_ids, effective_group)
+                    effective_aliases = requested_aliases if has_aliases_field else _skill_aliases(cat_list[idx])
+                    effective_years = requested_years if has_years_field else _skill_years(cat_list[idx])
+                    cat_list[idx] = _skill_payload(
+                        new_skill_name, effective_experience_ids, effective_group,
+                        effective_aliases, effective_years,
+                    )
                     save_master(master, master_path)
                     return jsonify({"ok": True, "action": "updated"})
                 idx = next((i for i, s in enumerate(cat_list) if _skill_name(s) == skill_name), -1)
@@ -815,7 +1305,7 @@ def create_blueprint(deps):
                 return jsonify({"ok": True, "action": "deleted"})
 
             return jsonify({"ok": False, "error": "Unexpected skills format"}), 400
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update skill"}), 500
 
@@ -894,7 +1384,7 @@ def create_blueprint(deps):
             education[idx].update(edu_data)
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update education"}), 500
 
@@ -955,7 +1445,7 @@ def create_blueprint(deps):
             awards[idx].update(award_data)
             save_master(master, master_path)
             return jsonify({"ok": True, "action": "updated", "idx": idx})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update award"}), 500
 
@@ -1211,7 +1701,7 @@ def create_blueprint(deps):
 
             return jsonify({"ok": True, "summary": summary, "quality_warning": quality_warning})
 
-        except Exception as exc:
+        except Exception:
             import traceback
             traceback.print_exc()
             logger.exception("Operation failed")
@@ -1268,7 +1758,7 @@ def create_blueprint(deps):
 
         try:
             parsed = bibtex_text_to_publications(content)
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.warning("BibTeX parse error in publications replace", exc_info=True)
             return jsonify({"ok": False, "error": "BibTeX parse error in uploaded content."}), 400
 
@@ -1287,7 +1777,7 @@ def create_blueprint(deps):
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                 backup_path = backup_dir / f"{bib_path.stem}.{ts}{bib_path.suffix}"
                 shutil.copy2(bib_path, backup_path)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to backup publications")
             return jsonify({"ok": False, "error": "Failed to backup publications"}), 500
 
@@ -1295,7 +1785,7 @@ def create_blueprint(deps):
             bib_path.write_text(content, encoding="utf-8")
             orchestrator.publications = parsed
             return jsonify({"ok": True, "count": len(parsed)})
-        except Exception as e:
+        except Exception:
             if backup_path and backup_path.exists():
                 try:
                     shutil.copy2(backup_path, bib_path)
@@ -1317,7 +1807,7 @@ def create_blueprint(deps):
 
         try:
             parsed = bibtex_text_to_publications(bibtex_text)
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to parse BibTeX text"}), 400
 
@@ -1398,7 +1888,7 @@ def create_blueprint(deps):
             )
             orchestrator.publications = parse_bibtex_file(str(bib_path))
             return jsonify({"ok": True, "action": action, "key": key})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update publication"}), 500
 
@@ -1420,7 +1910,7 @@ def create_blueprint(deps):
 
         try:
             imported = bibtex_text_to_publications(bibtex_text)
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.warning("BibTeX parse error in publications import", exc_info=True)
             return jsonify({"ok": False, "error": "BibTeX parse error in submitted content."}), 400
 
@@ -1486,7 +1976,7 @@ def create_blueprint(deps):
                 serialize_publications_to_bibtex(pubs), encoding="utf-8"
             )
             orchestrator.publications = parse_bibtex_file(str(bib_path_imp))
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update publication"}), 500
 
@@ -1520,10 +2010,10 @@ def create_blueprint(deps):
 
         try:
             bibtex = orchestrator.llm.convert_text_to_bibtex(text)
-        except LLMError as e:
+        except LLMError:
             logger.exception("LLM error during BibTeX conversion")
             return jsonify({"ok": False, "error": "Failed to convert text to BibTeX"}), 500
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to load master data"}), 500
 
@@ -1564,7 +2054,7 @@ def create_blueprint(deps):
                     except Exception:
                         pass
             return jsonify({'ok': True, 'sessions': results})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': 'Failed to search cover letters'}), 500
 
@@ -1702,7 +2192,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     ],
                     temperature=0.7,
                 )
-            except Exception as e:
+            except Exception:
                 logger.exception("Cover letter LLM request failed")
                 return jsonify({'ok': False, 'error': 'LLM request failed — check provider settings or try again.'}), 500
 
@@ -1812,7 +2302,8 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     '@page{margin:2.5cm;}</style></head>'
                     f'<body>{html_paragraphs}</body></html>'
                 )
-                import tempfile, os as _os
+                import tempfile
+                import os as _os
                 with tempfile.NamedTemporaryFile(
                     mode='w', suffix='.html', delete=False, encoding='utf-8'
                 ) as tmp_html:
@@ -1855,7 +2346,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                         files_list.append(pdf_filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'pdf_filename': pdf_filename})
-            except Exception as e:
+            except Exception:
                 logger.exception("Operation failed")
                 return jsonify({'ok': False, 'error': "Operation failed"}), 500
 
@@ -1928,7 +2419,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     for x in scored_exps
                 ],
             })
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': 'Failed to search screening library'}), 500
 
@@ -1998,12 +2489,12 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                     ],
                     temperature=0.7,
                 )
-            except Exception as e:
+            except Exception:
                 logger.exception("Screening LLM request failed")
                 return jsonify({'ok': False, 'error': 'LLM request failed — check provider settings or try again.'}), 500
 
             return jsonify({'ok': True, 'text': response_text.strip()})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': 'Failed to generate screening response'}), 500
 
@@ -2108,7 +2599,7 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                         files_list.append(filename)
                 session_registry.touch(sid)
                 return jsonify({'ok': True, 'filename': filename, 'count': len(responses_in)})
-        except Exception as e:
+        except Exception:
             logger.exception("Operation failed")
             return jsonify({'ok': False, 'error': "Failed with screening"}), 500
 

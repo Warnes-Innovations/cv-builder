@@ -219,6 +219,39 @@ Observed item fields:
 
 These are not currently included in the editable payload returned by `/api/master-data/full`.
 
+### 4.10 `_ai_provenance` (optional, additive, per-entry) — GAP-01
+
+Any structured entry added via the AI-driven update path (§7.3) — an `experience` entry, an item inside an
+`experience.achievements` list, a `skills` entry, an `education`/`awards`/`certifications` entry, or a
+`selected_achievements` entry — may carry an additive sibling field:
+
+```jsonc
+{
+  "...": "the entry's normal fields",
+  "_ai_provenance": {
+    "source":               "nl_instruction",      // "nl_instruction" | "document_ingestion"
+    "rationale":            "User stated they completed a Kubernetes project at Acme.",
+    "proposal_id":          "mdup_a1b2c3d4",
+    "written_at":           "2026-07-02T18:04:00+00:00",
+    "clarification_history": []                    // present only if the entity-resolution clarification loop fired
+  }
+}
+```
+
+- **Optional and additive only** — no schema change was required; the relevant `$defs` in
+  `schemas/master_cv_data.schema.json` already permit additional properties. Consumers must ignore unknown
+  fields under any entry, including this one.
+- **Not attached to plain-string entries.** `skills` entries and `professional_summaries` variants may be
+  stored as plain strings rather than objects (see §5.2/§5.3); a plain string has nowhere to carry a sibling
+  marker, so `_ai_provenance` is silently omitted for those — this is a documented, accepted tradeoff, not a
+  bug (see `scripts/utils/master_data_mutations.py::_attach_provenance`).
+- **Not the only copy.** The same information is also written into the git commit body for every confirmed
+  AI-driven update (§9.3), so the provenance record survives even if `_ai_provenance` is later stripped from
+  the live file by an editor that doesn't preserve unknown fields.
+- Scalar-field updates (e.g. `personal_info.title` via `op: "update"`) have no natural place to attach a
+  sibling marker and rely on the commit-body copy alone — a proportional tradeoff, since scalar edits are
+  lower-risk than new structured entries.
+
 ## 5. Compatibility and Normalization Rules
 
 ### 5.1 Experience key compatibility
@@ -303,6 +336,38 @@ Important behavioral difference:
 
 - This route currently writes JSON directly with `json.dump(...)` instead of `_save_master(...)`.
 
+### 7.3 AI-driven master-data update routes (GAP-01)
+
+Three routes in `scripts/routes/master_data_routes.py` let a user propose a structured diff from a
+natural-language instruction or an ingested document (an old CV / LinkedIn export), review it, and confirm
+before any write:
+
+- `POST /api/master-data/nl-update/propose` — body `{instruction, prior_clarifications?}`. Calls
+  `CVOrchestrator.propose_master_data_update(instruction, master, source='nl_instruction', ...)`
+  (`scripts/utils/cv_orchestrator.py`). Returns either `{ok, changes, proposal_id}` or
+  `{ok, requires_clarification: true, clarification_question, confidence}` when the LLM can't confidently
+  resolve which existing entry the instruction refers to (never guesses at an id).
+- `POST /api/master-data/ingest-document/propose` — body `{text, prior_clarifications?}`, same response
+  shapes, `source='document_ingestion'`.
+- `POST /api/master-data/confirm-update` — body `{proposal_id, selected_ids}`. Applies only the selected
+  changes via `scripts/utils/master_data_mutations.py::_apply_master_data_change`, then writes through
+  `_save_master(...)` (the canonical helper — see §9.1; this is the first AI-driven write path in the app
+  that goes through it directly, unlike §9.2's harvest divergence) and git-commits.
+
+Proposed changes are held server-side only, keyed by `proposal_id` in session state
+(`conversation.state['pending_master_data_proposals']`) with a 1-hour TTL, never persisted to
+`Master_CV_Data.json` until `confirm-update` is called with explicit `selected_ids`. Every proposed change is
+re-validated against the *currently loaded* master data at confirm time (not just at propose time); if any
+selected change has gone stale (e.g. its target was removed by a structured editor in another tab since the
+proposal was generated), the confirm call writes nothing at all and returns `stale_changes`/`applicable_changes`
+instead, requiring an explicit resubmit with the reduced set.
+
+`_apply_master_data_change`'s dispatch table covers `add`/`update` operations across `experience` (including
+appending a new achievement into an existing entry by id, or adding a brand-new experience entry),
+`skills`, `education`, `awards`, `certifications`, `selected_achievements`, and `personal_info`. `delete` is
+intentionally unsupported on this path in v1 — removals go through the existing structured editors
+(§7.1), not the AI-driven path.
+
 ## 8. Validation Rules Enforced in API Layer
 
 Examples of input validation from master-data routes:
@@ -356,12 +421,38 @@ For harvest apply route:
 
 This route does not currently use `_save_master(...)` backup + validation flow.
 
+### 9.3 `/api/master-data/confirm-update` behavior (GAP-01)
+
+1. Loads the pending proposal by `proposal_id` from session state (404 if missing/expired).
+2. Re-validates every selected change against a freshly-loaded copy of the master file (see §7.3) — if any
+   is stale, writes nothing and returns without touching disk or git.
+3. Applies surviving changes via `_apply_master_data_change`, stamping `_ai_provenance` (§4.10) onto each
+   newly-written structured entry.
+4. Writes through `_save_master(...)` — full §9.1 behavior (backup, top-level validation, git add).
+5. Commits with a per-item body listing `id`/`section`/`op`/`label`/`source`/`rationale` for every applied
+   change — a durable, human-readable audit record independent of `_ai_provenance`, retrievable via
+   `git show <hash>` even if the in-file marker is later stripped.
+6. Pushes if a remote is configured (`_git_push_if_remote`, `scripts/utils/git_helpers.py`).
+
+Unlike §9.2, this route uses `_save_master(...)` directly rather than a bespoke `json.dump(...)` — it does
+not repeat the harvest route's backup/validation divergence.
+
 ## 10. Known Gaps and Risks
 
 1. Dual summary representation: object and list are both accepted in different paths, which can cause shape drift.
 2. Harvest path bypasses `_save_master(...)`, so backup creation and pre-write schema validation are not consistently applied.
 3. Legacy key compatibility (`experiences` vs `experience`) remains necessary but increases contract complexity.
 4. `scripts/generate_cv.py` follows older assumptions and may diverge from web app semantics.
+5. `scripts/utils/master_data_mutations.py` imports `_harvest_add_skill`/`_harvest_add_summary_variant` from
+   `scripts/routes/generation_routes.py` rather than owning them, because those two functions sit inside a
+   ~12-function skill normalize/merge/render cluster shared with harvest-candidate generation elsewhere in
+   that file. Fully relocating that cluster so `scripts/utils/` doesn't depend on `scripts/routes/` (an
+   inverted dependency direction, though functionally safe — no circular import) is a legitimate follow-up
+   refactor, deliberately not bundled into GAP-01's feature work.
+6. Reversibility of AI-driven confirmed writes is batch-only (one full-file backup per confirm call, per
+   §9.1) — there is no per-item undo for a subset of a confirmed multi-item batch. The commit-body audit
+   trail (§9.3) makes manual recovery of specific items possible but not a supported UI action; full
+   per-item undo/redo is GAP-19 (`IMPLEMENTATION_PLAN.md` Phase 16.7) scope, not GAP-01's.
 
 ## 11. Source Citations (Line-Level)
 
@@ -417,6 +508,15 @@ This route does not currently use `_save_master(...)` backup + validation flow.
 - `~/CV/Master_CV_Data.json:40,43,45` (`experience` entries with `employment_type`, `domain_relevance`, `achievements`)
 - `~/CV/Master_CV_Data.json:566,567` (`selected_achievements` fields including `show_for_roles`)
 - `~/CV/Master_CV_Data.json:613,614,667,668` (`skills` category object shape with nested `skills` list)
+
+### 11.8 AI-driven update routes (GAP-01)
+
+- `scripts/routes/master_data_routes.py` (`master_data_nl_update_propose`, `master_data_ingest_document_propose`, `master_data_confirm_update`, `_mdu_run_propose`, `_mdu_prune_pending`)
+- `scripts/utils/cv_orchestrator.py` (`propose_master_data_update` and its `_mdu_*` helpers — sanitization, dedup, persuasion advisory)
+- `scripts/utils/master_data_mutations.py` (`_apply_master_data_change`, `_find_stored_skill`, `_attach_provenance`)
+- `scripts/utils/git_helpers.py` (`git_commit_error`, `git_push_if_remote`)
+- `web/master-data-ai-update.js`, `web/proposal-review.js` (frontend panel and shared diff-row renderer)
+- `tests/test_master_data_ai_update.py`, `tests/js/master-data-ai-update.test.js`, `tests/js/proposal-review.test.js`
 
 ## 12. Machine-Readable Schema Artifact
 

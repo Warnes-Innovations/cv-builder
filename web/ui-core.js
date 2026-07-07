@@ -21,6 +21,7 @@ import {
   loadStateFromLocalStorage,
   stateManager,
 } from './state-manager.js';
+import { _STEP_DISPLAY } from './workflow-steps.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Accessibility: Focus Management for Modals
@@ -568,70 +569,24 @@ function updateTabBarForStage(stage) {
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.scrollLeft = 0;
   updateTabScrollButtons();
-}
 
-/**
- * Load content for a specific tab.
- * Routes to appropriate rendering function based on tab.
- * @param {string} tab - Tab name
- */
-async function loadTabContent(tab) {
-  const content = document.getElementById('document-content');
-  if (!content) return;
-
-  content.innerHTML = ''; // Clear previous content
-
-  try {
-    switch (tab) {
-      case 'job':
-        if (typeof populateJobTab === 'function') {
-          await populateJobTab();
-        }
-        break;
-
-      case 'analysis':
-        if (typeof populateAnalysisTab === 'function' && stateManager.getTabData('analysis')) {
-          populateAnalysisTab(stateManager.getTabData('analysis'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">No analysis data yet. Submit a job description to begin.</p>';
-        }
-        break;
-
-      case 'generate':
-        if (typeof populateCVTab === 'function' && stateManager.getTabData('cv')) {
-          populateCVTab(stateManager.getTabData('cv'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">Generate a CV to see preview.</p>';
-        }
-        break;
-
-      case 'download':
-        if (typeof populateDownloadTab === 'function' && stateManager.getTabData('cv')) {
-          await populateDownloadTab(stateManager.getTabData('cv'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">Generate a CV first to download.</p>';
-        }
-        break;
-
-      case 'final_generate':
-        if (typeof populateFinalGenerateTab === 'function' && stateManager.getTabData('cv')) {
-          await populateFinalGenerateTab(stateManager.getTabData('cv'));
-        } else {
-          content.innerHTML = '<p style="padding: 20px; color: #666;">Generate final CV files to see downloads.</p>';
-        }
-        break;
-
-      default:
-        content.innerHTML = '<p style="padding: 20px; color: #999;">Unknown tab.</p>';
-    }
-  } catch (error) {
-    log.error(`Error loading tab ${tab}:`, error);
-    const errorMessage = document.createElement('p');
-    errorMessage.style.cssText = 'padding: 20px; color: #c41e3a;';
-    errorMessage.textContent = `Error loading content: ${error.message}`;
-    content.appendChild(errorMessage);
+  // GAP-16 (Part A): surface which workflow step's sub-tabs are currently
+  // shown. Visible-only label — no aria-live here; switchTab() in
+  // review-table-base.js is the sole live-speech source for this event, to
+  // avoid a double-announce from two independent live regions.
+  const labelEl = document.getElementById('tab-stage-label');
+  if (labelEl) {
+    const stepLabel = _STEP_DISPLAY[stage] || stage;
+    labelEl.textContent = stepLabel ? `Now viewing: ${stepLabel}` : '';
   }
 }
+
+// loadTabContent() lives in web/review-table-base.js, which owns the
+// full ~20-case tab dispatch (this file's copy only ever handled 5 of them
+// and was never called internally — dead code, superseded once the tab
+// system grew). review-table-base.js's version now carries the same
+// safe textContent-based error rendering this copy had; see its own
+// try/catch. Removed here rather than left to drift further out of sync.
 
 /**
  * Toggle collapsible chat panel (interaction area).
@@ -714,16 +669,6 @@ function closeAllModals() {
   document.body.style.overflow = '';
   // Restore focus
   restoreFocus();
-}
-
-/**
- * Show session conflict warning banner (multiple tabs active).
- */
-function showSessionConflictBanner() {
-  const banner = document.getElementById('session-conflict-banner');
-  if (banner) {
-    banner.style.display = 'block';
-  }
 }
 
 // ── Model selector ────────────────────────────────────────────────────────────
@@ -1987,7 +1932,6 @@ export {
   setInitialFocus, trapFocus, restoreFocus, pushFocusStack,
   // Dialogs & modals
   confirmDialog, openModal, closeModal, closeAllModals,
-  showSessionConflictBanner,
   // Tab & stage management
   setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage,
   // Chat
@@ -1998,8 +1942,6 @@ export {
   nextWizardStep, previousWizardStep,
   saveProviderApiKey, toggleApiKeyVisibility,
   _updateLlmStatusPill,
-  // Tab content loader
-  loadTabContent,
   // Settings modal
   openSettingsModal, closeSettingsModal, saveSettingsModal, reloadSettingsModal,
 };

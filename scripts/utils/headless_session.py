@@ -49,7 +49,6 @@ from .agent_bridge import (
     OperationType,
     PassthroughLLMClient,
     PromptBundle,
-    PromptBundleReady,
     validate_agent_json,
 )
 from .config import get_config

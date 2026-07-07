@@ -11,7 +11,7 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import yaml
 from flask import (
@@ -303,33 +303,6 @@ def create_blueprint(deps):
     @bp.post("/api/model")
     def set_model():
         """Switch the active model and optionally the provider."""
-        def _format_probe_error(provider_name: str, probe_error: Optional[str]) -> str:
-            _friendly_names: Dict[str, str] = {
-                "github":       "GitHub Models",
-                "openai":       "OpenAI",
-                "anthropic":    "Anthropic",
-                "copilot":      "Copilot",
-                "copilot-oauth":"Copilot",
-                "copilot-sdk":  "Copilot SDK",
-                "gemini":       "Gemini",
-                "groq":         "Groq",
-            }
-            display = _friendly_names.get(provider_name, provider_name)
-            if not probe_error:
-                return f"{display} was unable to complete the model probe."
-
-            friendly = probe_error.strip()
-            if provider_name in {"github", "copilot"}:
-                friendly = friendly.replace("with OpenAI", "with GitHub Models")
-                friendly = friendly.replace("by OpenAI", "by GitHub Models")
-                friendly = friendly.replace("(openai)", "(github)")
-                if "authentication failed" in friendly.lower():
-                    friendly += (
-                        " Use a GitHub Models PAT in GITHUB_MODELS_TOKEN "
-                        "(or GITHUB_TOKEN). Copilot OAuth sign-in is only for the copilot-oauth provider."
-                    )
-            return friendly
-
         def _probe_client(candidate_client):
             try:
                 candidate_client.chat(
@@ -355,7 +328,6 @@ def create_blueprint(deps):
             candidate_client = get_llm_provider(provider=provider, model=model, auth_manager=auth_manager)
             ok, probe_error = _probe_client(candidate_client)
             if not ok:
-                formatted_error = _format_probe_error(provider, probe_error)
                 probe_lower = (probe_error or "").lower()
                 # Map provider to a user-friendly label for error messages
                 _friendly: Dict[str, str] = {

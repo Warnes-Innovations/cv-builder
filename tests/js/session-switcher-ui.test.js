@@ -7,10 +7,11 @@
 /**
  * tests/js/session-switcher-ui.test.js
  * Unit tests for web/session-switcher-ui.js — render helpers, modal open/close,
- * rename/delete actions, trash view, conflict banner, retry/dismiss.
+ * rename/delete actions, trash view.
+ * (The session-conflict banner/retry/dismiss functions live in
+ * web/fetch-utils.js — see tests/js/fetch-utils.test.js.)
  */
 import {
-  _conflictRetryQueue,
   _renderActiveSessionRows,
   _renderSavedSessionRows,
   _renderSessionSwitcherSections,
@@ -33,9 +34,6 @@ import {
   restoreFromTrash,
   deleteForever,
   emptyTrash,
-  showSessionConflictBanner,
-  conflictRetryNow,
-  conflictDismiss,
 } from '../../web/session-switcher-ui.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────────
@@ -431,67 +429,10 @@ describe('emptyTrash', () => {
   })
 })
 
-// ── showSessionConflictBanner / conflictRetryNow / conflictDismiss ────────────
-
-describe('showSessionConflictBanner', () => {
-  beforeEach(() => {
-    document.body.innerHTML = `
-      <div id="session-conflict-banner" style="display:none;">
-        <span id="conflict-banner-text"></span>
-        <span id="conflict-countdown"></span>
-      </div>`
-  })
-
-  afterEach(() => {
-    // Always dismiss to clear any interval
-    conflictDismiss()
-  })
-
-  it('shows banner', () => {
-    showSessionConflictBanner()
-    expect(document.getElementById('session-conflict-banner').style.display).toBe('block')
-  })
-
-  it('sets countdown text', () => {
-    showSessionConflictBanner()
-    expect(document.getElementById('conflict-countdown').textContent).toContain('30s')
-  })
-})
-
-describe('conflictRetryNow', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '<div id="session-conflict-banner" style="display:block;"></div>'
-  })
-
-  it('hides banner', () => {
-    conflictRetryNow()
-    expect(document.getElementById('session-conflict-banner').style.display).toBe('none')
-  })
-
-  it('drains retry queue with true', () => {
-    const cb = vi.fn()
-    _conflictRetryQueue.push(cb)
-    conflictRetryNow()
-    expect(cb).toHaveBeenCalledWith(true)
-    expect(_conflictRetryQueue.length).toBe(0)
-  })
-})
-
-describe('conflictDismiss', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '<div id="session-conflict-banner" style="display:block;"></div>'
-  })
-
-  it('hides banner', () => {
-    conflictDismiss()
-    expect(document.getElementById('session-conflict-banner').style.display).toBe('none')
-  })
-
-  it('drains retry queue with false', () => {
-    const cb = vi.fn()
-    _conflictRetryQueue.push(cb)
-    conflictDismiss()
-    expect(cb).toHaveBeenCalledWith(false)
-    expect(_conflictRetryQueue.length).toBe(0)
-  })
-})
+// showSessionConflictBanner/conflictRetryNow/conflictDismiss moved to
+// web/fetch-utils.js (see tests/js/fetch-utils.test.js) — this file used to
+// carry a byte-for-byte duplicate with its own separate retry queue that
+// handle409Conflict (in fetch-utils.js) never actually fed, so "Retry Now"
+// could silently never resolve the retried request depending on module load
+// order. Removed as dead/duplicate code; see web/session-switcher-ui.js's
+// header comment.

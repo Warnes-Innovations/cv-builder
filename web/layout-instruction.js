@@ -20,6 +20,7 @@ import { switchTab } from './review-table-base.js';
 import { stateManager, GENERATION_STATE_EVENT, GENERATION_PHASES } from './state-manager.js';
 import { escapeHtml } from './utils.js';
 import { confirmReRunPhase } from './workflow-steps.js';
+import { renderHtmlIntoIframe } from './preview-render.js';
 
 let dismissedStaleCalloutRevision = null;
 
@@ -1060,9 +1061,7 @@ function displayLayoutPreview(html) {
 
   showPreviewLoading(false);
   preview.onload = () => fitLayoutPreviewToPane(preview);
-  preview.setAttribute('sandbox', 'allow-same-origin');
-  preview.setAttribute('referrerpolicy', 'no-referrer');
-  preview.srcdoc = html;
+  renderHtmlIntoIframe(preview, html);
 
   const doc = preview.contentDocument || preview.contentWindow?.document;
   if (doc?.readyState === 'complete') {
@@ -1431,7 +1430,7 @@ async function generateFinalOutputs() {
     switchTab('final_generate');
     appendMessage('assistant', '✅ Final files generated from the confirmed layout.');
   } catch (error) {
-    appendMessage('system', `❌ Could not generate final files. Try clicking Generate again. If layout confirmation is needed first, click Confirm Layout, then try again.`);
+    appendMessage('system', `❌ Could not generate final files: ${error.message} Try clicking Generate again. If layout confirmation is needed first, click Confirm Layout, then try again.`);
   } finally {
     if (_stepTimer) clearInterval(_stepTimer);
     showProcessing(false);

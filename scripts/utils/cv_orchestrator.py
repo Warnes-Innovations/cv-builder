@@ -20,9 +20,11 @@ import logging
 import re
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, date as _date
+from urllib.parse import urlparse
 import subprocess
 import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
 from collections import Counter, defaultdict
@@ -35,7 +37,12 @@ from .scoring import (
 from .bibtex_parser import parse_bibtex_file, format_publication
 from .config import get_config
 from .llm_client import LLMClient
-from .master_data_validator import validate_master_data_file
+from .master_data_mutations import (
+    ALLOWED_OPS as _MDU_ALLOWED_OPS,
+    ALLOWED_SECTIONS as _MDU_ALLOWED_SECTIONS,
+    _apply_master_data_change as _mdu_apply_change,
+)
+from .master_data_validator import validate_master_data, validate_master_data_file
 from .session_data_view import SessionDataView
 from .prompt_safety import sanitize_instruction_text, scan_text_for_injection
 from .template_renderer import safe_css_size, safe_url
@@ -107,7 +114,7 @@ class CVOrchestrator:
         self.publications_path = Path(publications_path).expanduser()
         self.output_dir = Path(output_dir).expanduser()
         self.llm = llm_client
-        
+
         # Load master data
         self.master_data = self._load_master_data()
 
@@ -125,7 +132,7 @@ class CVOrchestrator:
                 continue
             self._expansion_index[alias.lower()] = canonical
             self._expansion_index[canonical.lower()] = canonical
-    
+
     def _load_master_data(self) -> Dict:
         """Load Master_CV_Data.json."""
         if not self.master_data_path.exists():
@@ -138,7 +145,7 @@ class CVOrchestrator:
         if not validation.valid:
             msg = "; ".join(validation.errors) or "master data validation failed"
             raise ValueError(f"Master data validation failed before load: {msg}")
-        
+
         with open(self.master_data_path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
@@ -185,7 +192,7 @@ class CVOrchestrator:
             contact['address_display'] = address_display
         contact['linkedin_href'] = safe_url(contact.get('linkedin', ''))
         contact['website_href'] = safe_url(contact.get('website', ''))
-        
+
         # Ensure languages key exists (template expects it)
         if 'languages' not in personal_info:
             personal_info['languages'] = []
@@ -198,7 +205,7 @@ class CVOrchestrator:
         professional_summary = selected_content.get('summary', '')
         if not professional_summary.strip():
             professional_summary = f"Experienced professional applying for {job_analysis.get('title', 'position')}"
-        
+
         # Format skills by category
         _show_proficiency = True
         if isinstance(customizations, dict):
@@ -213,7 +220,7 @@ class CVOrchestrator:
             selected_content.get('skill_category_order', []),
             show_proficiency=_show_proficiency,
         )
-        
+
         # Format publications
         publications = self._format_publications(selected_content.get('publications', []))
 
@@ -263,7 +270,7 @@ class CVOrchestrator:
             personal_info=personal_info,
             job_analysis=job_analysis,
         )
-        
+
         # Add template metadata
         # duckflow:
         #   id: cv_render.scripts_utils_cv_orchestrator.L224
@@ -285,7 +292,7 @@ class CVOrchestrator:
             'skills_show_experience': skills_show_experience,
         }
         human_skills_title = self._resolve_human_skills_title(customizations)
-        
+
         cv_data = {
             'personal_info': personal_info,
             'professional_summary': professional_summary,
@@ -786,19 +793,24 @@ class CVOrchestrator:
                 formatted_text = str(pub.get('formatted') or '').strip()
                 title_text = str(pub.get('title') or '').strip()
 
+                # Free-text fields only — the URL is checked separately via hostname
+                # comparison, not substring matching, since it may be attacker-controlled.
                 combined_text = ' '.join(
                     [
                         note_text,
-                        url_text,
                         formatted_text,
                         title_text,
                     ]
                 ).lower()
+                try:
+                    url_host = (urlparse(url_text).hostname or '').lower()
+                except ValueError:
+                    url_host = ''
                 is_r_package = (
                     'r package' in combined_text
-                    or 'cran.r-project.org' in combined_text
                     or ' bioconductor' in combined_text
-                    or 'bioconductor.org' in combined_text
+                    or url_host == 'cran.r-project.org' or url_host.endswith('.cran.r-project.org')
+                    or url_host == 'bioconductor.org' or url_host.endswith('.bioconductor.org')
                 )
 
                 entry_type = str(pub.get('type') or fields.get('ENTRYTYPE') or '').lower()
@@ -833,11 +845,11 @@ class CVOrchestrator:
                 )
                 venue_text = str(venue_text).strip()
                 if not venue_text and is_r_package:
-                    venue_text = (
-                        'Bioconductor R package'
-                        if 'bioconductor' in combined_text
-                        else 'CRAN R package'
+                    is_bioconductor = (
+                        'bioconductor' in combined_text
+                        or url_host == 'bioconductor.org' or url_host.endswith('.bioconductor.org')
                     )
+                    venue_text = 'Bioconductor R package' if is_bioconductor else 'CRAN R package'
 
                 publication_url = ''
                 doi_value = str(pub.get('doi') or fields.get('doi') or '').strip()
@@ -849,9 +861,12 @@ class CVOrchestrator:
                 if not publication_url:
                     raw_url = str(pub.get('url') or fields.get('url') or '').strip()
                     if raw_url and not re.match(r'^[a-z][a-z0-9+.-]*://', raw_url, flags=re.I):
-                        if raw_url.lower().startswith('doi.org/'):
-                            raw_url = f'https://{raw_url}'
-                        elif raw_url.startswith('www.'):
+                        # Scheme-less URL (e.g. "doi.org/10.1234/x" or "www.example.org/x") —
+                        # parse as a network-path reference to get the real hostname rather
+                        # than substring-matching the raw string.
+                        candidate_host = (urlparse(f'//{raw_url}').hostname or '').lower()
+                        is_doi_host = candidate_host == 'doi.org' or candidate_host.endswith('.doi.org')
+                        if is_doi_host or raw_url.startswith('www.'):
                             raw_url = f'https://{raw_url}'
                     publication_url = safe_url(raw_url)
 
@@ -900,7 +915,7 @@ class CVOrchestrator:
 
                 formatted_pubs.append(entry)
         return formatted_pubs
-    
+
     def render_html_preview(
         self,
         job_analysis: Dict,
@@ -1099,7 +1114,7 @@ class CVOrchestrator:
 
         Returns a 2-tuple ``(html_output, pdf_output)``.
         """
-        
+
         template_file = self._CV_TEMPLATE_FILE
         if not template_file.exists():
             raise FileNotFoundError(f"HTML template not found: {template_file}")
@@ -1124,11 +1139,11 @@ class CVOrchestrator:
         self._convert_html_to_pdf(html_output, pdf_output)
 
         return html_output, pdf_output
-    
+
     def _render_with_quarto_engine(self, template_file: Path, work_dir: Path) -> Path:
-        """Render template using Quarto engine."""         
+        """Render template using Quarto engine."""
         html_output = work_dir / f"{template_file.stem}.html"
-        
+
         try:
             # Render to HTML
             render_cmd = [
@@ -1136,26 +1151,26 @@ class CVOrchestrator:
                 '--to', 'html',
                 '--output', str(html_output)
             ]
-            
+
             subprocess.run(
-                render_cmd, 
-                capture_output=True, 
-                text=True, 
-                check=True, 
+                render_cmd,
+                capture_output=True,
+                text=True,
+                check=True,
                 cwd=work_dir,
                 timeout=60
             )
-            
+
             if not html_output.exists():
                 raise FileNotFoundError(f"Quarto render succeeded but HTML output not found: {html_output}")
-            
+
             logger.info("Quarto render successful: %s", html_output.name)
             return html_output
-            
+
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             logger.warning("Quarto render failed: %s", e)
             return self._create_fallback_html_file(work_dir, template_file.stem)
-    
+
     def _create_fallback_html_file(self, work_dir: Path, base_name: str) -> Path:
         """Create fallback HTML file when Quarto is unavailable.
 
@@ -1193,7 +1208,7 @@ class CVOrchestrator:
         """Create basic HTML if Quarto is not available."""
         personal_info = cv_data['personal_info']
         contact = personal_info.get('contact', {})
-        
+
         html_parts = [
             '<!DOCTYPE html>',
             '<html lang="en"><head>',
@@ -1212,14 +1227,14 @@ class CVOrchestrator:
             '<div class="cv-left-column">',
             '<h2>Professional Experience</h2>'
         ]
-        
+
         # Add experiences
         for exp in cv_data['experiences']:
             location = exp.get('location', {})
             location_str = location.get('city', '')
             if location.get('state'):
                 location_str += f", {location['state']}"
-                
+
             html_parts.extend([
                 '<div class="experience-item">',
                 f'<h3>{exp.get("company", "")} | {exp.get("title", "")}</h3>',
@@ -1227,13 +1242,13 @@ class CVOrchestrator:
                 f'{location_str} | {exp.get("start_date", "")} - {exp.get("end_date", "")}',
                 '</div>'
             ])
-            
+
             if exp.get('achievements'):
                 for achievement in exp['achievements']:
                     html_parts.append(f'<p>• {achievement.get("text", "")}</p>')
-            
+
             html_parts.append('</div>')
-        
+
         # Add education
         html_parts.append('<h2>Education</h2>')
         for edu in cv_data['education']:
@@ -1245,13 +1260,13 @@ class CVOrchestrator:
                 f'<p><strong>{edu.get("institution", "")}</strong> | {location_str} | {edu.get("end_year", "")}</p>',
                 '</div>'
             ])
-        
+
         html_parts.extend([
             '</div>',  # cv-left-column
             '<div class="cv-right-column">',
             '<h2>Core Skills</h2>'
         ])
-        
+
         # Add skills
         for category_data in cv_data['skills_by_category']:
             html_parts.extend([
@@ -1262,16 +1277,16 @@ class CVOrchestrator:
                 years_text = f" ({skill['years']} years)" if skill.get('years') else ""
                 html_parts.append(f'<p>• {skill["name"]}{years_text}</p>')
             html_parts.append('</div>')
-            
+
         html_parts.extend([
             '</div>',  # cv-right-column
             '</div>',  # cv-body
             '</div>',  # cv-container
             '</body></html>'
         ])
-        
+
         return '\n'.join(html_parts)
-    
+
     def _convert_html_to_pdf(
         self,
         html_file: Path,
@@ -1463,7 +1478,7 @@ The HTML file contains your formatted CV ready for conversion.
                 template_variant, pdf_path.stat().st_size if pdf_path.exists() else 0
             )
             return html_path, pdf_path
-            
+
         except Exception as e:
             logger.warning("PDF generation failed: %s", e)
             # Create enhanced fallback with diagnostic info
@@ -2094,7 +2109,7 @@ For manual generation:
             company, role, max_skills,
             len(approved_rewrites or []), len(spell_audit or [])
         )
-        
+
         selected_content = self.build_render_ready_content(
             job_analysis,
             customizations,
@@ -2275,13 +2290,13 @@ For manual generation:
         with open(metadata_file, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2)
         files_created.append('metadata.json')
-        
+
         # Save job description
         if job_analysis.get('original_text'):
             job_desc_file = job_output_dir / 'job_description.txt'
             job_desc_file.write_text(job_analysis['original_text'], encoding='utf-8')
             files_created.append('job_description.txt')
-        
+
         return {
             'output_dir': str(job_output_dir),
             'files': files_created,
@@ -2975,6 +2990,417 @@ CONSTRAINTS (must follow all):
                 }
             return {'proposals': [], 'error': f'Failed to generate content proposals: {e}'}
 
+    _MDU_DEDUP_THRESHOLD = 85
+
+    def _mdu_build_master_index(self, master: Dict[str, Any]) -> str:
+        """Compact, human-readable index of existing master data for prompt context.
+
+        Deliberately not a raw JSON dump of the whole file (which could be
+        large) — this gives the LLM enough to resolve "the project at Acme"
+        against company/title/date text and to judge duplication, at a
+        fraction of the token cost.
+        """
+        lines: List[str] = []
+        experiences = master.get('experience') or master.get('experiences') or []
+        lines.append('EXISTING EXPERIENCE ENTRIES:')
+        for exp in experiences:
+            if not isinstance(exp, dict):
+                continue
+            exp_id = exp.get('id', '')
+            title = exp.get('title', '')
+            company = exp.get('company', '')
+            start = exp.get('start_date', '')
+            end = exp.get('end_date', '') or 'present'
+            lines.append(f'- id={exp_id}: {title} at {company} ({start} - {end})')
+
+        skills = master.get('skills')
+        skill_names: List[str] = []
+        if isinstance(skills, list):
+            for s in skills:
+                skill_names.append(s.get('name', '') if isinstance(s, dict) else str(s))
+        elif isinstance(skills, dict):
+            for cat_val in skills.values():
+                items = cat_val.get('skills', []) if isinstance(cat_val, dict) else (cat_val if isinstance(cat_val, list) else [])
+                for s in items:
+                    skill_names.append(s.get('name', '') if isinstance(s, dict) else str(s))
+        if skill_names:
+            lines.append('EXISTING SKILLS: ' + ', '.join(sorted(set(n for n in skill_names if n))))
+
+        summaries = master.get('professional_summaries')
+        if isinstance(summaries, dict):
+            lines.append('EXISTING SUMMARY VARIANTS: ' + ', '.join(summaries.keys()))
+        elif isinstance(summaries, list) and summaries:
+            lines.append(f'EXISTING SUMMARY VARIANTS: {len(summaries)} unnamed variant(s)')
+
+        return '\n'.join(lines)
+
+    def _mdu_fuzzy_ratio(self, a: str, b: str) -> float:
+        """Similarity ratio 0-100. Uses rapidfuzz if available, else a stdlib fallback."""
+        try:
+            from rapidfuzz import fuzz  # optional accelerator, not a hard dependency
+            return fuzz.token_sort_ratio(a, b)
+        except ImportError:
+            a_tokens = set(re.findall(r'\w+', a.lower()))
+            b_tokens = set(re.findall(r'\w+', b.lower()))
+            if not a_tokens or not b_tokens:
+                return 0.0
+            overlap = len(a_tokens & b_tokens)
+            union = len(a_tokens | b_tokens)
+            return 100.0 * overlap / union if union else 0.0
+
+    def _mdu_identifying_text(self, change: Dict[str, Any]) -> str:
+        """Text used to fuzzy-match a proposed change against other entries."""
+        proposed = change.get('proposed')
+        if isinstance(proposed, dict):
+            if 'text' in proposed:
+                return str(proposed.get('text') or '')
+            if 'name' in proposed:
+                return str(proposed.get('name') or '')
+            if change.get('section') == 'experience':
+                return f"{proposed.get('company', '')} {proposed.get('title', '')} {proposed.get('start_date', '')}"
+            return json.dumps(proposed, sort_keys=True)
+        return str(proposed or '')
+
+    def _mdu_existing_entries_text(self, master: Dict[str, Any], section: str) -> List[Tuple[str, str]]:
+        """Return [(existing_id_or_label, identifying_text), ...] for a section, for dedup matching."""
+        out: List[Tuple[str, str]] = []
+        if section == 'experience':
+            for exp in (master.get('experience') or master.get('experiences') or []):
+                if not isinstance(exp, dict):
+                    continue
+                exp_id = str(exp.get('id', ''))
+                for ach in (exp.get('achievements') or exp.get('bullets') or []):
+                    text = ach.get('text', '') if isinstance(ach, dict) else str(ach)
+                    if text:
+                        out.append((exp_id, text))
+                label = f"{exp.get('company', '')} {exp.get('title', '')} {exp.get('start_date', '')}"
+                out.append((exp_id, label))
+        elif section == 'skills':
+            skills = master.get('skills')
+            items = skills if isinstance(skills, list) else []
+            if isinstance(skills, dict):
+                for cat_val in skills.values():
+                    items = items + (cat_val.get('skills', []) if isinstance(cat_val, dict) else (cat_val if isinstance(cat_val, list) else []))
+            for s in items:
+                name = s.get('name', '') if isinstance(s, dict) else str(s)
+                if name:
+                    out.append((name, name))
+        return out
+
+    def _mdu_dedup_pass(self, master: Dict[str, Any], changes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Two-stage dedup: within this proposal batch, then against existing master data.
+
+        Stage 1 drops later within-batch near-duplicates outright (the LLM
+        proposed the same real-world fact twice in one response — showing the
+        user two rows for it helps no one). Stage 2 flags (does not drop)
+        near-duplicates of existing master-data entries via
+        `possible_duplicate_of`, since a true duplicate-vs-legitimate-update
+        judgment call belongs to the human reviewer.
+        """
+        # Stage 1: within-batch.
+        deduped: List[Dict[str, Any]] = []
+        seen_texts: List[Tuple[str, str]] = []  # (section, text)
+        for change in changes:
+            if change.get('op') != 'add':
+                deduped.append(change)
+                continue
+            section = change.get('section', '')
+            text = self._mdu_identifying_text(change)
+            is_dup = any(
+                s == section and text and self._mdu_fuzzy_ratio(text, t) >= self._MDU_DEDUP_THRESHOLD
+                for s, t in seen_texts
+            )
+            if is_dup:
+                continue  # drop — same fact already in this batch
+            seen_texts.append((section, text))
+            deduped.append(change)
+
+        # Stage 2: against existing master data — flag, don't drop.
+        for change in deduped:
+            if change.get('op') != 'add':
+                continue
+            section = change.get('section', '')
+            text = self._mdu_identifying_text(change)
+            if not text:
+                continue
+            for existing_id, existing_text in self._mdu_existing_entries_text(master, section):
+                if self._mdu_fuzzy_ratio(text, existing_text) >= self._MDU_DEDUP_THRESHOLD:
+                    change['possible_duplicate_of'] = existing_id
+                    break
+
+        return deduped
+
+    def _mdu_persuasion_flags(self, change: Dict[str, Any]) -> List[str]:
+        """Advisory (non-blocking) persuasion-quality flags for a proposed change's text.
+
+        Reuses check_persuasion()'s own detection logic rather than
+        reimplementing verb/quantification/vague-language heuristics.
+        """
+        proposed = change.get('proposed')
+        text = None
+        if change.get('section') == 'experience' and isinstance(proposed, dict):
+            text = proposed.get('text')
+        elif change.get('section') == 'professional_summaries' and isinstance(proposed, str):
+            text = proposed
+        if not text or not str(text).strip():
+            return []
+        try:
+            result = self.check_persuasion([{'id': '_mdu_tmp', 'achievements': [{'text': text}]}])
+        except Exception:
+            return []
+        flags: List[str] = []
+        for finding in (result.get('findings') or []):
+            for issue in (finding.get('issues') or []):
+                suggestion = issue.get('suggestion') or issue.get('type')
+                if suggestion:
+                    flags.append(str(suggestion))
+        return flags
+
+    def propose_master_data_update(
+        self,
+        instruction_or_text: str,
+        master: Dict[str, Any],
+        *,
+        source: str,
+        prior_clarifications: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        """Propose a structured Master_CV_Data.json diff from an NL instruction or document text.
+
+        Args:
+            instruction_or_text: user's NL instruction (source='nl_instruction'),
+                or extracted document text (source='document_ingestion').
+            master: current in-memory master data dict (for entity-resolution
+                context, existing-id validation, and dedup matching).
+            source: 'nl_instruction' | 'document_ingestion' — selects the
+                prompt variant and default change-count cap.
+            prior_clarifications: prior Q&A pairs from earlier turns of the
+                same clarification exchange, appended to the prompt on
+                resubmission so multi-round clarification is possible.
+
+        Returns:
+            On success: {'changes': [MasterDataChange, ...], 'error': None}.
+            On ambiguity/low-confidence: {'changes': [], 'error': 'clarify',
+                'clarification_question': str, 'confidence': float} — one
+                canonical shape regardless of which condition triggered it
+                (unlike apply_layout_instruction's two inconsistent branches).
+            On unsafe input (fully stripped by sanitization):
+                {'changes': [], 'error': 'unsafe_instruction', 'details': str}.
+            On any other failure: {'changes': [], 'error': str}.
+        """
+        raw_text = str(instruction_or_text or '')
+        sanitized_text, safety_findings = sanitize_instruction_text(raw_text)
+        sanitized_text = re.sub(r'\s+', ' ', sanitized_text).strip(' ,;:-')
+        if not sanitized_text:
+            return {
+                'changes': [],
+                'error': 'unsafe_instruction',
+                'details': (
+                    'The instruction or document text only contained unsafe '
+                    'prompt-like directives after sanitization.'
+                ),
+            }
+
+        master_index = self._mdu_build_master_index(master)
+
+        prior_context = ''
+        if prior_clarifications:
+            qa_lines = [
+                f'- Q: {qa.get("question", "")}\n  A: {qa.get("answer", "")}'
+                for qa in prior_clarifications
+            ]
+            prior_context = '\n\nPRIOR CLARIFICATION EXCHANGE:\n' + '\n'.join(qa_lines)
+
+        if source == 'nl_instruction':
+            max_changes = 5
+            task_description = (
+                'The user gave a plain-English instruction describing a change to make to '
+                'their master CV data. Resolve which existing entry (if any) the instruction '
+                'refers to by matching company/title/date text against the index above — '
+                'never invent or guess an id that is not listed there.'
+            )
+        else:
+            max_changes = 30
+            task_description = (
+                'The text below is extracted from an uploaded document (an old CV or '
+                'LinkedIn export). Extract structured additions to the master data — new '
+                'experience entries, achievements, skills, education, awards, or '
+                'certifications — that are not already present (see the existing-data index '
+                'above). Do not fabricate content not supported by the document text.'
+            )
+
+        prompt = f"""You are a master-CV-data update assistant. Your job is to turn the input below into a structured, reviewable set of proposed changes to a candidate's master CV data — never write directly to the data yourself.
+
+EXISTING MASTER DATA (for entity resolution and duplicate-avoidance):
+{master_index}
+
+{task_description}
+
+INPUT:
+\"\"\"{sanitized_text}\"\"\"
+{prior_context}
+
+YOUR TASK:
+1. If you cannot confidently identify which existing entry this input refers to (e.g. more than one experience could plausibly match, or the input clearly references something not in the existing data with no clear place to add it), do NOT guess — set "requires_clarification": true and ask a specific question in "clarification_question" that names the ambiguous options by company/title. Otherwise set "requires_clarification": false.
+2. If you are unsure for any other reason (vague input, low signal), set "confidence" below 0.7. Otherwise set it to your genuine confidence, up to 1.0.
+3. When proposing new or updated text (achievement bullets, summary text), write it with a strong opening verb and quantify impact where the input actually supports it — do NOT invent numbers, dates, or facts not present in the input.
+4. Propose at most {max_changes} changes.
+
+Return ONLY valid JSON (no markdown, no extra text):
+
+{{
+  "requires_clarification": false,
+  "clarification_question": "",
+  "confidence": 0.95,
+  "changes": [
+    {{
+      "section": "experience",
+      "op": "add",
+      "parent_id": "exp_005",
+      "field": "achievements",
+      "proposed": {{"text": "Delivered a Kubernetes-based deployment pipeline, cutting release time by 40%.", "keywords": ["Kubernetes"]}},
+      "label": "New achievement — Senior Engineer @ Acme (exp_005)",
+      "rationale": "Input described a Kubernetes project at the company matching exp_005."
+    }}
+  ]
+}}
+
+"section" must be one of: personal_info, experience, skills, education, awards, certifications, selected_achievements, professional_summaries.
+"op" must be "add" or "update" — never "delete"; deletions are handled through the existing structured editors, not this path.
+"parent_id" is the existing entry's id when adding a nested item (e.g. an achievement) into it, or updating a field on it; omit/null for a brand-new top-level entry (e.g. an entirely new experience) or for sections without nested ids (skills, education, awards, certifications, selected_achievements, professional_summaries).
+If requires_clarification is true, return an empty "changes" list.
+"""
+
+        response = ''
+        try:
+            response = self.llm.call_llm(
+                prompt=prompt,
+                system_prompt=(
+                    'You propose precise, minimal, well-supported additions to a '
+                    'candidate\'s master CV data record. You never fabricate facts, '
+                    'numbers, or dates not present in the input, and you never guess '
+                    'at an existing entry\'s identity when genuinely ambiguous.'
+                ),
+                temperature=0.2 if source == 'nl_instruction' else 0.25,
+            )
+
+            if not response or not response.strip():
+                return {'changes': [], 'error': 'LLM returned an empty response'}
+
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                result = self.llm._parse_json_response(response)
+
+            if not isinstance(result, dict):
+                return {'changes': [], 'error': 'LLM response was not a JSON object'}
+
+            requires_clarification = bool(result.get('requires_clarification', False))
+            confidence = result.get('confidence', 0.7)
+            try:
+                confidence = float(confidence)
+            except (TypeError, ValueError):
+                confidence = 0.7
+
+            if requires_clarification or confidence < 0.7:
+                question = str(result.get('clarification_question') or '').strip()
+                if not question:
+                    question = (
+                        f'Could you clarify: "{sanitized_text[:200]}"? '
+                        'I could not confidently determine what to update.'
+                    )
+                return {
+                    'changes': [],
+                    'error': 'clarify',
+                    'clarification_question': question,
+                    'confidence': confidence,
+                }
+
+            raw_changes = result.get('changes') or []
+            if not isinstance(raw_changes, list):
+                return {'changes': [], 'error': 'LLM response "changes" was not a list'}
+
+            # Layer 1: shape/allow-list validation, plus parent_id existence check
+            # (the concrete anti-hallucination guard for "add it to exp_005" cases).
+            existing_ids = {
+                str(exp.get('id', ''))
+                for exp in (master.get('experience') or master.get('experiences') or [])
+                if isinstance(exp, dict) and exp.get('id')
+            }
+            validated: List[Dict[str, Any]] = []
+            for raw in raw_changes:
+                if not isinstance(raw, dict):
+                    continue
+                section = str(raw.get('section') or '').strip()
+                op = str(raw.get('op') or '').strip()
+                if section not in _MDU_ALLOWED_SECTIONS or op not in _MDU_ALLOWED_OPS:
+                    continue
+                proposed = raw.get('proposed')
+                if proposed is None or proposed == '':
+                    continue
+                identifying = proposed if isinstance(proposed, str) else json.dumps(proposed)
+                if len(identifying) > 2000:
+                    continue  # sanity cap against degenerate LLM output
+                parent_id = raw.get('parent_id') or None
+                if parent_id and str(parent_id) not in existing_ids:
+                    continue  # references an id that doesn't exist — drop, don't guess
+                validated.append({
+                    'id':                  f'mdu_{uuid.uuid4().hex[:12]}',
+                    'section':             section,
+                    'op':                  op,
+                    'parent_id':           str(parent_id) if parent_id else None,
+                    'field':               raw.get('field'),
+                    'original':            raw.get('original'),
+                    'proposed':            proposed,
+                    'label':               str(raw.get('label') or '').strip() or f'{op} {section}',
+                    'rationale':           str(raw.get('rationale') or '').strip(),
+                    'source':              source,
+                })
+
+            # Dedup: within-batch drop, then vs-master-data flag.
+            validated = self._mdu_dedup_pass(master, validated)
+
+            # Persuasion advisory (non-blocking).
+            for change in validated:
+                flags = self._mdu_persuasion_flags(change)
+                if flags:
+                    change['persuasion_flags'] = flags
+
+            # Layer 2: dry-run apply + schema validation. Drop anything that
+            # would not actually apply cleanly, so the user never sees a
+            # proposal that would fail validation later.
+            final_changes: List[Dict[str, Any]] = []
+            for change in validated:
+                trial = copy.deepcopy(master)
+                applied = _mdu_apply_change(trial, change)
+                if not applied:
+                    continue
+                schema_result = validate_master_data(trial)
+                if not schema_result.valid:
+                    continue
+                final_changes.append(change)
+
+            return {'changes': final_changes, 'error': None}
+
+        except (json.JSONDecodeError, ValueError) as e:
+            return {'changes': [], 'error': f'LLM response was not valid JSON: {e}'}
+        except Exception as e:
+            error_type = type(e).__name__.lower()
+            error_text = str(e).lower()
+            if (
+                isinstance(e, TimeoutError)
+                or 'timeout' in error_type
+                or 'time out' in error_text
+                or 'timed out' in error_text
+            ):
+                return {
+                    'changes': [],
+                    'error': (
+                        'Master data update request timed out. Try a more specific '
+                        'instruction, or a shorter document excerpt.'
+                    ),
+                }
+            return {'changes': [], 'error': f'Failed to generate master data update proposal: {e}'}
+
     def analyze_harvest_candidates(
         self,
         candidates: List[Dict[str, Any]],
@@ -3233,6 +3659,29 @@ Include one entry per candidate. Do not omit any candidate."""
         )
         selected_experiences = [exp for exp, _ in scored_experiences]
 
+        # Sort experiences in reverse chronological order by end date.
+        # "Current", "Present", "", or None are treated as today (sorts first).
+        _today = _date.today()
+
+        def _parse_end_date(exp: Dict) -> _date:
+            raw = str(exp.get('end_date') or exp.get('end') or '').strip()
+            if not raw or raw.lower() in ('current', 'present', 'now', 'ongoing'):
+                return _today
+            for fmt in ('%Y-%m-%d', '%B %Y', '%b %Y', '%Y'):
+                try:
+                    return datetime.strptime(raw, fmt).date()
+                except ValueError:
+                    pass
+            # Partial match — try extracting a 4-digit year
+            m = re.search(r'\b(\d{4})\b', raw)
+            if m:
+                return _date(int(m.group(1)), 12, 31)
+            return _date.min
+
+        # Only apply default chronological sort when the user hasn't manually reordered.
+        # The user-override block below will replace this ordering if present.
+        selected_experiences = sorted(selected_experiences, key=_parse_end_date, reverse=True)
+
         # Override: if the user has explicitly reordered experience rows via the UI,
         # apply their ordering stored in customizations['experience_row_order']
         # as a list of experience IDs in the desired display order.
@@ -3308,6 +3757,22 @@ Include one entry per candidate. Do not omit any candidate."""
         selected_achievements = self._apply_achievement_diversity(
             scored_achievements, max_ach
         )
+
+        # Prepend extra_achievements: LLM-suggested achievements not in master CV that the user approved
+        extra_achievements = customizations.get('extra_achievements', [])
+        if extra_achievements:
+            existing_ach_texts = {(a.get('text', '') if isinstance(a, dict) else str(a)).lower()
+                                  for a in selected_achievements}
+            prepend_achs = []
+            for ach in extra_achievements:
+                if isinstance(ach, dict):
+                    text = ach.get('description') or ach.get('title', '')
+                else:
+                    text = str(ach)
+                if text and text.lower() not in existing_ach_texts:
+                    prepend_achs.append({'text': text, 'id': f'suggested_{len(prepend_achs)}'})
+                    existing_ach_texts.add(text.lower())
+            selected_achievements = (prepend_achs + selected_achievements)[:max_ach]
 
         # Prepend extra_achievements: LLM-suggested achievements not in master CV that the user approved
         extra_achievements = customizations.get('extra_achievements', [])
@@ -3743,7 +4208,7 @@ Include one entry per candidate. Do not omit any candidate."""
                 out_summary = summary_text[:max_summary_len].rstrip() + '...'
 
         return out_summary, out_experiences, out_achievements, out_skills
-    
+
     @staticmethod
     def _cap_publications_to_pages(
         pubs: List[Dict],
@@ -3871,7 +4336,7 @@ Include one entry per candidate. Do not omit any candidate."""
             })
 
         return selected
-    
+
     def _generate_ats_docx(
         self,
         content: Dict,
@@ -3885,16 +4350,16 @@ Include one entry per candidate. Do not omit any candidate."""
         from docx import Document
         from docx.shared import Pt
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-        
+
         doc = Document()
-        
+
         # Set up ATS-optimized styles
         self._setup_ats_styles(doc)
-        
+
         # Header with contact information (ATS-friendly format)
         personal = content['personal_info']
         name = personal.get('name', '')
-        
+
 # Candidate name — large bold run (not a Heading style so it does not
         # compete with section Heading 1 paragraphs in the ATS heading hierarchy).
         name_para = doc.add_paragraph()
@@ -3928,14 +4393,14 @@ Include one entry per candidate. Do not omit any candidate."""
         doc.add_paragraph()
 
         # Professional Summary — ATS standard label, Heading 1 style.
-        summary_heading = doc.add_paragraph('Professional Summary', style='Heading 1')
-        
+        doc.add_paragraph('Professional Summary', style='Heading 1')
+
         summary_text = content.get('summary', '')
         # Enhance summary with job-specific keywords
         enhanced_summary = self._enhance_summary_for_ats(summary_text, job_analysis)
         doc.add_paragraph(enhanced_summary)
         doc.add_paragraph()
-        
+
         # Skills — split hard/soft into "Technical Skills" and "Core Competencies".
         # _optimize_skills_for_ats returns names in priority order; type inferred
         # per skill via _classify_skill_type.
@@ -3960,7 +4425,7 @@ Include one entry per candidate. Do not omit any candidate."""
 
         # Work Experience — ATS standard label, Heading 1 style.
         doc.add_paragraph('Work Experience', style='Heading 1')
-        
+
         for exp in content['experiences']:
             # One-line job entry: Title | Company | Location | Date Range (US-H5).
             loc_parts = []
@@ -3980,7 +4445,7 @@ Include one entry per candidate. Do not omit any candidate."""
             entry_run  = entry_para.add_run(entry_line)
             entry_run.bold      = True
             entry_run.font.size = Pt(11)
-            
+
             # Achievements - Bullet points with quantified results
             if exp.get('achievements'):
                 for achievement in exp['achievements']:
@@ -3989,38 +4454,38 @@ Include one entry per candidate. Do not omit any candidate."""
                     enhanced_achievement = self._enhance_achievement_for_ats(achievement_text, job_analysis)
                     achievement_para = doc.add_paragraph(enhanced_achievement, style='List Bullet')
                     achievement_para.paragraph_format.left_indent = Pt(18)
-            
+
             doc.add_paragraph()  # Spacing between positions
-        
+
         # Education — ATS standard label, Heading 1 style.
         if content.get('education'):
             doc.add_paragraph('Education', style='Heading 1')
-            
+
             for edu in content['education']:
                 degree = edu.get('degree', '')
                 field = edu.get('field', '')
                 institution = edu.get('institution', '')
                 year = edu.get('end_year', '')
-                
+
                 degree_line = f"{degree} {field}".strip()
                 institution_line = f"{institution}"
                 if year:
                     institution_line += f" | {year}"
-                
+
                 degree_para = doc.add_paragraph()
                 degree_para.add_run(degree_line).bold = True
                 doc.add_paragraph(institution_line)
-            
+
             doc.add_paragraph()
-        
+
         # Additional Sections (if present)
         self._add_ats_additional_sections(doc, content, job_analysis)
-        
+
         # Save with ATS-optimized filename
         company = job_analysis.get('company', 'Company').replace(' ', '').replace('/', '-')[:15]
         role = job_analysis.get('title', 'Role').replace(' ', '').replace('/', '-')[:20]
         timestamp = datetime.now().strftime("%Y-%m-%d")
-        
+
         filename = f"CV_{company}_{role}_{timestamp}_ATS.docx"
         filepath = output_dir / filename
 
@@ -4035,11 +4500,11 @@ Include one entry per candidate. Do not omit any candidate."""
         logger.info("Generated ATS DOCX: %s (ATS Score: %d/100)", filename, ats_score)
 
         return filepath, ats_score
-    
+
     def _setup_ats_styles(self, doc):
         """Set up ATS-optimized document styles."""
         from docx.shared import Pt, RGBColor
-        
+
         # Create custom styles that are ATS-friendly
         styles = doc.styles
 
@@ -4079,7 +4544,7 @@ Include one entry per candidate. Do not omit any candidate."""
             list_bullet.font.size = Pt(10)
         except KeyError:
             pass
-    
+
     def _enhance_summary_for_ats(self, summary: str, job_analysis: Dict) -> str:
         """Return the professional summary unchanged.
 
@@ -4115,7 +4580,7 @@ Include one entry per candidate. Do not omit any candidate."""
             )
 
         return summary
-    
+
     def _optimize_skills_for_ats(self, skills: List[Dict], job_analysis: Dict) -> List[str]:
         """Return a score-ordered, deduplicated subset of skill names.
 
@@ -4164,7 +4629,7 @@ Include one entry per candidate. Do not omit any candidate."""
 
         # Return optimized skill names (top 15 for ATS readability)
         return [skill[0] for skill in skill_scores[:15]]
-    
+
     def _enhance_achievement_for_ats(self, achievement: str, job_analysis: Dict) -> str:
         """Return the achievement text unchanged.
 
@@ -4629,26 +5094,26 @@ Include one entry per candidate. Do not omit any candidate."""
 
     def _add_ats_additional_sections(self, doc, content: Dict, job_analysis: Dict):
         """Add additional sections that improve ATS scoring."""
-        
+
         # Certifications (if present) — Heading 1, title-case ATS label.
         if content.get('certifications'):
             doc.add_paragraph('Certifications', style='Heading 1')
-            
+
             for cert in content['certifications']:
                 cert_name = cert.get('name', '')
                 cert_issuer = cert.get('issuer', '')
                 cert_year = cert.get('year', '')
-                
+
                 cert_line = cert_name
                 if cert_issuer:
                     cert_line += f" | {cert_issuer}"
                 if cert_year:
                     cert_line += f" ({cert_year})"
-                
+
                 doc.add_paragraph(cert_line)
-            
+
             doc.add_paragraph()
-        
+
         # Awards (if present and relevant) — Heading 1, title-case ATS label.
         if content.get('awards'):
             doc.add_paragraph('Awards', style='Heading 1')
@@ -4692,7 +5157,7 @@ Include one entry per candidate. Do not omit any candidate."""
         """Validate CV for ATS compatibility and return score out of 100."""
         score = 0
         max_score = 100
-        
+
         # Check 1: Contact Information (20 points)
         contact = content.get('personal_info', {}).get('contact', {})
         if contact.get('email'):
@@ -4701,29 +5166,29 @@ Include one entry per candidate. Do not omit any candidate."""
             score += 6
         if contact.get('address') or contact.get('address_display'):
             score += 6
-        
+
         # Check 2: Professional Summary (15 points)
         summary = content.get('summary', '')
         if len(summary) > 50:
             score += 10
         if len(summary) > 100:
             score += 5
-        
+
         # Check 3: Skills Match (25 points)
         skills_list = [skill.get('name', '').lower() for skill in content.get('skills', [])]
         required_skills = [skill.lower() for skill in job_analysis.get('required_skills', [])]
         ats_keywords = [kw.lower() for kw in job_analysis.get('ats_keywords', [])]
-        
+
         # Required skills coverage
         matched_required = sum(1 for skill in required_skills if skill in skills_list)
         if required_skills:
             score += int((matched_required / len(required_skills)) * 15)
-        
-        # ATS keywords coverage  
+
+        # ATS keywords coverage
         matched_keywords = sum(1 for kw in ats_keywords[:10] if kw in ' '.join(skills_list))
         if ats_keywords:
             score += int((matched_keywords / min(len(ats_keywords), 10)) * 10)
-        
+
         # Check 4: Experience Section (25 points)
         experiences = content.get('experiences', [])
         if experiences:
@@ -4734,24 +5199,24 @@ Include one entry per candidate. Do not omit any candidate."""
                 score += 10
             elif total_achievements >= 4:
                 score += 5
-            
+
             # Check for recent experience
-            if any('2023' in exp.get('end_date', '') or '2024' in exp.get('end_date', '') 
+            if any('2023' in exp.get('end_date', '') or '2024' in exp.get('end_date', '')
                   or exp.get('end_date') == 'Present' for exp in experiences):
                 score += 5
-        
+
         # Check 5: Education (10 points)
         if content.get('education'):
             score += 10
-        
+
         # Check 6: Additional Sections (5 points)
         if content.get('certifications'):
             score += 3
         if content.get('awards'):
             score += 2
-        
+
         return min(score, max_score)
-    
+
     def _generate_human_docx(
         self,
         content: Dict,
@@ -5463,8 +5928,8 @@ def validate_ats_report(output_dir: Path, job_analysis: Dict) -> tuple:
                 'experience', 'education', 'skills', 'summary', 'publications',
                 'certifications', 'achievements', 'awards', 'objective',
                 'work experience', 'professional experience', 'technical skills',
-                'professional summary', 'contact',
-                'portfolio', 'languages', 'volunteering', 'projects',
+                'professional summary', 'selected publications', 'contact',
+                'portfolio', 'languages', 'volunteering', 'projects', 'career history',
                 'core competencies',
             })
             heading_paras = [p for p in paragraphs if p.style.name.startswith('Heading')]

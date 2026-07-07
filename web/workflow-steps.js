@@ -37,7 +37,7 @@ const _STEP_ORDER = [
 const _STEP_DISPLAY = {
   job:            'Job Input',
   analysis:       'Job Analysis',
-  customizations: 'Customisations',
+  customizations: 'Customise',
   rewrite:        'Rewrite Review',
   spell:          'Spell Check',
   layout:         'Layout Review',
@@ -177,7 +177,7 @@ function _showReRunConfirmModal(step, mode, onConfirm) {
 
   document.body.appendChild(overlay);
   _focusedElementBeforeModal = document.activeElement;
-  trapFocus('rerun-confirm-overlay');
+  if (typeof trapFocus === 'function') trapFocus('rerun-confirm-overlay');
   document.getElementById('rerun-proceed-btn').focus();
 
   const close = () => { overlay.remove(); restoreFocus(); };
@@ -776,8 +776,8 @@ async function showBulletReorder(expId, expTitle) {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  trapFocus('bullet-reorder-modal');
-  setInitialFocus('bullet-reorder-modal');
+  if (typeof trapFocus === 'function') trapFocus('bullet-reorder-modal');
+  if (typeof setInitialFocus === 'function') setInitialFocus('bullet-reorder-modal');
 
   // Close on Escape
   const escHandler = (e) => {

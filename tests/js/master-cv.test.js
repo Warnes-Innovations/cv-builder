@@ -33,9 +33,22 @@ import {
   closeAwardModal,
   saveMasterAchievement,
   deleteMasterExperience,
+  saveMasterExperience,
+  showAddExperienceModal,
+  editMasterExperience,
+  _addExpAchievement,
+  _moveExpAchievement,
+  _deleteExpAchievement,
   saveMasterSkill,
   deleteMasterSkill,
+  showAddSkillModal,
+  editMasterSkill,
   deleteMasterSummary,
+  undoMasterDataChange,
+  redoMasterDataChange,
+  openFullDataPreviewModal,
+  handleMasterCvImportFile,
+  confirmMasterCvImport,
 } from '../../web/master-cv.js'
 
 // ---------------------------------------------------------------------------
@@ -57,6 +70,15 @@ vi.stubGlobal('restoreFocus', vi.fn())
 vi.stubGlobal('setInitialFocus', vi.fn())
 vi.stubGlobal('trapFocus', vi.fn())
 vi.stubGlobal('_focusedElementBeforeModal', null)
+// populateMasterTab()'s template calls these two (from web/master-data-ai-update.js)
+// as bare globals, matching how web/src/main.js wires them onto window in
+// production. Without a stub here, every test that exercises the real
+// populateMasterTab() throws a swallowed ReferenceError partway through
+// rendering — the loading spinner never gets replaced by real content, and
+// callers' own try/catch masks it as a generic error alongside any real
+// success alert already fired earlier in the same handler.
+vi.stubGlobal('renderMasterDataAiUpdatePanel', () => '')
+vi.stubGlobal('renderMasterDataAiUpdateDisabledNote', () => '')
 
 // Mutable stubs — replaced per-describe via beforeEach
 let showAlertModalMock = vi.fn()
@@ -582,6 +604,156 @@ describe('deleteMasterExperience', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Experience achievements editor (GAP-19 16.11): showAddExperienceModal,
+// editMasterExperience, _addExpAchievement, _moveExpAchievement,
+// _deleteExpAchievement, and saveMasterExperience's achievements payload.
+// ---------------------------------------------------------------------------
+
+describe('experience achievements editor', () => {
+  function buildExpModalDom() {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-exp-modal-title"></h2>
+      <div id="master-exp-modal-overlay" style="display:none;"></div>
+      <input type="hidden" id="exp-modal-id" />
+      <input id="exp-title-input" />
+      <input id="exp-company-input" />
+      <input id="exp-city-input" />
+      <input id="exp-state-input" />
+      <input id="exp-start-input" />
+      <input id="exp-end-input" />
+      <select id="exp-type-input"><option value="full_time">Full-time</option></select>
+      <input id="exp-importance-input" value="5" />
+      <input id="exp-tags-input" />
+      <div id="exp-achievements-editor-list"></div>
+      <input id="exp-ach-new-input" />
+    `
+  }
+
+  function makeExpFetchMock(saveResponse) {
+    return vi.fn().mockImplementation(url => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [],
+          education: [], awards: [], selected_achievements: [],
+          professional_summaries: {},
+        }),
+      })
+      if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      return Promise.resolve({ json: async () => saveResponse })
+    })
+  }
+
+  beforeEach(() => {
+    buildExpModalDom()
+    window._masterExperienceFullData = []
+  })
+
+  it('showAddExperienceModal resets the achievements editor to empty', () => {
+    showAddExperienceModal()
+    expect(document.getElementById('exp-achievements-editor-list').textContent).toContain('No achievements yet')
+  })
+
+  it('editMasterExperience shows an error and does not open the modal for an unknown id', () => {
+    editMasterExperience('exp-missing')
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.any(String))
+    expect(document.getElementById('master-exp-modal-overlay').style.display).not.toBe('flex')
+  })
+
+  it('editMasterExperience populates fields and renders existing achievements as editable rows', () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      location: { city: 'Boston', state: 'MA' },
+      achievements: ['First bullet', { text: 'Second bullet', keywords: ['ml'] }],
+    }]
+
+    editMasterExperience('exp_1')
+
+    expect(document.getElementById('exp-title-input').value).toBe('Engineer')
+    expect(document.getElementById('exp-city-input').value).toBe('Boston')
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows.length).toBe(2)
+    expect(rows[0].value).toBe('First bullet')
+    expect(rows[1].value).toBe('Second bullet')
+    // First row's "move up" is disabled, last row's "move down" is disabled.
+    const buttons = document.querySelectorAll('#exp-achievements-editor-list button')
+    expect(buttons[0].disabled).toBe(true)  // row 0 move-up
+    expect(buttons[buttons.length - 2].disabled).toBe(true)  // last row move-down
+  })
+
+  it('_addExpAchievement appends a new row and clears the input', () => {
+    showAddExperienceModal()
+    document.getElementById('exp-ach-new-input').value = 'New bullet'
+
+    _addExpAchievement()
+
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows.length).toBe(1)
+    expect(rows[0].value).toBe('New bullet')
+    expect(document.getElementById('exp-ach-new-input').value).toBe('')
+  })
+
+  it('_addExpAchievement does nothing for blank input', () => {
+    showAddExperienceModal()
+    document.getElementById('exp-ach-new-input').value = '   '
+
+    _addExpAchievement()
+
+    expect(document.querySelectorAll('.exp-ach-text-input').length).toBe(0)
+  })
+
+  it('_moveExpAchievement reorders rows and preserves an unsaved in-progress text edit', () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      achievements: ['First', 'Second'],
+    }]
+    editMasterExperience('exp_1')
+    // Edit the first row's text without triggering any explicit "commit" —
+    // the move must read this live value before reordering, not the stale
+    // original array value.
+    document.querySelectorAll('.exp-ach-text-input')[0].value = 'First (edited)'
+
+    _moveExpAchievement(0, 1)
+
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows[0].value).toBe('Second')
+    expect(rows[1].value).toBe('First (edited)')
+  })
+
+  it('_deleteExpAchievement removes the row', () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      achievements: ['First', 'Second'],
+    }]
+    editMasterExperience('exp_1')
+
+    _deleteExpAchievement(0)
+
+    const rows = document.querySelectorAll('.exp-ach-text-input')
+    expect(rows.length).toBe(1)
+    expect(rows[0].value).toBe('Second')
+  })
+
+  it('saveMasterExperience includes the current achievements editor state, including unsaved edits', async () => {
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Engineer', company: 'Acme',
+      achievements: ['First'],
+    }]
+    editMasterExperience('exp_1')
+    document.querySelectorAll('.exp-ach-text-input')[0].value = 'First (edited)'
+    const mockFetch = makeExpFetchMock({ ok: true, action: 'updated' })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterExperience()
+
+    const expCall = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/experience')
+    const body = JSON.parse(expCall[1].body)
+    expect(body.experience.achievements).toEqual(['First (edited)'])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // saveMasterSkill — mock fetch
 // ---------------------------------------------------------------------------
 
@@ -595,6 +767,8 @@ describe('saveMasterSkill', () => {
       <input id="skill-modal-is-flat" value="${isFlat}" />
       <input id="skill-modal-original-name" value="" />
       <input id="skill-experiences-input" value="" />
+      <input id="skill-aliases-input" value="" />
+      <input id="skill-years-input" value="" />
       <div id="master-skill-modal-overlay" style="display:flex;"></div>
     `
   }
@@ -678,6 +852,122 @@ describe('saveMasterSkill', () => {
     const body = JSON.parse(mockFetch.mock.calls[0][1].body)
     expect(body.category).toBe('ml')
     expect(body.skill).toBe('TensorFlow')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Skill aliases/years fields (GAP-19 16.12): showAddSkillModal, editMasterSkill,
+// and saveMasterSkill's aliases/years payload.
+// ---------------------------------------------------------------------------
+
+describe('skill aliases/years fields', () => {
+  function buildFullSkillModalDom() {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-skill-modal-title"></h2>
+      <button id="master-skill-save-btn"></button>
+      <div id="master-skill-modal-overlay" style="display:none;"></div>
+      <input id="skill-modal-category" />
+      <input id="skill-modal-is-flat" />
+      <input id="skill-modal-original-name" />
+      <input id="skill-name-input" />
+      <input id="skill-experiences-input" />
+      <input id="skill-aliases-input" />
+      <input id="skill-years-input" />
+      <div id="skill-category-row"></div>
+      <span id="skill-category-display"></span>
+      <div id="skill-experience-hints"></div>
+    `
+  }
+
+  function makeSkillFetchMock(skillResponse) {
+    return vi.fn().mockImplementation(url => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [],
+          education: [], awards: [], selected_achievements: [],
+          professional_summaries: {},
+        }),
+      })
+      return Promise.resolve({ json: async () => skillResponse })
+    })
+  }
+
+  beforeEach(() => {
+    buildFullSkillModalDom()
+  })
+
+  it('showAddSkillModal resets aliases and years to empty', () => {
+    document.getElementById('skill-aliases-input').value = 'stale'
+    document.getElementById('skill-years-input').value = '9'
+
+    showAddSkillModal(null, true)
+
+    expect(document.getElementById('skill-aliases-input').value).toBe('')
+    expect(document.getElementById('skill-years-input').value).toBe('')
+  })
+
+  it('editMasterSkill populates aliases and years from the skill object', () => {
+    editMasterSkill({ name: 'JavaScript', aliases: ['JS', 'ECMAScript'], years: 4 }, null, true)
+
+    expect(document.getElementById('skill-aliases-input').value).toBe('JS, ECMAScript')
+    expect(document.getElementById('skill-years-input').value).toBe('4')
+  })
+
+  it('editMasterSkill leaves years blank when not present on the skill object', () => {
+    editMasterSkill({ name: 'Python' }, null, true)
+    expect(document.getElementById('skill-years-input').value).toBe('')
+  })
+
+  it('editMasterSkill handles a plain string skill (no aliases/years)', () => {
+    editMasterSkill('Python', null, true)
+    expect(document.getElementById('skill-aliases-input').value).toBe('')
+    expect(document.getElementById('skill-years-input').value).toBe('')
+  })
+
+  it('saveMasterSkill includes parsed aliases and years in the request body', async () => {
+    document.getElementById('skill-name-input').value = 'Rust'
+    document.getElementById('skill-modal-is-flat').value = '1'
+    document.getElementById('skill-aliases-input').value = 'Rustlang, RS'
+    document.getElementById('skill-years-input').value = '2.5'
+    const mockFetch = makeSkillFetchMock({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterSkill()
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.aliases).toEqual(['Rustlang', 'RS'])
+    expect(body.years).toBe(2.5)
+  })
+
+  it('saveMasterSkill sends years: null when the years field is left blank', async () => {
+    document.getElementById('skill-name-input').value = 'Go'
+    document.getElementById('skill-modal-is-flat').value = '1'
+    const mockFetch = makeSkillFetchMock({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterSkill()
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.years).toBeNull()
+    expect(body.aliases).toEqual([])
+  })
+
+  it('saveMasterSkill rejects non-finite years (Infinity) without calling fetch', async () => {
+    document.getElementById('skill-name-input').value = 'Rust'
+    document.getElementById('skill-modal-is-flat').value = '1'
+    document.getElementById('skill-years-input').value = 'Infinity'
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await saveMasterSkill()
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Validation'),
+      expect.stringContaining('finite')
+    )
   })
 })
 
@@ -973,5 +1263,476 @@ describe('publications UI flows', () => {
     expect(firstCallBody.overwrite).toBe(true)
     expect(firstCallBody.bibtex_text).toContain('@article{doe2025')
     expect(document.getElementById('master-pub-convert-status').textContent).toContain('Imported preview')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// undoMasterDataChange / redoMasterDataChange (GAP-19 16.7)
+//
+// _masterCvRedoBackup is module-private state, not reset between tests by
+// vitest — populateMasterTab() (called by every mutating handler above)
+// resets it to null on every render except the one call inside
+// undoMasterDataChange() itself, so by the time this describe block runs the
+// module should already be back at its null baseline. The redo-dependent
+// tests below still run after the tests that establish a redo target, to
+// avoid relying on that carried-over state for the negative cases.
+// ---------------------------------------------------------------------------
+
+describe('undoMasterDataChange / redoMasterDataChange', () => {
+  const emptyFullData = {
+    personal_info: {}, experience: [], skills: [],
+    education: [], awards: [], selected_achievements: [],
+    professional_summaries: {},
+  }
+
+  function makeFetchMock({ snapshots = [], restoreResponses = [] } = {}) {
+    let restoreCallIndex = 0
+    return vi.fn().mockImplementation((url) => {
+      if (url === '/api/master-data/overview') {
+        return Promise.resolve({ json: async () => ({}) })
+      }
+      if (url === '/api/master-data/full') {
+        return Promise.resolve({ json: async () => emptyFullData })
+      }
+      if (url === '/api/master-data/history') {
+        return Promise.resolve({ json: async () => ({ ok: true, snapshots }) })
+      }
+      if (url === '/api/master-data/restore') {
+        const resp = restoreResponses[restoreCallIndex] ?? restoreResponses[restoreResponses.length - 1]
+        restoreCallIndex += 1
+        return Promise.resolve({ json: async () => resp })
+      }
+      if (url === '/api/master-data/publications') {
+        // populateMasterTab() fires this off (unawaited) at the end of its
+        // own render; harmless here, just needs a response so it doesn't
+        // surface as noise in mockFetch's call history.
+        return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    window.confirm = vi.fn(() => true)
+  })
+
+  it('shows "nothing to undo" and does not call restore when there are no snapshots', async () => {
+    const mockFetch = makeFetchMock({ snapshots: [] })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Nothing to undo'),
+      expect.any(String)
+    )
+    expect(mockFetch).not.toHaveBeenCalledWith('/api/master-data/restore', expect.anything())
+  })
+
+  it('does not call restore when the user declines the confirm dialog', async () => {
+    window.confirm = vi.fn(() => false)
+    const mockFetch = makeFetchMock({
+      snapshots: [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }],
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+
+    expect(mockFetch).not.toHaveBeenCalledWith('/api/master-data/restore', expect.anything())
+  })
+
+  it('shows "nothing to redo" and does not call restore when there is no redo target', async () => {
+    const mockFetch = makeFetchMock()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await redoMasterDataChange()
+
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Nothing to redo'),
+      expect.any(String)
+    )
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('restores the most recent snapshot, refreshes the tab, and enables Redo', async () => {
+    const mockFetch = makeFetchMock({
+      snapshots: [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }],
+      restoreResponses: [{
+        ok: true,
+        restored_from: 'Master_CV_20260101T000000Z.json',
+        safety_backup: 'Master_CV_20260102T000000Z.json',
+      }],
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+    await flushPromises()
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/master-data/restore',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ filename: 'Master_CV_20260101T000000Z.json' }),
+      })
+    )
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Undone'),
+      expect.any(String)
+    )
+    const redoBtn = document.getElementById('master-cv-redo-btn')
+    expect(redoBtn.disabled).toBe(false)
+  })
+
+  it('redo restores the undo safety backup and re-disables itself afterward', async () => {
+    const mockFetch = makeFetchMock({
+      snapshots: [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }],
+      restoreResponses: [
+        {
+          ok: true,
+          restored_from: 'Master_CV_20260101T000000Z.json',
+          safety_backup: 'Master_CV_20260102T000000Z.json',
+        },
+        { ok: true, restored_from: 'Master_CV_20260102T000000Z.json' },
+      ],
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await undoMasterDataChange()
+    await flushPromises()
+    await redoMasterDataChange()
+    await flushPromises()
+
+    // Not toHaveBeenLastCalledWith: populateMasterTab()'s own unawaited
+    // loadPublications() fire-and-forget call may land after this in the
+    // mock's call history once microtasks flush.
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/master-data/restore',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ filename: 'Master_CV_20260102T000000Z.json' }),
+      })
+    )
+    expect(showAlertModalMock).toHaveBeenCalledWith(
+      expect.stringContaining('Redone'),
+      expect.any(String)
+    )
+    const redoBtn = document.getElementById('master-cv-redo-btn')
+    expect(redoBtn.disabled).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openFullDataPreviewModal (GAP-19 16.15)
+// ---------------------------------------------------------------------------
+
+describe('openFullDataPreviewModal', () => {
+  afterEach(() => {
+    document.getElementById('master-cv-preview-overlay')?.remove()
+  })
+
+  it('renders the full master data as formatted JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ personal_info: { name: 'Jane Doe' }, skills: ['Python'] }),
+    }))
+
+    await openFullDataPreviewModal()
+    await flushPromises()
+
+    const body = document.getElementById('master-cv-preview-body')
+    expect(body.textContent).toContain('"name": "Jane Doe"')
+    expect(body.textContent).toContain('"Python"')
+  })
+
+  it('shows a failure message if the fetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')))
+
+    await openFullDataPreviewModal()
+    await flushPromises()
+
+    expect(document.getElementById('master-cv-preview-body').textContent).toContain('Failed to load')
+  })
+
+  it('close button removes the overlay', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({}) }))
+
+    await openFullDataPreviewModal()
+    document.getElementById('master-cv-preview-close').click()
+
+    expect(document.getElementById('master-cv-preview-overlay')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Full-file JSON import (GAP-19 16.16): handleMasterCvImportFile,
+// confirmMasterCvImport, and the review-modal it renders.
+// ---------------------------------------------------------------------------
+
+describe('master CV JSON import', () => {
+  // FileReader.readAsText() in jsdom completes asynchronously and its timing
+  // relative to a single setTimeout(...,0) flush isn't reliable under load
+  // (observed flaky across runs) — poll for the expected side effect instead
+  // of assuming a fixed number of flushPromises() ticks is enough.
+  async function waitFor(conditionFn, { timeout = 1000, interval = 5 } = {}) {
+    const start = Date.now()
+    while (Date.now() - start < timeout) {
+      if (conditionFn()) return
+      await new Promise((resolve) => setTimeout(resolve, interval))
+    }
+    throw new Error('waitFor: condition not met within timeout')
+  }
+
+  function makeFileEvent(text) {
+    return {
+      target: {
+        files: [new File([text], 'Master_CV_Data.json', { type: 'application/json' })],
+        value: 'Master_CV_Data.json',
+      },
+    }
+  }
+
+  afterEach(() => {
+    document.getElementById('master-cv-import-overlay')?.remove()
+  })
+
+  it('shows an error and makes no request for invalid JSON', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    handleMasterCvImportFile(makeFileEvent('{not valid json'))
+    await waitFor(() => showAlertModalMock.mock.calls.length > 0)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.stringContaining('not valid JSON'))
+  })
+
+  it('shows an error and makes no request for a JSON array', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    handleMasterCvImportFile(makeFileEvent('[1, 2, 3]'))
+    await waitFor(() => showAlertModalMock.mock.calls.length > 0)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.stringContaining('JSON object'))
+  })
+
+  it('does nothing when no file was selected', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    handleMasterCvImportFile({ target: { files: [], value: '' } })
+    await flushPromises()
+
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('resets the file input value so re-selecting the same filename works', () => {
+    const event = makeFileEvent('{"experience": []}')
+    handleMasterCvImportFile(event)
+    expect(event.target.value).toBe('')
+  })
+
+  it('shows validation errors and no modal when the backend rejects the import preview', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: false, error: 'Uploaded data failed schema validation', validation_errors: ['experience must be a list'] }),
+    }))
+
+    handleMasterCvImportFile(makeFileEvent('{"experience": "nope"}'))
+    await waitFor(() => showAlertModalMock.mock.calls.length > 0)
+
+    expect(showAlertModalMock).toHaveBeenCalledWith('❌ Error', expect.stringContaining('experience must be a list'))
+    expect(document.getElementById('master-cv-import-overlay')).toBeNull()
+  })
+
+  it('renders the review modal with section rows on a successful preview', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({
+        ok: true,
+        sections: [
+          { section: 'experience', changed: true, current_count: 1, new_count: 2 },
+          { section: 'skills', changed: false, current_count: 3, new_count: 3 },
+        ],
+      }),
+    }))
+
+    handleMasterCvImportFile(makeFileEvent('{"experience": [], "skills": []}'))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    const overlay = document.getElementById('master-cv-import-overlay')
+    expect(overlay.textContent).toContain('experience')
+    expect(overlay.textContent).toContain('1 section(s) would change')
+    const confirmBtn = document.getElementById('master-cv-import-confirm')
+    expect(confirmBtn.disabled).toBe(false)
+  })
+
+  it('disables Confirm Import when nothing would change', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, sections: [{ section: 'skills', changed: false, current_count: 3, new_count: 3 }] }),
+    }))
+
+    handleMasterCvImportFile(makeFileEvent('{"skills": []}'))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    expect(document.getElementById('master-cv-import-confirm').disabled).toBe(true)
+  })
+
+  it('cancel button removes the overlay without calling import-confirm', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, sections: [{ section: 'skills', changed: true, current_count: 1, new_count: 2 }] }),
+    }))
+    handleMasterCvImportFile(makeFileEvent('{"skills": []}'))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    const mockConfirmFetch = vi.fn()
+    vi.stubGlobal('fetch', mockConfirmFetch)
+    document.getElementById('master-cv-import-cancel').click()
+
+    expect(document.getElementById('master-cv-import-overlay')).toBeNull()
+    expect(mockConfirmFetch).not.toHaveBeenCalled()
+  })
+
+  it('confirmMasterCvImport posts the previewed data and shows the commit result on success', async () => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    const previewedData = { skills: ['Rust'] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ ok: true, sections: [{ section: 'skills', changed: true, current_count: 0, new_count: 1 }] }),
+    }))
+    handleMasterCvImportFile(makeFileEvent(JSON.stringify(previewedData)))
+    await waitFor(() => document.getElementById('master-cv-import-overlay') !== null)
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [],
+          education: [], awards: [], selected_achievements: [],
+          professional_summaries: {},
+        }),
+      })
+      if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      if (url === '/api/master-data/import-confirm') return Promise.resolve({
+        json: async () => ({ ok: true, commit_hash: 'abc1234567890', git_error: null }),
+      })
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await confirmMasterCvImport()
+    await waitFor(() => mockFetch.mock.calls.some(([url]) => url === '/api/master-data/import-confirm'))
+    await flushPromises()
+
+    const importCall = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/import-confirm')
+    expect(JSON.parse(importCall[1].body)).toEqual({ data: previewedData })
+    expect(document.getElementById('master-cv-import-overlay')).toBeNull()
+    expect(showAlertModalMock).toHaveBeenCalledWith('✅ Imported', expect.stringContaining('abc1234567'))
+  })
+
+  it('confirmMasterCvImport does nothing if there is no previewed data pending', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    await confirmMasterCvImport()
+
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Master CV editor workflow smoke test (GAP-19 16.19).
+//
+// tests/ui/ (Playwright, browser-driven) is where a true story-level e2e
+// workflow test would normally live, but that suite has pre-existing,
+// unrelated DOM-selector-drift failures (verified 2026-07-02: running
+// tests/ui/test_ui_achievements.py directly fails on a stale selector and a
+// strict-mode locator ambiguity, neither touched by GAP-19) and is already
+// excluded from this project's standard test command for that reason. Adding
+// a new Playwright test on top of an already-unreliable, excluded suite
+// wouldn't give reliable coverage. Instead, this is a single vitest test that
+// chains multiple real handlers together in one realistic sequence (add an
+// experience with achievements -> reorder -> save -> undo), exercising more
+// of the integration surface than the per-function unit tests above, using
+// the one test runner this project's tooling can actually verify passes.
+// ---------------------------------------------------------------------------
+
+describe('Master CV editor workflow smoke test', () => {
+  it('add experience with achievements, reorder, save, then undo restores the prior version', async () => {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-exp-modal-title"></h2>
+      <div id="master-exp-modal-overlay" style="display:none;"></div>
+      <input type="hidden" id="exp-modal-id" />
+      <input id="exp-title-input" />
+      <input id="exp-company-input" />
+      <input id="exp-city-input" />
+      <input id="exp-state-input" />
+      <input id="exp-start-input" />
+      <input id="exp-end-input" />
+      <select id="exp-type-input"><option value="full_time">Full-time</option></select>
+      <input id="exp-importance-input" value="5" />
+      <input id="exp-tags-input" />
+      <div id="exp-achievements-editor-list"></div>
+      <input id="exp-ach-new-input" />
+    `
+    window._masterExperienceFullData = []
+
+    const emptyFullData = {
+      personal_info: {}, experience: [], skills: [],
+      education: [], awards: [], selected_achievements: [],
+      professional_summaries: {},
+    }
+    let saved = false
+    const mockFetch = vi.fn().mockImplementation((url, opts) => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({ json: async () => emptyFullData })
+      if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      if (url === '/api/master-data/experience' && opts?.method === 'POST') {
+        saved = true
+        return Promise.resolve({ json: async () => ({ ok: true, action: 'added', id: 'exp_new' }) })
+      }
+      if (url === '/api/master-data/history') {
+        return Promise.resolve({ json: async () => ({
+          ok: true,
+          snapshots: saved ? [{ filename: 'Master_CV_20260101T000000Z.json', mtime: 1234567890, size: 10 }] : [],
+        }) })
+      }
+      if (url === '/api/master-data/restore') {
+        return Promise.resolve({ json: async () => ({ ok: true, restored_from: 'Master_CV_20260101T000000Z.json', safety_backup: 'Master_CV_20260102T000000Z.json' }) })
+      }
+      throw new Error(`Unexpected fetch in workflow smoke test: ${url}`)
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    window.confirm = vi.fn(() => true)
+
+    // 1. Start a new experience and add two achievements.
+    showAddExperienceModal()
+    document.getElementById('exp-title-input').value = 'Senior Engineer'
+    document.getElementById('exp-company-input').value = 'Acme'
+    document.getElementById('exp-ach-new-input').value = 'Shipped the platform migration'
+    _addExpAchievement()
+    document.getElementById('exp-ach-new-input').value = 'Mentored two junior engineers'
+    _addExpAchievement()
+
+    // 2. Reorder: the second achievement should move above the first.
+    _moveExpAchievement(1, -1)
+    const rowsBeforeSave = document.querySelectorAll('.exp-ach-text-input')
+    expect(rowsBeforeSave[0].value).toBe('Mentored two junior engineers')
+    expect(rowsBeforeSave[1].value).toBe('Shipped the platform migration')
+
+    // 3. Save — posts the experience with achievements in the reordered order.
+    await saveMasterExperience()
+    const expCall = mockFetch.mock.calls.find(([url, opts]) => url === '/api/master-data/experience' && opts?.method === 'POST')
+    expect(expCall).toBeDefined()
+    const savedBody = JSON.parse(expCall[1].body)
+    expect(savedBody.experience.achievements).toEqual([
+      'Mentored two junior engineers',
+      'Shipped the platform migration',
+    ])
+
+    // 4. Undo the save — restores the most recent snapshot and re-renders.
+    await undoMasterDataChange()
+    expect(showAlertModalMock).toHaveBeenCalledWith('✅ Undone', expect.any(String))
+    const redoBtn = document.getElementById('master-cv-redo-btn')
+    expect(redoBtn.disabled).toBe(false)
   })
 })

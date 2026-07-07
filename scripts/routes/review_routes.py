@@ -1454,7 +1454,6 @@ def create_blueprint(deps):
                         job_analysis,
                         max_count=None,
                     )
-                    score_map = {p['key']: p for p in all_scored}
                     not_recommended = []
                     for scored_pub in all_scored:
                         key = scored_pub['key']
@@ -2376,7 +2375,7 @@ def create_blueprint(deps):
                 'page_length_warning': _page_warning(estimated_pages, domain, override),
             })
         except Exception:
-            logger.exception('estimate_pages failed')
+            current_app.logger.exception('estimate_pages failed')
             return jsonify({'ok': False, 'error': 'Estimate failed'}), 500
 
     # ── ATS validation + persuasion ──────────────────────────────────────────

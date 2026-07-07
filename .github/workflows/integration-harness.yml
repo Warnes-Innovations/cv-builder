@@ -93,6 +93,9 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
+      - name: Run eslint mutation-boundary guard (GAP-16 Part B)
+        run: npm run lint:early-preview-guard
+
       - name: Verify JS bundle builds
         run: npm run build
 

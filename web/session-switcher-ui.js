@@ -6,8 +6,15 @@
 
 /**
  * web/session-switcher-ui.js
- * Session management modal, trash view, ownership conflict dialog,
- * and session-conflict retry banner.
+ * Session management modal, trash view, and ownership conflict dialog.
+ *
+ * The session-conflict retry banner (showSessionConflictBanner/
+ * conflictRetryNow/conflictDismiss) lives in web/fetch-utils.js, which owns
+ * handle409Conflict (the actual trigger) — this file used to carry its own
+ * byte-for-byte duplicate with a separate retry queue/timer, which meant
+ * clicking "Retry Now" could silently drain the wrong (always-empty) queue
+ * depending on web/src/main.js's module load order, never actually
+ * resolving the pending retried request. Removed; see web/fetch-utils.js.
  *
  * Dependencies (resolved through globalThis at runtime):
  *   escapeHtml, parseSessionListResponse, formatSessionPhaseLabel,
@@ -16,12 +23,6 @@
  *   loadSessionFile, createNewSessionAndNavigate, fetchStatus,
  *   setInitialFocus, trapFocus, restoreFocus, pushFocusStack, confirmDialog
  */
-
-// ── Module-level state ────────────────────────────────────────────────────────
-
-const _conflictRetryQueue = [];
-let _conflictTimerId  = null;
-let _conflictCountdown = 0;
 
 // ── Sort state & session cache ────────────────────────────────────────────────
 const _SM_STORAGE_KEY = 'cv_sm_sort_key';
@@ -953,47 +954,9 @@ async function emptyTrash() {
   } catch (e) { if (typeof showToast === 'function') showToast(`Error: ${e.message}`, 'error'); }
 }
 
-// ── Session conflict banner ───────────────────────────────────────────────────
-
-function showSessionConflictBanner() {
-  const banner      = document.getElementById('session-conflict-banner');
-  const bannerText  = document.getElementById('conflict-banner-text');
-  const countdownEl = document.getElementById('conflict-countdown');
-  if (!banner) return;
-  banner.style.display = 'block';
-  if (_conflictTimerId) { clearInterval(_conflictTimerId); _conflictTimerId = null; }
-  _conflictCountdown = 30;
-  if (bannerText)   bannerText.textContent = '⚠ Another operation is in progress. Auto-retrying in ';
-  if (countdownEl)  countdownEl.textContent = `${_conflictCountdown}s…`;
-  _conflictTimerId = setInterval(() => {
-    _conflictCountdown--;
-    if (_conflictCountdown <= 0) {
-      clearInterval(_conflictTimerId); _conflictTimerId = null;
-      conflictRetryNow();
-    } else {
-      if (countdownEl) countdownEl.textContent = `${_conflictCountdown}s…`;
-    }
-  }, 1000);
-}
-
-function conflictRetryNow() {
-  if (_conflictTimerId) { clearInterval(_conflictTimerId); _conflictTimerId = null; }
-  const banner = document.getElementById('session-conflict-banner');
-  if (banner) banner.style.display = 'none';
-  while (_conflictRetryQueue.length) _conflictRetryQueue.shift()(true);
-}
-
-function conflictDismiss() {
-  if (_conflictTimerId) { clearInterval(_conflictTimerId); _conflictTimerId = null; }
-  const banner = document.getElementById('session-conflict-banner');
-  if (banner) banner.style.display = 'none';
-  while (_conflictRetryQueue.length) _conflictRetryQueue.shift()(false);
-}
-
 // ── Exports ───────────────────────────────────────────────────────────────────
 
 export {
-  _conflictRetryQueue,
   _renderActiveSessionRows,
   _renderSavedSessionRows,
   _renderSessionSwitcherSections,
@@ -1017,7 +980,4 @@ export {
   restoreFromTrash,
   deleteForever,
   emptyTrash,
-  showSessionConflictBanner,
-  conflictRetryNow,
-  conflictDismiss,
 };

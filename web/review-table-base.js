@@ -28,6 +28,7 @@ import { getLogger } from './logger.js';
 const log = getLogger('review-table-base');
 
 import { stateManager } from './state-manager.js';
+import { _STEP_DISPLAY } from './workflow-steps.js';
 
 // ── Module-level state ────────────────────────────────────────────────────
 
@@ -100,6 +101,70 @@ function updateInclusionCounts() {
   } catch (e) { log.warn('Failed to update inclusion counts:', e); }
 }
 
+// ── Generate CV tab ───────────────────────────────────────────────────────
+
+function _populateGenerateTab(cvData, content) {
+  if (!cvData || !cvData.files || !cvData.files.length) {
+    content.innerHTML = '<div class="empty-state"><div class="icon">📄</div><h3>Generated CV</h3><p>Generate CV to see preview</p></div>';
+    return;
+  }
+
+  const meta     = cvData.metadata || {};
+  const role     = meta.role     || meta.position || '';
+  const company  = meta.company  || '';
+  const subtitle = role && company ? `${role} — ${company}` : role || company || 'CV generated';
+
+  const ICONS = { '.pdf': '📄', '.docx': '📝', '.html': '🌐' };
+  const LABELS = {
+    '.pdf':  f => f.includes('ATS') ? 'ATS PDF'  : 'Human PDF',
+    '.docx': f => f.includes('ATS') ? 'ATS DOCX' : f.startsWith('CoverLetter_') ? 'Cover Letter' : 'Human DOCX',
+    '.html': () => 'HTML',
+  };
+
+  const downloadableExts = new Set(['.pdf', '.docx', '.html']);
+  const files = (cvData.files || []).filter(f => {
+    const ext = f.slice(f.lastIndexOf('.')).toLowerCase();
+    return downloadableExts.has(ext) && f !== 'job_description.txt';
+  });
+
+  const sid = typeof getSessionIdFromURL === 'function' ? getSessionIdFromURL() : null;
+  const sessionParam = sid ? `?session_id=${encodeURIComponent(sid)}` : '';
+
+  let fileRows = '';
+  for (const f of files) {
+    const ext   = f.slice(f.lastIndexOf('.')).toLowerCase();
+    const icon  = ICONS[ext]  || '📁';
+    const label = LABELS[ext] ? LABELS[ext](f) : f;
+    fileRows += `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9;">
+        <span style="font-size:1.4em;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.85em;font-weight:600;color:#374151;">${label}</div>
+          <div style="font-size:0.78em;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(f)}</div>
+        </div>
+        <a href="/api/download/${encodeURIComponent(f)}${sessionParam}" download="${escapeHtml(f)}"
+           class="btn-secondary" style="padding:6px 14px;font-size:0.85em;text-decoration:none;display:inline-block;">Download</a>
+      </div>`;
+  }
+
+  content.innerHTML = `
+    <div style="max-width:640px;margin:0 auto;padding:24px 0;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+        <span style="font-size:2em;">✅</span>
+        <div>
+          <h2 style="margin:0;font-size:1.2em;color:#111827;">CV Generated</h2>
+          <div style="font-size:0.9em;color:#6b7280;">${escapeHtml(subtitle)}</div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:0 16px;margin-bottom:24px;">
+        ${fileRows}
+      </div>
+      <div class="nav-buttons nav-end">
+        <button class="continue-btn" onclick="switchTab('layout')">Open Layout Review →</button>
+      </div>
+    </div>`;
+}
+
 // ── Tab switching ─────────────────────────────────────────────────────────
 
 // Tracks which customise-stage sub-tabs have been viewed this session (GAP-269).
@@ -154,17 +219,22 @@ function switchTab(tab) {
   _saveDraftInputsForTab(stateManager.getCurrentTab());
 
   // Sync second-bar visibility to this tab's stage
+  let _switchTabStage = null;
   if (typeof getStageForTab === 'function' && typeof updateTabBarForStage === 'function') {
-    const tabStage = getStageForTab(tab);
-    if (tabStage) {
-      updateTabBarForStage(tabStage);
-      updateActionButtons(tabStage);
+    _switchTabStage = getStageForTab(tab);
+    if (_switchTabStage) {
+      updateTabBarForStage(_switchTabStage);
+      updateActionButtons(_switchTabStage);
     }
   }
   // Always update workflow clickable state using current phase
   if (typeof stateManager?.getPhase === 'function' && typeof updateWorkflowStepsClickable === 'function') {
     updateWorkflowStepsClickable(stateManager.getPhase());
   }
+
+  // GAP-16 Part B: show/hide and (re)render the early CV preview panel for
+  // this tab. toggleEarlyPreviewPanel's own in-scope check decides visibility.
+  if (typeof toggleEarlyPreviewPanel === 'function') toggleEarlyPreviewPanel(tab);
 
   // Update active tab, ARIA state, and roving tabindex (WCAG 2.1 tablist pattern)
   document.querySelectorAll('.tab').forEach(t => {
@@ -188,11 +258,17 @@ function switchTab(tab) {
     _updateVisitedTabIndicators();
   }
 
-  // Announce the tab change to screen readers (GAP-73)
+  // Announce the tab change to screen readers (GAP-73). Combined with the
+  // stage name (GAP-16 Part A) into a single message from this one call site
+  // — #tab-stage-label is a visible-only label, not a second live region, to
+  // avoid a double-announce of the same navigation event.
   const announcer = document.getElementById('workflow-stage-announcer');
   if (announcer && activeTab) {
+    const stageLabel = _switchTabStage ? _STEP_DISPLAY[_switchTabStage] : null;
+    const tabLabel = activeTab.textContent.trim();
+    const message = stageLabel ? `Now viewing: ${stageLabel} — ${tabLabel}` : `Now viewing: ${tabLabel}`;
     announcer.textContent = '';
-    setTimeout(() => { announcer.textContent = `Now viewing: ${activeTab.textContent.trim()}`; }, 50);
+    setTimeout(() => { announcer.textContent = message; }, 50);
   }
 
   // Sync view-cursor ring to the newly visible tab
@@ -253,6 +329,7 @@ async function loadTabContent(tab) {
   const content = document.getElementById('document-content');
   const tabData = ensureTabDataState();
 
+  try {
   switch (tab) {
     case 'job':
       await populateJobTab();
@@ -327,6 +404,9 @@ async function loadTabContent(tab) {
         content.innerHTML = '<div class="empty-state"><div class="icon">📄</div><h3>Generated Files</h3><p>Generate final files to see downloads.</p></div>';
       }
       break;
+    case 'generate':
+      _populateGenerateTab(tabData.cv, content);
+      break;
     case 'download':
       if (tabData.cv && Object.keys(tabData.cv).length > 0) {
         await populateDownloadTab(tabData.cv);
@@ -361,6 +441,16 @@ async function loadTabContent(tab) {
     case 'screening':
       await populateScreeningTab();
       break;
+  }
+  } catch (error) {
+    log.error(`Error loading tab ${tab}:`, error);
+    // textContent, not innerHTML — a thrown error message must never be
+    // interpreted as HTML (e.g. an error string containing a stray <img>).
+    const errorMessage = document.createElement('p');
+    errorMessage.style.cssText = 'padding: 20px; color: #c41e3a;';
+    errorMessage.textContent = `Error loading content: ${error.message}`;
+    content.appendChild(errorMessage);
+    return;
   }
 
   // Show customisations guidance on the first visit to any Customise sub-tab (GAP-351).

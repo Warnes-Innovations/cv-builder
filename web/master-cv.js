@@ -12,7 +12,9 @@
  * Dependencies (resolved through globalThis at runtime):
  *   escapeHtml, showToast, showAlertModal, confirmDialog,
  *   appendLoadingMessage, removeLoadingMessage,
- *   setLoading, switchTab, appendMessage
+ *   setLoading, switchTab, appendMessage,
+ *   renderMasterDataAiUpdatePanel, renderMasterDataAiUpdateDisabledNote
+ *     (from web/master-data-ai-update.js, GAP-01)
  */
 
 let _masterChangeNotice = '';
@@ -20,6 +22,17 @@ let _masterChangeNotice = '';
 // Tracks the active render target: modal body div when opened from header,
 // null when rendered into the normal tab viewer.
 let _masterCvActiveContainer = null;
+
+// Filename of the safety backup created by the most recent undo, restorable
+// via redo. Single-level by design (GAP-19 16.7 v1 scope) — further-back
+// recovery remains available via the full "🕐 Backups" history modal.
+// Reset to null at the top of every populateMasterTab() re-render so any
+// other save action (structured edit, AI-update confirm, harvest apply)
+// invalidates a stale redo target. undoMasterDataChange() sets
+// _masterCvSuppressRedoReset before its own populateMasterTab() call so its
+// freshly-set redo target survives that one render.
+let _masterCvRedoBackup = null;
+let _masterCvSuppressRedoReset = false;
 
 function _setMasterChangeNotice(section, action) {
   const cleanSection = String(section || 'Master CV').trim();
@@ -38,6 +51,11 @@ function _renderMasterChangeNotice() {
 
 async function populateMasterTab(container = null) {
   if (container !== null) _masterCvActiveContainer = container;
+  if (_masterCvSuppressRedoReset) {
+    _masterCvSuppressRedoReset = false;
+  } else {
+    _masterCvRedoBackup = null;
+  }
   const content = _masterCvActiveContainer || document.getElementById('document-content');
   content.innerHTML = '<div class="empty-state"><div class="loading-spinner"></div><p style="margin-top:12px;color:#64748b;">Loading master CV data…</p></div>';
 
@@ -64,6 +82,10 @@ async function populateMasterTab(container = null) {
       label: `${exp.title || 'Role'} @ ${exp.company || 'Company'}`,
     }))
     .filter((x) => x.id);
+  // Full experience objects (including achievements), keyed by id, so
+  // editMasterExperience() can look up nested achievements without
+  // embedding arbitrary achievement text inside an inline onclick attribute.
+  window._masterExperienceFullData = experiences;
   const skills          = fullData.skills || [];
   const education       = fullData.education || [];
   const awards          = fullData.awards || [];
@@ -91,12 +113,28 @@ async function populateMasterTab(container = null) {
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
       <h1 style="margin:0;">📚 Master CV Profile</h1>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="master-cv-undo-btn" class="action-btn secondary" onclick="undoMasterDataChange()"
+            aria-label="Undo the most recent Master CV change" title="Undo (Ctrl+Z)">
+          ↩ Undo
+        </button>
+        <button id="master-cv-redo-btn" class="action-btn secondary" onclick="redoMasterDataChange()"
+            aria-label="Redo the previously undone Master CV change" title="Redo (Ctrl+Shift+Z)"${!_masterCvRedoBackup ? ' disabled' : ''}>
+          ↪ Redo
+        </button>
         <button class="action-btn secondary" onclick="openBackupHistoryModal()" aria-label="View backup history">
           🕐 Backups
+        </button>
+        <button class="action-btn secondary" onclick="openFullDataPreviewModal()" aria-label="Preview full master CV data">
+          👁 Preview Full Data
         </button>
         <button class="action-btn secondary" onclick="exportMasterCV()" aria-label="Download Master_CV_Data.json">
           ⬇️ Export JSON
         </button>
+        <button class="action-btn secondary" onclick="triggerMasterCvImport()" aria-label="Import a full Master_CV_Data.json file"${isEditable ? '' : ' disabled'}>
+          ⬆️ Import JSON
+        </button>
+        <input type="file" id="master-cv-import-file-input" accept="application/json,.json" style="display:none;"
+            onchange="handleMasterCvImportFile(event)" />
       </div>
     </div>
     <p style="color:#6b7280;margin-bottom:12px;">
@@ -108,11 +146,16 @@ async function populateMasterTab(container = null) {
 
     <!-- Governance banner -->
     <div class="master-governance-note" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:0.88em;color:#78350f;">
-      <strong>⚠️ Persistent storage:</strong> Edits on this tab write directly to
-      <code>Master_CV_Data.json</code> and are not scoped to any session.
-      Job-specific customisations (skills, experience picks, summaries) are stored
-      exclusively in the active session and never written here automatically.
+      <strong>⚠️ Persistent storage — this tab only:</strong> Edits made here (the structured
+      editors below, and "Update via AI") write directly to <code>Master_CV_Data.json</code>
+      immediately and persist across every future job application.
+      Job-specific choices you make elsewhere in the app — which skills/experiences to feature,
+      rewritten bullet text, cover-letter tone — live only in the current session and are
+      <em>never</em> written here automatically. To carry a session's improvements into your
+      permanent profile, use "📥 Update Master CV Data" on the Finalise step.
     </div>
+
+    ${isEditable ? renderMasterDataAiUpdatePanel() : renderMasterDataAiUpdateDisabledNote()}
 
     ${_renderMasterChangeNotice()}
 
@@ -575,6 +618,16 @@ async function populateMasterTab(container = null) {
               <input type="text" id="exp-tags-input" class="edit-input" style="width:100%;"
                   placeholder="e.g. ml, leadership, python" />
             </div>
+            <div style="grid-column:1/-1;border-top:1px solid var(--cv-border);padding-top:14px;margin-top:4px;">
+              <label style="display:block;font-weight:600;margin-bottom:6px;">Achievements</label>
+              <div id="exp-achievements-editor-list"></div>
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <input type="text" id="exp-ach-new-input" class="edit-input" style="flex:1;"
+                    placeholder="Add an achievement or bullet…"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();_addExpAchievement();}" />
+                <button type="button" class="action-btn secondary" onclick="_addExpAchievement()">+ Add</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -613,6 +666,16 @@ async function populateMasterTab(container = null) {
                 placeholder="e.g. exp_123, exp_456" />
             <small style="display:block;margin-top:4px;color:#64748b;">Comma-separated IDs. A skill can be linked to multiple experiences.</small>
             <div id="skill-experience-hints" style="margin-top:6px;font-size:0.8em;color:#94a3b8;"></div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="skill-aliases-input" style="display:block;font-weight:600;margin-bottom:4px;">Aliases (comma-separated, optional)</label>
+            <input type="text" id="skill-aliases-input" class="edit-input" style="width:100%;"
+                placeholder="e.g. JS, ECMAScript" />
+            <small style="display:block;margin-top:4px;color:#64748b;">Alternate names an ATS or reviewer might search for.</small>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label for="skill-years-input" style="display:block;font-weight:600;margin-bottom:4px;">Years of Experience (optional)</label>
+            <input type="number" id="skill-years-input" class="edit-input" style="width:120px;" min="0" step="0.5" />
           </div>
         </div>
         <div class="modal-footer">
@@ -824,7 +887,7 @@ async function populateMasterTab(container = null) {
   `;
   // Disable write controls when the workflow phase does not permit Master CV edits.
   if (!isEditable) {
-    const SAFE_ONCLICK = /^(exportMasterCV|validatePublicationsBib|openBackupHistoryModal|restoreBackup)\(/;
+    const SAFE_ONCLICK = /^(exportMasterCV|validatePublicationsBib|openBackupHistoryModal|restoreBackup|openFullDataPreviewModal)\(/;
     content.querySelectorAll('button').forEach(btn => {
       const onclick = (btn.getAttribute('onclick') || '').trim();
       if (SAFE_ONCLICK.test(onclick)) return;
@@ -870,14 +933,7 @@ function _renderExperiencesList(experiences) {
     const location = escapeHtml([loc.city, loc.state].filter(Boolean).join(', '));
     const dates   = escapeHtml([exp.start_date, exp.end_date || 'Present'].filter(Boolean).join(' – '));
     const achCount = (exp.achievements || []).length;
-    const expJson = escapeHtml(JSON.stringify({
-      id: exp.id || '', title: exp.title || '', company: exp.company || '',
-      city: loc.city || '', state: loc.state || '',
-      start_date: exp.start_date || '', end_date: exp.end_date || '',
-      employment_type: exp.employment_type || 'full_time',
-      importance: exp.importance || 5,
-      tags: (exp.tags || []).join(', '),
-    }));
+    const expId = escapeHtml(exp.id || '');
     return `
       <tr>
         <td>
@@ -888,7 +944,7 @@ function _renderExperiencesList(experiences) {
         <td style="font-size:0.85em;color:#475569;white-space:nowrap;">${dates}</td>
         <td style="text-align:center;color:#94a3b8;font-size:0.85em;">${achCount}</td>
         <td class="action-btns">
-          <button class="icon-btn" onclick="editMasterExperience(${expJson})"
+          <button class="icon-btn" onclick="editMasterExperience('${expId}')"
               aria-label="Edit experience: ${title}" title="Edit">✏️</button>
           <button class="icon-btn" onclick="deleteMasterExperience('${escapeHtml(exp.id || '')}', '${title}')"
               aria-label="Delete experience: ${title}" title="Delete">🗑️</button>
@@ -1944,17 +2000,93 @@ function showAddExperienceModal() {
   document.getElementById('exp-tags-input').value      = '';
   document.getElementById('master-exp-modal-title').textContent = 'Add Work Experience';
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
+  _masterExpModalAchievements = [];
+  _renderExpAchievementsEditor();
   _focusedElementBeforeModal = document.activeElement;
   setInitialFocus('master-exp-modal-overlay');
   trapFocus('master-exp-modal-overlay');
 }
 
-function editMasterExperience(exp) {
+// Working copy of the currently-edited experience's achievements while the
+// modal is open (GAP-19 16.11). editMasterExperience() takes an id (not the
+// full object) and looks it up from window._masterExperienceFullData —
+// achievement text can contain quotes/unicode that would be fragile to
+// embed directly inside an inline onclick attribute.
+let _masterExpModalAchievements = [];
+
+function _achievementText(a) {
+  return typeof a === 'string' ? a : (a && a.text) || '';
+}
+
+function _renderExpAchievementsEditor() {
+  const container = document.getElementById('exp-achievements-editor-list');
+  if (!container) return;
+  const lastIdx = _masterExpModalAchievements.length - 1;
+  container.innerHTML = _masterExpModalAchievements.map((ach, idx) => `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+      <input type="text" class="edit-input exp-ach-text-input" data-idx="${idx}" style="flex:1;"
+          value="${escapeHtml(_achievementText(ach))}" aria-label="Achievement ${idx + 1} text" />
+      <button type="button" class="icon-btn" onclick="_moveExpAchievement(${idx}, -1)"
+          aria-label="Move achievement ${idx + 1} up" title="Move up" ${idx === 0 ? 'disabled' : ''}>↑</button>
+      <button type="button" class="icon-btn" onclick="_moveExpAchievement(${idx}, 1)"
+          aria-label="Move achievement ${idx + 1} down" title="Move down" ${idx === lastIdx ? 'disabled' : ''}>↓</button>
+      <button type="button" class="icon-btn" onclick="_deleteExpAchievement(${idx})"
+          aria-label="Delete achievement ${idx + 1}" title="Delete">🗑️</button>
+    </div>`).join('') || '<p style="color:#94a3b8;font-size:0.85em;margin:0 0 6px;">No achievements yet.</p>';
+}
+
+// Read any in-progress edits out of the achievement text inputs before a
+// reorder/delete/save rebuilds the list from _masterExpModalAchievements —
+// otherwise an un-submitted text edit would be silently lost on re-render.
+function _syncExpAchievementsFromInputs() {
+  document.querySelectorAll('.exp-ach-text-input').forEach((input) => {
+    const idx = parseInt(input.dataset.idx, 10);
+    const ach = _masterExpModalAchievements[idx];
+    if (typeof ach === 'string' || ach == null) {
+      _masterExpModalAchievements[idx] = input.value;
+    } else {
+      ach.text = input.value;
+    }
+  });
+}
+
+function _addExpAchievement() {
+  const input = document.getElementById('exp-ach-new-input');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  _syncExpAchievementsFromInputs();
+  _masterExpModalAchievements.push(text);
+  input.value = '';
+  _renderExpAchievementsEditor();
+}
+
+function _moveExpAchievement(idx, delta) {
+  _syncExpAchievementsFromInputs();
+  const target = idx + delta;
+  if (target < 0 || target >= _masterExpModalAchievements.length) return;
+  const [item] = _masterExpModalAchievements.splice(idx, 1);
+  _masterExpModalAchievements.splice(target, 0, item);
+  _renderExpAchievementsEditor();
+}
+
+function _deleteExpAchievement(idx) {
+  _syncExpAchievementsFromInputs();
+  _masterExpModalAchievements.splice(idx, 1);
+  _renderExpAchievementsEditor();
+}
+
+function editMasterExperience(id) {
+  const exp = (window._masterExperienceFullData || []).find((e) => e.id === id);
+  if (!exp) {
+    showAlertModal('❌ Error', 'Could not find that experience entry — try refreshing the tab.');
+    return;
+  }
+  const loc = exp.location || {};
   document.getElementById('exp-modal-id').value         = exp.id || '';
   document.getElementById('exp-title-input').value      = exp.title || '';
   document.getElementById('exp-company-input').value    = exp.company || '';
-  document.getElementById('exp-city-input').value       = exp.city || '';
-  document.getElementById('exp-state-input').value      = exp.state || '';
+  document.getElementById('exp-city-input').value       = loc.city || '';
+  document.getElementById('exp-state-input').value      = loc.state || '';
   document.getElementById('exp-start-input').value      = exp.start_date || '';
   document.getElementById('exp-end-input').value        = exp.end_date || '';
   document.getElementById('exp-type-input').value       = exp.employment_type || 'full_time';
@@ -1963,6 +2095,8 @@ function editMasterExperience(exp) {
                                                          : (exp.tags || []).join(', ');
   document.getElementById('master-exp-modal-title').textContent = 'Edit Work Experience';
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
+  _masterExpModalAchievements = JSON.parse(JSON.stringify(exp.achievements || []));
+  _renderExpAchievementsEditor();
   _focusedElementBeforeModal = document.activeElement;
   setInitialFocus('master-exp-modal-overlay');
   trapFocus('master-exp-modal-overlay');
@@ -1982,6 +2116,7 @@ async function saveMasterExperience() {
     return;
   }
   const tagsRaw = document.getElementById('exp-tags-input').value;
+  _syncExpAchievementsFromInputs();
   const expData = {
     title, company,
     city:            document.getElementById('exp-city-input').value.trim(),
@@ -1991,6 +2126,7 @@ async function saveMasterExperience() {
     employment_type: document.getElementById('exp-type-input').value,
     importance:      parseInt(document.getElementById('exp-importance-input').value, 10) || 5,
     tags:            tagsRaw.split(',').map(s => s.trim()).filter(Boolean),
+    achievements:    _masterExpModalAchievements,
   };
   const action = id ? 'update' : 'add';
   const body   = action === 'update' ? { action, id, experience: expData } : { action, experience: expData };
@@ -2045,6 +2181,8 @@ function showAddSkillModal(categoryKey, isFlat) {
   document.getElementById('skill-modal-original-name').value = '';
   document.getElementById('skill-name-input').value     = '';
   document.getElementById('skill-experiences-input').value = '';
+  document.getElementById('skill-aliases-input').value  = '';
+  document.getElementById('skill-years-input').value    = '';
   document.getElementById('master-skill-modal-title').textContent = 'Add Skill';
   document.getElementById('master-skill-save-btn').textContent = 'Add Skill';
   const hints = (window._masterExperienceOptions || [])
@@ -2069,12 +2207,16 @@ function showAddSkillModal(categoryKey, isFlat) {
 function editMasterSkill(skillObj, categoryKey, isFlat) {
   const name = typeof skillObj === 'string' ? skillObj : (skillObj?.name || '');
   const experiences = Array.isArray(skillObj?.experiences) ? skillObj.experiences : [];
+  const aliases = Array.isArray(skillObj?.aliases) ? skillObj.aliases : [];
+  const years = (typeof skillObj === 'object' && skillObj?.years != null) ? skillObj.years : '';
 
   document.getElementById('skill-modal-category').value = categoryKey || '';
   document.getElementById('skill-modal-is-flat').value  = isFlat ? '1' : '0';
   document.getElementById('skill-modal-original-name').value = name;
   document.getElementById('skill-name-input').value = name;
   document.getElementById('skill-experiences-input').value = experiences.join(', ');
+  document.getElementById('skill-aliases-input').value = aliases.join(', ');
+  document.getElementById('skill-years-input').value = years;
   document.getElementById('master-skill-modal-title').textContent = 'Edit Skill';
   document.getElementById('master-skill-save-btn').textContent = 'Save Skill';
 
@@ -2113,8 +2255,18 @@ async function saveMasterSkill() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  const aliases = document.getElementById('skill-aliases-input').value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const yearsRaw = document.getElementById('skill-years-input').value.trim();
+  const years = yearsRaw === '' ? null : parseFloat(yearsRaw);
   if (!skill) {
     showAlertModal('⚠️ Validation', 'Skill name is required.');
+    return;
+  }
+  if (years !== null && !Number.isFinite(years)) {
+    showAlertModal('⚠️ Validation', 'Years of experience must be a finite number.');
     return;
   }
   const isUpdate = Boolean(original);
@@ -2123,6 +2275,8 @@ async function saveMasterSkill() {
     skill: isUpdate ? original : skill,
     ...(isUpdate ? { skill_new: skill } : {}),
     experiences,
+    aliases,
+    years,
   };
   const body = isFlat ? baseBody : { ...baseBody, category };
   try {
@@ -2535,6 +2689,75 @@ async function restoreBackup(filename) {
   }
 }
 
+// ── Undo / Redo (GAP-19 16.7) ───────────────────────────────────────────────
+// Single-level: Undo restores the most recent backup snapshot (i.e. the
+// state before the last save); Redo restores the safety backup the restore
+// endpoint took of the pre-undo state. Both reuse the existing
+// /api/master-data/history + /api/master-data/restore endpoints rather than
+// adding new backend surface — see _masterCvRedoBackup above for the reset
+// contract with populateMasterTab().
+
+async function undoMasterDataChange() {
+  try {
+    const res = await fetch('/api/master-data/history');
+    const data = await res.json();
+    if (!data.ok || !data.snapshots?.length) {
+      showAlertModal('ℹ️ Nothing to undo', 'No backup snapshots are available yet.');
+      return;
+    }
+    const mostRecent = data.snapshots[0]; // history route returns newest-first
+    const when = new Date(mostRecent.mtime * 1000).toLocaleString();
+    const confirmed = await (typeof confirmDialog === 'function'
+      ? confirmDialog(`Undo the most recent change? This restores the version saved ${when}. The current version will be saved as a new backup first.`)
+      : Promise.resolve(window.confirm(`Undo the most recent change? This restores the version saved ${when}.`)));
+    if (!confirmed) return;
+
+    const restoreRes = await fetch('/api/master-data/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: mostRecent.filename }),
+    });
+    const restoreData = await restoreRes.json();
+    if (restoreData.ok) {
+      // Must be set *before* populateMasterTab() renders the Redo button,
+      // not after — the button's disabled state is baked into that render.
+      _masterCvRedoBackup = restoreData.safety_backup || null;
+      _masterCvSuppressRedoReset = true;
+      await populateMasterTab();
+      showAlertModal('✅ Undone', 'Master CV reverted to the previous saved version.');
+    } else {
+      showAlertModal('❌ Error', restoreData.error || 'Undo failed.');
+    }
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to undo.');
+  }
+}
+
+async function redoMasterDataChange() {
+  if (!_masterCvRedoBackup) {
+    showAlertModal('ℹ️ Nothing to redo', 'There is no undone change to restore.');
+    return;
+  }
+  try {
+    const res = await fetch('/api/master-data/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: _masterCvRedoBackup }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Deliberately do not re-arm redo — this restore consumes the redo
+      // target, and populateMasterTab()'s default reset clears it.
+      await populateMasterTab();
+      showAlertModal('✅ Redone', 'Master CV restored to the version before the undo.');
+    } else {
+      showAlertModal('❌ Error', data.error || 'Redo failed.');
+    }
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to redo.');
+  }
+}
+
 async function exportMasterCV() {
   try {
     const sessionId = window._currentSessionId;
@@ -2552,6 +2775,172 @@ async function exportMasterCV() {
     URL.revokeObjectURL(a.href);
   } catch (e) {
     showAlertModal('❌ Error', 'Failed to export master CV');
+  }
+}
+
+// ── Full data preview (GAP-19 16.15) ────────────────────────────────────────
+
+async function openFullDataPreviewModal() {
+  const overlay = document.createElement('div');
+  overlay.id = 'master-cv-preview-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="master-cv-preview-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:760px;width:94%;
+                max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 id="master-cv-preview-title" style="margin:0;font-size:1.1em;color:#1e293b;">👁 Full Master CV Data (read-only)</h3>
+        <button id="master-cv-preview-close" style="background:none;border:none;font-size:1.3em;cursor:pointer;color:#64748b;" aria-label="Close">✕</button>
+      </div>
+      <p style="font-size:0.85em;color:#64748b;margin-bottom:12px;">
+        The complete, unfiltered contents of <code>Master_CV_Data.json</code> — including any fields the structured editors above don't surface.
+      </p>
+      <pre id="master-cv-preview-body" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;font-size:0.8em;line-height:1.5;white-space:pre-wrap;word-break:break-word;">Loading…</pre>
+    </div>`;
+  document.body.appendChild(overlay);
+  if (typeof trapFocus === 'function') trapFocus('master-cv-preview-overlay');
+  const close = () => { overlay.remove(); if (typeof restoreFocus === 'function') restoreFocus(); };
+  document.getElementById('master-cv-preview-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+
+  try {
+    const res = await fetch('/api/master-data/full');
+    const data = await res.json();
+    const body = document.getElementById('master-cv-preview-body');
+    if (body) body.textContent = JSON.stringify(data, null, 2);
+  } catch (_) {
+    const body = document.getElementById('master-cv-preview-body');
+    if (body) body.textContent = 'Failed to load master CV data.';
+  }
+}
+
+// ── Full-file JSON import with diff review (GAP-19 16.16) ──────────────────
+//
+// Not a merge: import-confirm replaces the entire file. The import-preview
+// step's section-level changed/count summary is the user's chance to catch
+// an unintended overwrite before confirming — full field-level diffing
+// within a changed section is a known v1 limitation (the same posture
+// already accepted for other advisory-only review surfaces in this tab).
+
+let _masterCvImportData = null;
+
+function triggerMasterCvImport() {
+  document.getElementById('master-cv-import-file-input')?.click();
+}
+
+function handleMasterCvImportFile(event) {
+  const file = event.target?.files?.[0];
+  event.target.value = ''; // allow re-selecting the same filename later
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(String(reader.result));
+    } catch (_) {
+      showAlertModal('❌ Error', 'That file is not valid JSON.');
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      showAlertModal('❌ Error', 'Expected a JSON object (Master_CV_Data.json shape), not an array or scalar.');
+      return;
+    }
+    await _submitMasterCvImportPreview(parsed);
+  };
+  reader.onerror = () => showAlertModal('❌ Error', 'Failed to read the selected file.');
+  reader.readAsText(file);
+}
+
+async function _submitMasterCvImportPreview(parsed) {
+  try {
+    const res = await fetch('/api/master-data/import-preview', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: parsed }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      const detail = (data.validation_errors || []).join('; ');
+      showAlertModal('❌ Error', detail ? `${data.error}: ${detail}` : (data.error || 'Import preview failed.'));
+      return;
+    }
+    _masterCvImportData = parsed;
+    _showMasterCvImportPreviewModal(data.sections || []);
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to preview the import.');
+  }
+}
+
+function _showMasterCvImportPreviewModal(sections) {
+  const overlay = document.createElement('div');
+  overlay.id = 'master-cv-import-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  const changedSections = sections.filter((s) => s.changed);
+  const rows = sections.map((s) => `
+    <tr style="${s.changed ? 'background:var(--cv-warn-bg, #fffbeb);' : ''}">
+      <td style="padding:6px 8px;color:#1e293b;">${escapeHtml(s.section)}</td>
+      <td style="padding:6px 8px;text-align:center;color:#64748b;">${s.current_count}</td>
+      <td style="padding:6px 8px;text-align:center;color:#64748b;">${s.new_count}</td>
+      <td style="padding:6px 8px;">${s.changed ? '⚠ changed' : '—'}</td>
+    </tr>`).join('');
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="master-cv-import-title"
+         style="background:#fff;border-radius:10px;padding:24px 28px;max-width:640px;width:94%;
+                max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <h3 id="master-cv-import-title" style="margin:0 0 12px;font-size:1.1em;color:#1e293b;">⬆️ Import Master CV Data — Review</h3>
+      <div role="alert" style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:0.86em;color:#991b1b;">
+        <strong>This replaces the entire file</strong>, not just the changed sections. A backup is created
+        automatically before the write — see 🕐 Backups above to restore it if needed.
+      </div>
+      <p style="font-size:0.85em;color:#64748b;margin-bottom:8px;">
+        ${changedSections.length ? `${changedSections.length} section(s) would change:` : 'No sections would change — the uploaded file matches the current data.'}
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85em;margin-bottom:16px;">
+        <thead><tr style="border-bottom:1px solid #e2e8f0;">
+          <th style="padding:4px 8px;text-align:left;color:#475569;">Section</th>
+          <th style="padding:4px 8px;color:#475569;">Current</th>
+          <th style="padding:4px 8px;color:#475569;">New</th>
+          <th style="padding:4px 8px;text-align:left;color:#475569;"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="action-btn" id="master-cv-import-cancel">Cancel</button>
+        <button class="action-btn primary" id="master-cv-import-confirm"${changedSections.length ? '' : ' disabled'}>Confirm Import</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  if (typeof trapFocus === 'function') trapFocus('master-cv-import-overlay');
+  const close = () => { overlay.remove(); _masterCvImportData = null; if (typeof restoreFocus === 'function') restoreFocus(); };
+  document.getElementById('master-cv-import-cancel').addEventListener('click', close);
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  document.getElementById('master-cv-import-confirm').addEventListener('click', () => confirmMasterCvImport());
+}
+
+async function confirmMasterCvImport() {
+  if (!_masterCvImportData) return;
+  try {
+    const res = await fetch('/api/master-data/import-confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: _masterCvImportData }),
+    });
+    const data = await res.json();
+    document.getElementById('master-cv-import-overlay')?.remove();
+    _masterCvImportData = null;
+    if (typeof restoreFocus === 'function') restoreFocus();
+    if (data.ok) {
+      _setMasterChangeNotice('Master CV Data', 'imported');
+      showAlertModal(
+        '✅ Imported',
+        `Master CV data replaced.${data.commit_hash ? ` Commit: ${data.commit_hash.slice(0, 10)}.` : ''}${data.git_error ? ` (git warning: ${data.git_error})` : ''}`
+      );
+      await populateMasterTab();
+    } else {
+      const detail = (data.validation_errors || []).join('; ');
+      showAlertModal('❌ Error', detail ? `${data.error}: ${detail}` : (data.error || 'Import failed.'));
+    }
+  } catch (_) {
+    showAlertModal('❌ Error', 'Failed to import master CV data.');
   }
 }
 
@@ -2655,6 +3044,9 @@ export {
   closeExperienceModal,
   saveMasterExperience,
   deleteMasterExperience,
+  _addExpAchievement,
+  _moveExpAchievement,
+  _deleteExpAchievement,
   showAddSkillModal,
   editMasterSkill,
   closeSkillModal,
@@ -2678,6 +3070,12 @@ export {
   exportMasterCV,
   openBackupHistoryModal,
   restoreBackup,
+  undoMasterDataChange,
+  redoMasterDataChange,
+  openFullDataPreviewModal,
+  triggerMasterCvImport,
+  handleMasterCvImportFile,
+  confirmMasterCvImport,
   deleteMasterAchievement,
   deleteMasterSummary,
   loadPublications,

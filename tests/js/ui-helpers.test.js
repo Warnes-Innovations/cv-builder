@@ -6,7 +6,8 @@
 
 /**
  * tests/js/ui-helpers.test.js
- * Unit tests for web/ui-helpers.js — toast, modals, toggleChat, updateActionButtons.
+ * Unit tests for web/ui-helpers.js — toast, modals, updateActionButtons.
+ * (toggleChat lives in web/ui-core.js — see tests/js/ui-core.test.js.)
  */
 import {
   showToast,
@@ -38,13 +39,6 @@ function buildConfirmModal() {
 
 function buildToastContainer() {
   document.body.innerHTML += `<div id="toast-container"></div>`
-}
-
-function buildChatLayout() {
-  document.body.innerHTML += `
-    <div class="interaction-area" id="chat-area"></div>
-    <div class="viewer-area" id="viewer-area"></div>
-    <button id="toggle-chat" aria-expanded="true">◀</button>`
 }
 
 function buildActionButtons() {
@@ -227,32 +221,10 @@ describe('showToast', () => {
   })
 })
 
-// ── toggleChat ────────────────────────────────────────────────────────────
-
-describe('toggleChat', () => {
-  beforeEach(buildChatLayout)
-
-  it('collapses chat area when not collapsed', () => {
-    toggleChat()
-    expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(true)
-    expect(document.getElementById('viewer-area').style.flex).toBe('1 1 100%')
-    expect(document.getElementById('toggle-chat').getAttribute('aria-expanded')).toBe('false')
-  })
-
-  it('expands chat area when already collapsed', () => {
-    document.getElementById('chat-area').classList.add('collapsed')
-    toggleChat()
-    expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(false)
-    expect(document.getElementById('viewer-area').style.flex).toBe('0 1 60%')
-    expect(document.getElementById('toggle-chat').getAttribute('aria-expanded')).toBe('true')
-  })
-
-  it('toggles back to original state on double call', () => {
-    toggleChat()
-    toggleChat()
-    expect(document.getElementById('chat-area').classList.contains('collapsed')).toBe(false)
-  })
-})
+// toggleChat lives in web/ui-core.js (consolidated there by GAP-146 — see
+// commit 0b20a7b — since ui-helpers.js's copy was a stale duplicate that
+// silently overwrote the ARIA-aware version on window). Its tests moved to
+// tests/js/ui-core.test.js accordingly.
 
 // ── updateActionButtons ───────────────────────────────────────────────────
 

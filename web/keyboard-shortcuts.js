@@ -13,6 +13,8 @@
  *   A                Accept the focused review card (rewrite / spell-check tabs)
  *   R                Reject the focused review card (rewrite / spell-check tabs)
  *   ↑ / ↓            Navigate between review cards on review tabs
+ *   Ctrl+Z           Undo the most recent Master CV data change (Master CV modal only)
+ *   Ctrl+Shift+Z     Redo the previously undone Master CV data change (Master CV modal only)
  *   ?                Toggle keyboard shortcut help panel
  */
 
@@ -30,6 +32,12 @@ function _inTextInput() {
 /** Returns true if any modal overlay is currently visible. */
 function _modalOpen() {
   return document.querySelector('[role="dialog"]:not([style*="display: none"]):not([style*="display:none"])') !== null;
+}
+
+/** Returns true if the Master CV modal (web/index.html#master-cv-modal-overlay) is open. */
+function _masterCvModalOpen() {
+  const el = document.getElementById('master-cv-modal-overlay');
+  return !!el && el.style.display !== 'none';
 }
 
 /**
@@ -208,6 +216,8 @@ export function showKeyboardShortcutsPanel() {
           <tr><td style="padding:4px 12px 4px 0"><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Navigate between review cards / table rows</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>A</kbd></td><td>Accept / include focused item (rewrite, spell, or customise review row)</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>R</kbd></td><td>Reject / exclude focused item (rewrite, spell, or customise review row)</td></tr>
+          <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo Master CV change (Master CV modal)</td></tr>
+          <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo Master CV change (Master CV modal)</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>?</kbd></td><td>Toggle this help panel</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>Esc</kbd></td><td>Close modals / this panel</td></tr>
         </tbody>
@@ -256,6 +266,23 @@ function _onKeyDown(e) {
     if (step && typeof confirmReRunPhase === 'function') {
       e.preventDefault();
       confirmReRunPhase(step);
+    }
+    return;
+  }
+
+  // Ctrl+Z / Ctrl+Shift+Z → undo/redo the most recent Master CV data change.
+  // Scoped to when the Master CV modal is open — and no nested sub-modal
+  // (e.g. the backup-history browser) is stacked on top of it — and focus
+  // isn't in a text field, since Ctrl+Z inside a textarea must still perform
+  // native text-undo rather than being hijacked by this shortcut.
+  if (e.ctrlKey && !e.altKey && (e.key === 'z' || e.key === 'Z')
+      && _masterCvModalOpen() && !document.getElementById('backup-history-overlay')
+      && !_inTextInput()) {
+    e.preventDefault();
+    if (e.shiftKey) {
+      if (typeof redoMasterDataChange === 'function') redoMasterDataChange();
+    } else {
+      if (typeof undoMasterDataChange === 'function') undoMasterDataChange();
     }
     return;
   }

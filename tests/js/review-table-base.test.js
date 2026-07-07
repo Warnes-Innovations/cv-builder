@@ -181,6 +181,38 @@ describe('switchTab', () => {
     expect(globalThis.updateActionButtons).toHaveBeenCalledWith('layout')
   })
 
+  it('announces a single combined stage + tab message (GAP-16 Part A) instead of two separate live-region writes', () => {
+    vi.useFakeTimers()
+    document.body.innerHTML += '<div id="workflow-stage-announcer"></div>'
+    globalThis.getStageForTab.mockReturnValue('job')
+
+    switchTab('analysis')
+    vi.advanceTimersByTime(60)
+
+    expect(document.getElementById('workflow-stage-announcer').textContent).toBe('Now viewing: Job Input — Analysis')
+    vi.useRealTimers()
+  })
+
+  it('falls back to a tab-only announcement when no stage is resolved for the tab', () => {
+    vi.useFakeTimers()
+    document.body.innerHTML += '<div id="workflow-stage-announcer"></div>'
+    globalThis.getStageForTab.mockReturnValue(null)
+
+    switchTab('analysis')
+    vi.advanceTimersByTime(60)
+
+    expect(document.getElementById('workflow-stage-announcer').textContent).toBe('Now viewing: Analysis')
+    vi.useRealTimers()
+  })
+
+  it('notifies the early preview panel of the target tab (GAP-16 Part B)', () => {
+    vi.stubGlobal('toggleEarlyPreviewPanel', vi.fn())
+
+    switchTab('analysis')
+
+    expect(globalThis.toggleEarlyPreviewPanel).toHaveBeenCalledWith('analysis')
+  })
+
   it('adds full-width class for non-generate tabs', () => {
     switchTab('analysis')
     expect(document.getElementById('document-content').classList.contains('full-width')).toBe(true)
@@ -215,6 +247,22 @@ describe('switchTab', () => {
     await expect(loadTabContent('download')).resolves.toBeUndefined()
     expect(document.getElementById('document-content').innerHTML).toContain('Download')
   })
+
+  it('renders a thrown error as text, not HTML (ported from ui-core.test.js — see web/ui-core.js header comment)', async () => {
+    vi.stubGlobal(
+      'populateJobTab',
+      vi.fn(async () => {
+        throw new Error('<img src=x onerror=alert(1)>')
+      }),
+    )
+
+    await loadTabContent('job')
+
+    const content = document.getElementById('document-content')
+    expect(content.innerHTML).not.toContain('<img src=x onerror=alert(1)>')
+    expect(content.textContent).toContain('Error loading content: <img src=x onerror=alert(1)>')
+    expect(content.querySelector('img')).toBeNull()
+  })
 })
 
 // ── populateAnalysisTab ───────────────────────────────────────────────────
@@ -243,7 +291,7 @@ describe('populateAnalysisTab', () => {
   })
 
   it('renders ATS keywords with rank badges', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
     await populateAnalysisTab({ title: 'Dev', required_skills: [], ats_keywords: ['ML', 'NLP'] })
     const html = document.getElementById('document-content').innerHTML
     expect(html).toContain('#1')
