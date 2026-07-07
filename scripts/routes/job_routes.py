@@ -215,6 +215,7 @@ def _safe_get(
     """
     current_url = url
     for _ in range(max_redirects + 1):
+        _check_ssrf_url(current_url)
         response = _requests.get(
             current_url,
             headers=headers,
@@ -227,7 +228,6 @@ def _safe_get(
                 return response
             if not location.startswith(("http://", "https://")):
                 location = urljoin(current_url, location)
-            _check_ssrf_url(location)
             current_url = location
         else:
             return response
@@ -302,8 +302,8 @@ def create_blueprint(deps):
 
         try:
             _check_ssrf_url(url)
-        except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+        except ValueError:
+            return jsonify({"error": "Invalid or disallowed URL."}), 400
 
         try:
             parsed = urlparse(url)
