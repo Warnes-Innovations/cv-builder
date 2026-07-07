@@ -11,9 +11,10 @@ send message, do action, back-to-phase, re-run-phase.
 import dataclasses
 import ipaddress
 import logging
+import socket as _socket
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import io as _io
 import json as _json
@@ -165,6 +166,74 @@ def _json_ld_blobs_to_markdown(blobs: list) -> str:
     return '\n\n---\n\n'.join(sections)
 
 
+def _check_ssrf_url(url: str) -> None:
+    """Validate *url* against SSRF attack vectors.
+
+    Raises ``ValueError`` with a user-facing message when the URL is unsafe.
+    Checks: scheme allowlist, hostname blocklist, bare-IP ranges, and
+    DNS-resolved addresses (to block DNS-rebinding attacks).
+    """
+    parsed = urlparse(url)
+    if not all([parsed.scheme, parsed.netloc]):
+        raise ValueError("Invalid URL format")
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Only http and https URLs are supported")
+    hostname = parsed.hostname or ""
+    if hostname.lower() in ("localhost", "ip6-localhost", "ip6-loopback"):
+        raise ValueError("URL host not permitted")
+    is_ip = True
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        is_ip = False
+    if is_ip:
+        if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
+            raise ValueError("URL host not permitted")
+    else:
+        try:
+            resolved = _socket.getaddrinfo(hostname, None)
+        except _socket.gaierror:
+            raise ValueError("Unable to resolve URL host")
+        for _family, _type, _proto, _canonname, sockaddr in resolved:
+            resolved_addr = ipaddress.ip_address(sockaddr[0])
+            if (resolved_addr.is_loopback or resolved_addr.is_private
+                    or resolved_addr.is_link_local or resolved_addr.is_reserved):
+                raise ValueError("URL host not permitted")
+
+
+def _safe_get(
+    url: str,
+    headers: dict,
+    *,
+    max_redirects: int = 5,
+    timeout: int = 30,
+) -> "_requests.Response":
+    """GET *url* following redirects, validating each hop against SSRF rules.
+
+    Raises ``ValueError`` (from ``_check_ssrf_url``) if any redirect target
+    fails the safety check.  Raises ``TooManyRedirects`` after *max_redirects*.
+    """
+    current_url = url
+    for _ in range(max_redirects + 1):
+        response = _requests.get(
+            current_url,
+            headers=headers,
+            allow_redirects=False,
+            timeout=timeout,
+        )
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location", "")
+            if not location:
+                return response
+            if not location.startswith(("http://", "https://")):
+                location = urljoin(current_url, location)
+            _check_ssrf_url(location)
+            current_url = location
+        else:
+            return response
+    raise _requests.TooManyRedirects(f"Exceeded {max_redirects} redirects", response=response)
+
+
 def create_blueprint(deps):
     bp = Blueprint('job', __name__)
 
@@ -232,35 +301,12 @@ def create_blueprint(deps):
             return jsonify({"error": "Missing URL"}), 400
 
         try:
+            _check_ssrf_url(url)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        try:
             parsed = urlparse(url)
-            if not all([parsed.scheme, parsed.netloc]):
-                return jsonify({"error": "Invalid URL format"}), 400
-
-            if parsed.scheme not in ("http", "https"):
-                return jsonify({"error": "Only http and https URLs are supported"}), 400
-
-            # Block loopback and private-range addresses to prevent SSRF.
-            hostname = parsed.hostname or ""
-            if hostname.lower() in ("localhost", "ip6-localhost", "ip6-loopback"):
-                return jsonify({"error": "URL host not permitted"}), 400
-            try:
-                addr = ipaddress.ip_address(hostname)
-                if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved:
-                    return jsonify({"error": "URL host not permitted"}), 400
-            except ValueError:
-                # Hostname is not a bare IP — resolve it and re-check the
-                # resulting address to prevent DNS-rebinding attacks.
-                import socket as _socket
-                try:
-                    resolved = _socket.getaddrinfo(hostname, None)
-                    for _family, _type, _proto, _canonname, sockaddr in resolved:
-                        resolved_addr = ipaddress.ip_address(sockaddr[0])
-                        if (resolved_addr.is_loopback or resolved_addr.is_private
-                                or resolved_addr.is_link_local or resolved_addr.is_reserved):
-                            return jsonify({"error": "URL host not permitted"}), 400
-                except _socket.gaierror:
-                    return jsonify({"error": "Unable to resolve URL host"}), 400
-
             domain = parsed.netloc.lower()
 
             protected_sites = {
@@ -319,7 +365,7 @@ def create_blueprint(deps):
             }
 
             logger.debug("Fetching URL: %s", url)
-            response = _requests.get(url, timeout=30, headers=headers, allow_redirects=True)
+            response = _safe_get(url, headers, timeout=30)
 
             if response.status_code != 200:
                 if response.status_code == 403:

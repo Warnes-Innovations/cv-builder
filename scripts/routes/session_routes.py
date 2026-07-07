@@ -9,6 +9,7 @@ Session management routes — list, load, save, delete, rename, trash, new/claim
 """
 import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime
@@ -95,29 +96,42 @@ def create_blueprint(deps):
         """Return a validated session path constrained to ``session_root``.
 
         Accepts both absolute and relative ``path_param`` values.  In either
-        case the resolved path must fall within ``session_root``; anything that
-        escapes the root (path traversal, out-of-tree absolute paths, or
-        symlinks pointing outside the root) returns None.
+        case the normalised path must fall within ``session_root``; anything
+        that escapes the root (path traversal or out-of-tree absolute paths)
+        returns None.
 
-        The returned path is located by scanning the server-controlled
-        filesystem rather than being constructed from the user-provided string.
-        This breaks the user-input taint chain so file operations on the
-        returned path are not flagged as path injection.
+        The user-provided value is never passed to any filesystem call.
+        Instead it is normalised to a string via pure path operations, then
+        the server-controlled filesystem is enumerated to find a matching
+        ``session.json`` file.
         """
         resolved_root = session_root.resolve()
         raw = Path(path_param)
-        candidate = raw if raw.is_absolute() else resolved_root / raw
-        try:
-            candidate_resolved = candidate.resolve()
-            candidate_resolved.relative_to(resolved_root)  # raises if outside root
-        except (ValueError, OSError):
+        if raw.is_absolute():
+            # Convert the absolute user-provided path to a relative path under
+            # the session root using pure string operations (no FS access).
+            # Try both the un-resolved and resolved root to handle platform
+            # symlinks (e.g. /tmp → /private/tmp on macOS).
+            for root_variant in (session_root, resolved_root):
+                try:
+                    rel = raw.relative_to(root_variant)
+                    break
+                except ValueError:
+                    continue
+            else:
+                return None
+            candidate_str = os.path.normpath(str(resolved_root / rel))
+        else:
+            candidate_str = os.path.normpath(str(resolved_root / raw))
+        root_prefix = str(resolved_root) + os.sep
+        if not candidate_str.startswith(root_prefix):
             return None
-        # Enumerate paths from the server's filesystem; return the server-known
-        # path whose resolved location matches the validated candidate.
+        # Enumerate server-known session files and return the one whose
+        # real path matches the normalised candidate string.
         try:
             for server_path in resolved_root.rglob("session.json"):
                 try:
-                    if server_path.resolve() == candidate_resolved:
+                    if str(server_path.resolve()) == candidate_str:
                         return server_path
                 except OSError:
                     continue
@@ -648,9 +662,9 @@ def create_blueprint(deps):
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps(skeleton, indent=2), encoding="utf-8")
-        except OSError as exc:
+        except OSError:
             logger.exception("Failed to create skeleton Master_CV_Data.json")
-            return jsonify({"ok": False, "error": str(exc)}), 500
+            return jsonify({"ok": False, "error": "Failed to create CV data file."}), 500
         return jsonify({"ok": True, "path": str(p)})
 
     @bp.post("/api/sessions/new")
