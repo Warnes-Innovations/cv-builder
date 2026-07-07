@@ -215,13 +215,12 @@ def _safe_get(
     """
     current_url = url
     for _ in range(max_redirects + 1):
-        # CodeQL's py/full-ssrf query only recognizes inline barrier patterns
-        # (regex fullmatch, isalnum, const comparison, or a registered model
-        # extension) as sanitizers, not calls to a custom validator function —
-        # so this call, though it fully validates every hop against loopback,
-        # private, link-local, and DNS-rebound targets, may still be flagged.
-        # See _check_ssrf_url for the actual validation logic.
         _check_ssrf_url(current_url)
+        # codeql[py/full-ssrf] Validated above via _check_ssrf_url(), which blocks
+        # loopback/private/link-local/reserved ranges and re-resolves DNS to catch
+        # rebinding attacks on every redirect hop. CodeQL's query only recognizes
+        # inline barrier patterns (regex fullmatch, isalnum, const-compare) as
+        # sanitizers, not calls to a separate validator function — false positive.
         response = _requests.get(
             current_url,
             headers=headers,
