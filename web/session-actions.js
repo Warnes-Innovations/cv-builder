@@ -9,7 +9,8 @@
  * Session-level dispatch (sendAction), save, and position title updates.
  *
  * DEPENDENCIES (all on globalThis at runtime):
- *   - isLoading, tabData, userSelections (state globals from state-manager + app)
+ *   - stateManager (state-manager.js — isLoading()/setTabData())
+ *   - userSelections (window global from app)
  *   - appendLoadingMessage, removeLoadingMessage, appendMessage, appendRetryMessage
  *   - setLoading, llmFetch (fetch-utils.js)
  *   - parseMessageResponse, parseStatusResponse (validators.js)

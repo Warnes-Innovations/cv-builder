@@ -270,8 +270,8 @@ function _renderRefinementPanel() {
       Go back to refine an earlier step — all prior decisions and approvals are preserved.
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn-secondary" onclick="backToPhase('customizations')" title="Return to Customisations step">
-        ↻ Refine Customisations
+      <button class="btn-secondary" onclick="backToPhase('customizations')" title="Return to Customise step">
+        ↻ Refine Customise
       </button>
       <button class="btn-secondary" onclick="backToPhase('rewrite')" title="Return to Rewrite Review step">
         ↻ Refine Rewrites

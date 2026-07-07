@@ -15,6 +15,7 @@
 
 import { getLogger } from './logger.js';
 import { disclosureKey, StorageKeys } from './api-client.js';
+import { esc, renderProposalRow, attachProposalRowListeners } from './proposal-review.js';
 
 const log = getLogger('harvest');
 
@@ -57,16 +58,6 @@ const CONF_CONFIG = {
   low:    { label: 'Low',    color: '#b91c1c', bg: '#fef2f2', sort: 2 },
   null:   { label: '',       color: '#6b7280', bg: '#f9fafb', sort: 3 },
 };
-
-// ── HTML helpers ──────────────────────────────────────────────────────────────
-
-function esc(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 // ── Grouping ──────────────────────────────────────────────────────────────────
 
@@ -147,56 +138,27 @@ function renderProvenanceBadge(c) {
 }
 
 function renderCandidateRow(c, idx) {
-  const checked   = shouldPreCheck(c) ? ' checked' : '';
   const typeCfg   = HARVEST_TYPE_CONFIG[c.type] ?? {};
   const sourceBadge    = HARVEST_SOURCE_BADGE[c.type] ?? '';
   const provenanceBadge = renderProvenanceBadge(c);
   const recBadge  = c.recommendation ? renderRecommendationBadge(c.recommendation) : '';
   const confBadge = c.confidence ? renderConfidenceBadge(c.confidence) : '';
-  const rowId     = `harvest-row-${esc(c.id)}`;
-  const reasonId  = `harvest-reason-${esc(c.id)}`;
-
   const hasReasoning = c.analysisAvailable && c.reasoning;
-  const reasoningToggle = hasReasoning
-    ? `<button onclick="toggleHarvestReasoning('${esc(c.id)}')" style="font-size:0.75em;background:none;border:none;color:#6b7280;cursor:pointer;padding:0 4px;vertical-align:middle;" title="Toggle reasoning">💬</button>`
-    : '';
-  const reasoningBlock = hasReasoning
-    ? `<div id="${reasonId}" style="display:none;margin-top:6px;padding:8px 10px;background:#f8fafc;border-left:3px solid #94a3b8;border-radius:4px;font-size:0.82em;color:#475569;line-height:1.5;">${esc(c.reasoning)}</div>`
-    : '';
 
-  return `
-    <tr id="${rowId}" style="border-bottom:1px solid #f1f5f9;">
-      <td style="padding:10px 12px;width:36px;vertical-align:top;">
-        <input type="checkbox" id="harvest-chk-${esc(c.id)}" data-harvest-id="${esc(c.id)}"${checked}
-          style="width:16px;height:16px;cursor:pointer;margin-top:2px;">
-      </td>
-      <td style="padding:10px 12px;">
-        <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:200px;">
-            <div style="font-size:0.78em;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">
-              ${esc(typeCfg.label ?? c.type)}${sourceBadge}${provenanceBadge}
-            </div>
-            <div style="font-size:0.87em;color:#94a3b8;margin-bottom:6px;">${esc(c.label)}</div>
-            ${c.original ? `
-            <div style="margin-bottom:6px;">
-              <div style="font-size:0.72em;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:2px;">Before</div>
-              <div style="font-size:0.85em;color:#6b7280;background:#f9fafb;border-radius:4px;padding:6px 8px;border-left:3px solid #d1d5db;line-height:1.5;">${esc(c.original)}</div>
-            </div>` : ''}
-            ${c.proposed ? `
-            <div style="margin-bottom:4px;">
-              <div style="font-size:0.72em;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:2px;">After</div>
-              <div style="font-size:0.85em;color:#1e293b;background:#f0fdf4;border-radius:4px;padding:6px 8px;border-left:3px solid #86efac;line-height:1.5;">${esc(c.proposed)}</div>
-            </div>` : ''}
-            ${reasoningBlock}
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0;">
-            ${recBadge}
-            ${confBadge}
-            ${reasoningToggle}
-          </div>
-        </div>
-      </td>
-    </tr>`;
+  return renderProposalRow({
+    id:              c.id,
+    typeLabel:       typeCfg.label ?? c.type,
+    sourceBadgeHtml: sourceBadge + provenanceBadge,
+    label:           c.label,
+    original:        c.original,
+    proposed:        c.proposed,
+    detailText:      hasReasoning ? c.reasoning : null,
+    badgesHtml:       `${recBadge}${confBadge}`,
+    checked:         shouldPreCheck(c),
+  }, {
+    idPrefix:         'harvest',
+    checkboxDataAttr: 'harvest-id',
+  });
 }
 
 function renderConfidenceTier(rec, conf, candidates) {
@@ -394,12 +356,6 @@ function toggleHarvestSection(id) {
   if (icon) icon.textContent = hidden ? '▾' : '▸';
 }
 
-function toggleHarvestReasoning(candidateId) {
-  const el = document.getElementById(`harvest-reason-${candidateId}`);
-  if (!el) return;
-  el.style.display = el.style.display === 'none' ? '' : 'none';
-}
-
 // ── Main entry points ─────────────────────────────────────────────────────────
 
 async function populateHarvestTab() {
@@ -460,6 +416,7 @@ async function populateHarvestTab() {
   }));
 
   content.innerHTML = renderHarvestTabHtml(enriched, analysisOk, analysisError);
+  attachProposalRowListeners(content, 'harvest');
 }
 
 async function refreshHarvestAnalysis() {
@@ -505,6 +462,7 @@ async function refreshHarvestAnalysis() {
     }));
 
     content.innerHTML = renderHarvestTabHtml(enriched, analysisOk, analysisError);
+    attachProposalRowListeners(content, 'harvest');
   } catch (err) {
     log.error('refreshHarvestAnalysis: failed', err);
   }
@@ -579,4 +537,4 @@ async function applyHarvestSelections() {
   }
 }
 
-export { populateHarvestTab, applyHarvestSelections, refreshHarvestAnalysis, toggleHarvestSection, toggleHarvestReasoning };
+export { populateHarvestTab, applyHarvestSelections, refreshHarvestAnalysis, toggleHarvestSection };

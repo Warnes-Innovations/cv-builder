@@ -212,16 +212,16 @@ class TestCreateAppBundleIntegration(unittest.TestCase):
             patch('scripts.web_app.get_llm_provider', return_value=mock_llm)
         )
         stack.enter_context(
-            patch('scripts.web_app.get_cached_pricing', return_value={})
+            patch('scripts.routes.auth_routes.get_cached_pricing', return_value={})
         )
         stack.enter_context(
             patch(
-                'scripts.web_app.get_pricing_updated_at',
+                'scripts.routes.auth_routes.get_pricing_updated_at',
                 return_value='2024-01-01',
             )
         )
         stack.enter_context(
-            patch('scripts.web_app.get_pricing_source', return_value='static')
+            patch('scripts.routes.auth_routes.get_pricing_source', return_value='static')
         )
         self.addCleanup(stack.close)
         return stack

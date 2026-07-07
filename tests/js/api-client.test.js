@@ -8,6 +8,18 @@
  * tests/js/api-client.test.js
  * Unit tests for web/api-client.js — StorageKeys constants and apiCall().
  */
+
+// sessionAwareFetch() calls the real handle409Conflict() on any 409 response,
+// which shows the session-conflict banner and returns a Promise that only
+// resolves via conflictRetryNow()/conflictDismiss() (web/fetch-utils.js) —
+// neither of which this file's 409 tests trigger, so without this mock a
+// mocked 409 response hangs until the test times out. These tests are about
+// apiCall()'s own 409 handling, not the conflict-banner UI, so short-circuit
+// to "don't retry".
+vi.mock('../../web/fetch-utils.js', () => ({
+  handle409Conflict: vi.fn().mockResolvedValue(false),
+}))
+
 let apiClient
 let fetchMock
 
@@ -42,8 +54,11 @@ describe('StorageKeys', () => {
   it('defines LLM_DISCLOSURE_SHOWN', () => {
     expect(apiClient.StorageKeys.LLM_DISCLOSURE_SHOWN).toBe('cv-builder-llm-disclosure-shown')
   })
-  it('has exactly 6 keys', () => {
-    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(6)
+  it('defines EARLY_PREVIEW_COLLAPSED', () => {
+    expect(apiClient.StorageKeys.EARLY_PREVIEW_COLLAPSED).toBe('cv-builder-early-preview-collapsed')
+  })
+  it('has exactly 7 keys', () => {
+    expect(Object.keys(apiClient.StorageKeys)).toHaveLength(7)
   })
   it('all values are strings', () => {
     Object.values(apiClient.StorageKeys).forEach(v => expect(typeof v).toBe('string'))

@@ -9,6 +9,7 @@ BibTeX parsing utilities for publications.bib
 """
 
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 import bibtexparser  # type: ignore[import-untyped]
 from bibtexparser.bparser import BibTexParser  # type: ignore[import-untyped]
@@ -209,28 +210,45 @@ def _is_software_pkg(pub: Dict) -> bool:
     )
 
 
+def _url_hostname(url: str) -> str:
+    """Return the lowercased hostname of a URL, or '' if unparseable."""
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _host_is_or_subdomain_of(host: str, domain: str) -> bool:
+    return host == domain or host.endswith(f".{domain}")
+
+
 def _pkg_label(pub: Dict) -> str:
     """Return a canonical software label from note/title/url hints."""
     note = str(pub.get("note", "") or "")
-    url = _pkg_url(pub)
+    host = _url_hostname(_pkg_url(pub))
     title = str(pub.get("title", "") or "")
     fields = pub.get("fields", {}) or {}
+    # Free-text fields only — the URL is checked separately via hostname
+    # comparison, not substring matching, since it may be attacker-controlled.
     misc_text = " ".join(
         [
             note,
-            url,
             title,
             str(fields.get("howpublished", "") or ""),
         ]
     ).lower()
 
+    is_cran = _host_is_or_subdomain_of(host, "cran.r-project.org")
+    is_bioconductor = _host_is_or_subdomain_of(host, "bioconductor.org")
+    is_github = _host_is_or_subdomain_of(host, "github.com")
+
     # Preserve existing R-package labels with source-specific provenance.
-    if "r package" in note.lower() or "cran.r-project.org" in misc_text or "bioconductor.org" in misc_text:
-        if "cran.r-project.org" in misc_text:
+    if "r package" in note.lower() or is_cran or is_bioconductor:
+        if is_cran:
             return "CRAN R package"
-        if "bioconductor.org" in misc_text:
+        if is_bioconductor:
             return "Bioconductor R package"
-        if "github.com" in misc_text:
+        if is_github:
             return "R package (GitHub)"
         return "R package"
 
@@ -305,7 +323,9 @@ def _format_apa(pub: Dict) -> str:
 
     # Authors and year
     if pub["authors"]:
-        parts.append(f"{pub['authors']}.")
+        # rstrip avoids a double period when the name ends in an abbreviated
+        # initial (e.g. "Warnes, Gregory R.").
+        parts.append(f"{pub['authors'].rstrip('.')}.")
 
     if pub["year"]:
         parts.append(f"({pub['year']}).")

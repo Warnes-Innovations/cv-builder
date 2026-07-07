@@ -118,10 +118,11 @@ describe('PASTE_MIN_CHARS', () => {
 describe('_updatePasteCharCount', () => {
   beforeEach(buildPasteMethod)
 
-  it('shows placeholder hint when input is empty', () => {
+  it('shows guidance text (not a blank count) when input is empty', () => {
     document.getElementById('job-text-input').value = ''
     _updatePasteCharCount()
-    expect(document.getElementById('paste-char-count').textContent).toContain('Paste the full job description')
+    expect(document.getElementById('paste-char-count').textContent)
+      .toBe('Paste the full job description (minimum 200 characters for best results)')
   })
 
   it('shows red count when below minimum', () => {

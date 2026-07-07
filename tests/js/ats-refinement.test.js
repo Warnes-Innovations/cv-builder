@@ -20,6 +20,7 @@ function buildAtsBadge() {
       </div>
       <div id="ats-score-summary" style="display:none">
         <div id="ats-score-summary-line"></div>
+        <div id="ats-score-summary-detail"></div>
       </div>
     </div>`
 }
@@ -93,6 +94,8 @@ describe('updateAtsBadge', () => {
     expect(document.getElementById('ats-score-summary').style.display).toBe('flex')
     expect(document.getElementById('ats-score-summary-line').textContent)
       .toBe('Hard 1/2 • Soft 1/1 • Bonus 1/1')
+    expect(document.getElementById('ats-score-summary-detail').textContent)
+      .toBe('Missing hard: SQL')
   })
 
   it('falls back to top sections when there are no missing hard keywords', () => {
@@ -107,9 +110,11 @@ describe('updateAtsBadge', () => {
 
     expect(document.getElementById('ats-score-summary-line').textContent)
       .toBe('Hard 1/1 • Soft 1/1')
+    expect(document.getElementById('ats-score-summary-detail').textContent)
+      .toBe('Top sections: skills 80% • experience 55%')
   })
 
-  it('shows page length estimate in the summary line', () => {
+  it('shows page length estimate and job details in the summary row', () => {
     mockStateManager.getGenerationState.mockReturnValue({ pageCountEstimate: 2.3 })
     window._statusIntake = {
       role: 'Senior R Package Developer',
@@ -127,6 +132,8 @@ describe('updateAtsBadge', () => {
 
     expect(document.getElementById('ats-score-summary-line').textContent)
       .toBe('Hard 1/2 • Length 2.3 pages est')
+    expect(document.getElementById('ats-score-summary-detail').textContent)
+      .toBe('Senior R Package Developer @ Genentech (03/31/2026) • Missing hard: SQL')
   })
 
   it('refreshes summary context when generation state changes', () => {

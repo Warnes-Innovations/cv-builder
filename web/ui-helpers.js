@@ -9,8 +9,8 @@
  * Lightweight DOM helpers: toasts, alert/confirm modals, chat toggle, and
  * workflow-stage action-button management.
  *
- * DEPENDENCIES: ui-core.js exports (trapFocus, restoreFocus, setInitialFocus)
- *               available on globalThis at runtime.
+ * DEPENDENCIES: ui-core.js exports (trapFocus, restoreFocus, setInitialFocus,
+ *               pushFocusStack) available on globalThis at runtime.
  */
 
 import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
@@ -34,6 +34,13 @@ function showAlertModal(title, message) {
   document.getElementById('alert-modal-title').textContent = title;
   _setModalText(document.getElementById('alert-modal-message'), message);
   document.getElementById('alert-modal-overlay').style.display = 'block';
+  // pushFocusStack (GAP-197) pairs with trapFocus/restoreFocus below — using
+  // the shared focus-stack mechanism, not a local variable, so closeAlertModal
+  // also pops the keydown listener trapFocus registers on document. A prior
+  // version tracked its own `_alertPreviousFocus` and never called
+  // restoreFocus(), which left that trapFocus listener permanently attached
+  // after every alert modal close.
+  if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
   if (typeof setInitialFocus === 'function') setInitialFocus('alert-modal-overlay');
   if (typeof trapFocus === 'function') trapFocus('alert-modal-overlay');
 }

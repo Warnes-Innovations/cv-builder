@@ -378,5 +378,6 @@ export {
   stripHtml, truncateText, capitalizeWords, pluralize,
   formatDuration, ordinal,
   SESSION_PHASE_LABELS, SESSION_PHASE_LABELS_SHORT,
+  formatSessionPhaseLabel,
   logger,
 };

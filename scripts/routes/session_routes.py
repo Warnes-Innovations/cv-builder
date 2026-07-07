@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from flask import Blueprint, jsonify, request
-from werkzeug.utils import safe_join
 
 logger = logging.getLogger(__name__)
 
@@ -257,12 +256,12 @@ def create_blueprint(deps):
         path = data.get("path")
         if not path:
             return jsonify({"error": "Missing path"}), 400
-        
+
         output_base = _output_base()
         safe_path = _resolve_session_path(output_base, path)
         if safe_path is None or not safe_path.exists():
             return jsonify({"error": "Session file not found."}), 404
-        
+
         try:
             sid, entry = session_registry.load_from_file(str(safe_path), _app_config)
             conversation = entry.manager
@@ -363,12 +362,12 @@ def create_blueprint(deps):
         try:
             output_base = _output_base()
             trash_dir   = output_base / '.trash'
-            
+
             # Validate path is within trash directory
             safe_path = _resolve_session_path(trash_dir, path_param)
             if safe_path is None or not safe_path.exists() or safe_path.name != 'session.json':
                 return jsonify({"error": "Session file not found in trash."}), 404
-            
+
             job_dir = safe_path.parent
             dest = output_base / job_dir.name
             if dest.exists():
@@ -391,12 +390,12 @@ def create_blueprint(deps):
         try:
             output_base = _output_base()
             trash_dir   = output_base / '.trash'
-            
+
             # Validate path is within trash directory
             safe_path = _resolve_session_path(trash_dir, path_param)
             if safe_path is None or not safe_path.exists() or safe_path.name != 'session.json':
                 return jsonify({"error": "Session file not found in trash."}), 404
-            
+
             job_dir = safe_path.parent
             import shutil as _shutil
             _shutil.rmtree(job_dir)
@@ -448,14 +447,14 @@ def create_blueprint(deps):
             return jsonify({"error": "Missing path"}), 400
         if not new_name:
             return jsonify({"error": "Missing new_name"}), 400
-        
+
         output_base = _output_base()
-        
+
         # Validate path is within output directory
         safe_path = _resolve_session_path(output_base, path)
         if safe_path is None or not safe_path.exists():
             return jsonify({"error": "Session file not found."}), 404
-        
+
         try:
             with open(safe_path, "r", encoding="utf-8") as f:
                 session_data = json.load(f)
@@ -686,7 +685,7 @@ def create_blueprint(deps):
                 "error": "session_not_found",
                 "message": "Session not found.",
             })
-        except SessionOwnedError as e:
+        except SessionOwnedError:
             logger.exception("Session ownership check failed")
             return jsonify({"error": "session_owned", "message": "Session access denied"}), 409
 

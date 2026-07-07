@@ -117,24 +117,26 @@ def create_blueprint(deps):
             bundle  = session.prepare_llm_call(op, **kwargs)
             return jsonify({"ok": True, **bundle.to_dict()})
 
-        except TypeError as exc:
-            # Unknown kwarg for the operation
+        except TypeError:
+            # Unknown kwarg for the operation — details logged, not echoed to the client.
+            logger.warning("llm_prompt %s: invalid params", operation, exc_info=True)
             return jsonify({
                 "ok":         False,
-                "error":      str(exc),
+                "error":      f"Invalid parameters for operation {operation!r}.",
                 "error_code": "invalid_params",
             }), 400
-        except ValueError as exc:
+        except ValueError:
+            logger.warning("llm_prompt %s: precondition failed", operation, exc_info=True)
             return jsonify({
                 "ok":         False,
-                "error":      str(exc),
+                "error":      f"Precondition failed for operation {operation!r}.",
                 "error_code": "precondition_failed",
             }), 400
-        except Exception as exc:                     # noqa: BLE001
+        except Exception:                             # noqa: BLE001
             logger.exception("llm_prompt %s failed", operation)
             return jsonify({
                 "ok":         False,
-                "error":      str(exc),
+                "error":      "Internal error while preparing the LLM call.",
                 "error_code": "internal_error",
             }), 500
 
@@ -194,23 +196,25 @@ def create_blueprint(deps):
             extra = _SUBMIT_EXTRA.get(op, lambda _: {})(session)
             return jsonify({"ok": True, "phase": session.phase, **extra})
 
-        except InvalidResultError as exc:
+        except InvalidResultError:
+            logger.warning("llm_result %s: invalid result", operation, exc_info=True)
             return jsonify({
                 "ok":         False,
-                "error":      f"Invalid result: {exc}",
+                "error":      f"Invalid result for operation {operation!r}.",
                 "error_code": "invalid_result",
             }), 400
-        except ValueError as exc:
+        except ValueError:
+            logger.warning("llm_result %s: precondition failed", operation, exc_info=True)
             return jsonify({
                 "ok":         False,
-                "error":      str(exc),
+                "error":      f"Precondition failed for operation {operation!r}.",
                 "error_code": "precondition_failed",
             }), 400
-        except Exception as exc:                     # noqa: BLE001
+        except Exception:                             # noqa: BLE001
             logger.exception("llm_result %s failed", operation)
             return jsonify({
                 "ok":         False,
-                "error":      str(exc),
+                "error":      "Internal error while submitting the LLM result.",
                 "error_code": "internal_error",
             }), 500
 

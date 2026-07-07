@@ -514,7 +514,11 @@ describe('saveTabData and restoreTabData', () => {
 
     restoreTabData({ uiPrefsOnly: true })
 
+    // tabData/pendingRecommendations/interactiveState must stay exactly as
+    // seeded by beforeEach — uiPrefsOnly means only _activeReviewPane below
+    // gets restored from the saved (different) values.
     expect(stateManager.getTabData('analysis')).toEqual({ score: 42 })
+    expect(stateManager.getTabData('cv')).toBeNull()
     expect(globalThis.window.pendingRecommendations).toEqual({
       skills: ['Python'],
     })

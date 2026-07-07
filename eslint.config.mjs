@@ -37,4 +37,29 @@ export default [
       'sonarjs/no-all-duplicated-branches': 'error',
     },
   },
+  // GAP-16 Part B mutation-boundary guard: early-preview-panel.js must only
+  // ever call the read-only GET /api/layout-html endpoint. Calling either
+  // mutating endpoint here would silently fast-forward the user's workflow
+  // phase (see the module's own header comment) — fail CI, don't just rely
+  // on a unit test that could later be weakened or deleted unnoticed.
+  {
+    files: ['web/early-preview-panel.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+    },
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "Literal[value='/api/cv/generate-preview']",
+          message: 'early-preview-panel.js must not call the mutating /api/cv/generate-preview endpoint — see the module header comment.',
+        },
+        {
+          selector: "Literal[value='/api/cv/smart-instruction']",
+          message: 'early-preview-panel.js must not call the mutating /api/cv/smart-instruction endpoint — see the module header comment.',
+        },
+      ],
+    },
+  },
 ];
