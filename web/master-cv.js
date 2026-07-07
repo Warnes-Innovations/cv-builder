@@ -352,11 +352,11 @@ async function populateMasterTab(container = null) {
 
     <!-- Publication add/edit modal -->
     <div id="master-pub-modal-overlay" style="display:none;" role="dialog" aria-modal="true"
-        aria-labelledby="master-pub-modal-title" class="modal-overlay"
+        aria-labelledby="pub-modal-title-heading" class="modal-overlay"
         onclick="if(event.target===this)closePublicationModal()">
       <div class="modal" style="max-width:580px;">
         <div class="modal-header">
-          <h2 id="master-pub-modal-title-heading" id="pub-modal-title-heading">Add Publication</h2>
+          <h2 id="pub-modal-title-heading">Add Publication</h2>
           <button onclick="closePublicationModal()" aria-label="Close publication editor"
               style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#64748b;">&times;</button>
         </div>
@@ -1571,11 +1571,15 @@ function editMasterPublication(pub) {
   document.getElementById('pub-modal-year').value    = fields.year || '';
   document.getElementById('pub-modal-journal').value = fields.journal || fields.booktitle || '';
   document.getElementById('pub-modal-doi').value     = fields.doi || '';
-  // Extra: remaining non-standard fields as key=value lines
+  // Extra: remaining non-standard fields as key=value lines. Multi-line
+  // values (e.g. abstract, note) have embedded newlines escaped as literal
+  // "\n" so each field round-trips as exactly one line (GAP-347) — without
+  // this, a value spanning multiple lines would split into an unparseable
+  // continuation line and silently lose everything after the first line.
   const known = new Set(['author','editor','title','year','journal','booktitle','doi']);
   const extra = Object.entries(fields)
     .filter(([k]) => !known.has(k))
-    .map(([k, v]) => `${k}=${v}`)
+    .map(([k, v]) => `${k}=${String(v).replace(/\n/g, '\\n')}`)
     .join('\n');
   document.getElementById('pub-modal-extra').value   = extra;
   document.getElementById('pub-modal-key').disabled  = true;  // key is immutable on edit
@@ -1611,13 +1615,15 @@ async function saveMasterPublication() {
   }
   const doi = document.getElementById('pub-modal-doi').value.trim();
   if (doi) fields.doi = doi;
-  // Parse extra fields (key=value per line)
+  // Parse extra fields (key=value per line). Unescape literal "\n" back to
+  // real newlines to match the escaping applied when populating this
+  // textarea in editMasterPublication() (GAP-347).
   const extra = document.getElementById('pub-modal-extra').value;
   for (const line of extra.split('\n')) {
     const eq = line.indexOf('=');
     if (eq > 0) {
       const k = line.slice(0, eq).trim();
-      const v = line.slice(eq + 1).trim();
+      const v = line.slice(eq + 1).trim().replace(/\\n/g, '\n');
       if (k && v) fields[k] = v;
     }
   }

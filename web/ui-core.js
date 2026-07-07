@@ -367,6 +367,7 @@ const STAGE_TABS = {
   screening:      ['screening'],
   interview_prep: ['interview-prep'],
   thank_you:      ['thank-you'],
+  finalise:       ['finalise'],
   harvest:        ['harvest'],
 };
 

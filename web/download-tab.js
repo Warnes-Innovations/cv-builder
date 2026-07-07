@@ -518,7 +518,10 @@ async function populateDownloadTab(cvData) {
   html += await _fetchPersuasionHtml();
   html += _renderRewriteAuditLog();
   html += _renderRefinementPanel();
-  html += `<div class="nav-buttons nav-end" style="margin-top:16px;">
+  html += `<div class="nav-buttons" style="margin-top:16px;">
+    <button class="back-btn" onclick="handleStepClick('finalise')">
+      ✅ Skip to Finalise
+    </button>
     <button class="continue-btn" onclick="handleStepClick('cover_letter')">
       📩 Proceed to Cover Letter →
     </button>

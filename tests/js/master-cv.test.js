@@ -24,6 +24,8 @@ import {
   importPublicationsBib,
   convertPublicationText,
   importConvertedPublicationText,
+  editMasterPublication,
+  saveMasterPublication,
   closeMasterAchModal,
   closeMasterSumModal,
   closePersonalInfoModal,
@@ -1138,6 +1140,18 @@ describe('publications UI flows', () => {
       <div id="master-pub-convert-status"></div>
       <button id="master-pub-convert-submit-btn">Generate BibTeX</button>
       <button id="master-pub-convert-import-btn">Import Preview</button>
+      <div id="master-pub-modal-overlay" style="display:none">
+        <h2 id="pub-modal-title-heading"></h2>
+        <input id="pub-modal-key" />
+        <select id="pub-modal-type"><option value="article">article</option></select>
+        <label id="pub-modal-author-label"></label>
+        <input id="pub-modal-author" />
+        <input id="pub-modal-title" />
+        <input id="pub-modal-year" />
+        <input id="pub-modal-journal" />
+        <input id="pub-modal-doi" />
+        <textarea id="pub-modal-extra"></textarea>
+      </div>
     `
   }
 
@@ -1263,6 +1277,70 @@ describe('publications UI flows', () => {
     expect(firstCallBody.overwrite).toBe(true)
     expect(firstCallBody.bibtex_text).toContain('@article{doe2025')
     expect(document.getElementById('master-pub-convert-status').textContent).toContain('Imported preview')
+  })
+
+  // GAP-347: the "Extra fields" textarea round-trips non-hardcoded BibTeX
+  // fields as one `key=value` line per field. A value containing an
+  // embedded newline (e.g. a multi-line `abstract` or `note` field) used to
+  // split into an unparseable continuation line on save, silently losing
+  // everything after the first line with no warning.
+  describe('publication edit modal — extra field round-trip (GAP-347)', () => {
+    it('preserves a multi-line extra field value through edit -> save', () => {
+      const pub = {
+        key: 'doe2025',
+        type: 'article',
+        fields: {
+          author: 'Doe, J.',
+          title: 'Example',
+          year: '2025',
+          note: 'Line one\nLine two\nLine three',
+        },
+      }
+
+      editMasterPublication(pub)
+
+      // The textarea should represent the multi-line value as a single
+      // escaped line, not split across multiple unparseable lines.
+      const extraLines = document.getElementById('pub-modal-extra').value.split('\n')
+      expect(extraLines).toEqual(['note=Line one\\nLine two\\nLine three'])
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        json: async () => ({ ok: true, action: 'updated' }),
+      })
+      vi.stubGlobal('fetch', mockFetch)
+
+      return saveMasterPublication().then(() => {
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+        expect(body.fields.note).toBe('Line one\nLine two\nLine three')
+      })
+    })
+
+    it('preserves an unmodified single-line extra field through edit -> save', () => {
+      const pub = {
+        key: 'smith2024',
+        type: 'article',
+        fields: {
+          author: 'Smith, A.',
+          title: 'Another Example',
+          year: '2024',
+          volume: '12',
+          pages: '100-110',
+        },
+      }
+
+      editMasterPublication(pub)
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        json: async () => ({ ok: true, action: 'updated' }),
+      })
+      vi.stubGlobal('fetch', mockFetch)
+
+      return saveMasterPublication().then(() => {
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+        expect(body.fields.volume).toBe('12')
+        expect(body.fields.pages).toBe('100-110')
+      })
+    })
   })
 })
 
