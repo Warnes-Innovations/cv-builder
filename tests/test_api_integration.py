@@ -170,6 +170,12 @@ class TestStatusAPI(unittest.TestCase):
         self.assertIn('phase', data)
         self.assertIn('llm_provider', data)
 
+    def test_status_includes_ats_checks_field(self):
+        """Status response includes ats_checks field (GAP-329)."""
+        response = self.client.get('/api/status', query_string={'session_id': self.session_id})
+        data = response.get_json()
+        self.assertIn('ats_checks', data)
+
     def test_status_phase_initially_init(self):
         """Initial status phase should be 'init' or similar."""
         response = self.client.get('/api/status', query_string={'session_id': self.session_id})

@@ -768,6 +768,12 @@ def create_blueprint(deps):
             ai_attribution=bool(conversation.state.get("ai_attribution", get_config().ai_attribution_default)),
             highest_phase=conversation.state.get("highest_phase") or None,
             session_last_modified=entry.last_modified.isoformat() if entry.last_modified else None,
+            ats_checks=(
+                (conversation.state.get("generated_files") or {})
+                .get("metadata", {})
+                .get("ats_validation", {})
+                .get("checks") or []
+            ) or None,
         )))
 
     @bp.get("/api/context-stats")

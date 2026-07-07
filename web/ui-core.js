@@ -250,6 +250,7 @@ async function openSettingsModal() {
   const overlay = document.getElementById('settings-modal-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
   _focusStack.push(document.activeElement);
   setInitialFocus('settings-modal-overlay');
   trapFocus('settings-modal-overlay');
@@ -258,7 +259,10 @@ async function openSettingsModal() {
 
 function closeSettingsModal() {
   const overlay = document.getElementById('settings-modal-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+  }
   restoreFocus();
 }
 
@@ -409,6 +413,7 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
     okBtn.style.background     = danger ? '#dc2626' : '#3b82f6';
 
     overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
     okBtn.focus();
 
     // Focus trap — keep Tab/Shift+Tab inside the two buttons
@@ -426,6 +431,7 @@ function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', d
 
     const finish = (result) => {
       overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
       overlay.removeEventListener('keydown', trapFocus);
       // Remove listeners to avoid stacking handlers
       okBtn.replaceWith(okBtn.cloneNode(true));
@@ -1454,6 +1460,7 @@ async function openModelModal() {
   _setModelWizardStep(1);
   _hideModelWizardBusy();
   overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
   _focusStack.push(document.activeElement);
   setInitialFocus('model-modal-overlay');
   trapFocus('model-modal-overlay');
@@ -1461,7 +1468,10 @@ async function openModelModal() {
 
 function closeModelModal() {
   const overlay = document.getElementById('model-modal-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+  }
   _setModelWizardStep(1);
   _hideModelWizardBusy();
   if (_copilotAuthPollTimer) {

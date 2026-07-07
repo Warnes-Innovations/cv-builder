@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 88)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 89)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,10 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340.
+
+## 2026-07-06 (Cycle 89) Implementation Notes
+
+Cycle 89 addressed 4 gaps: GAP-327 (aria-hidden not toggled on modals opened outside openModal() — fixed in ui-core.js, ats-modals.js, session-switcher-ui.js for settings, confirmDialog, model, ATS report, job analysis, sessions, and ownership-conflict modals), GAP-329 (ats_checks added to StatusResponse and populated from generated_files.metadata.ats_validation.checks in status_routes.py), GAP-331 (sessions modal and ownership conflict dialog now use pushFocusStack/_focusStack instead of disconnected window._focusedElementBeforeModal), GAP-337 (publications CRUD single-entry and import routes now back up publications.bib before overwriting). 5 new JS tests added, 1 Python test added.
 
 ## 2026-07-06 (Cycle 88) Implementation Notes
 
@@ -3917,11 +3921,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-327: `aria-hidden` Not Toggled on Primary Modals Opened Outside `openModal()`
 
 **Priority:** HIGH (Accessibility)
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 89) — Added `setAttribute('aria-hidden', 'false'/'true')` on open/close in: `openSettingsModal`/`closeSettingsModal` (ui-core.js), `confirmDialog` finish callback (ui-core.js), `openModelModal`/`closeModelModal` (ui-core.js), `openAtsReportModal`/`closeAtsReportModal` (ats-modals.js), `openJobAnalysisModal`/`closeJobAnalysisModal` (ats-modals.js), `openSessionsModal`/`closeSessionsModal` (session-switcher-ui.js), `showOwnershipConflictDialog`/cleanup (session-switcher-ui.js). Modals in master-cv.js remain deferred pending GAP-01.
 **Discovered:** 2026-07-06 (cycle 88) by accessibility-specialist.
 **Description:** The `openModal()` helper in `ui-core.js` sets `aria-hidden="true"` on the main content when a modal is shown. However, many modal open paths use `overlay.style.display = 'flex'` directly (e.g., settings modal, sessions modal, publication modal in master-cv.js) rather than calling `openModal()`. Background landmark content remains visible to screen readers while a dialog is active, causing virtual cursor confusion for screen reader users.
 **Affected stories:** US-X2, US-X3
-**Fix:** Audit all modal open/close pairs and ensure each calls `openModal()`/`closeModal()` (or manually toggles `aria-hidden` on the background container). Alternatively, add a MutationObserver in `openModal()` that also handles direct `display` style changes.
 
 ---
 
@@ -3938,11 +3941,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-329: Finalise Tab ATS Readiness Always Shows "Not Yet Run"
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 89) — Added `ats_checks: Optional[List[Any]] = None` to `StatusResponse` dataclass (web_app.py). Status route (status_routes.py) now populates it from `generated_files['metadata']['ats_validation']['checks']`. The Finalise readiness checklist at `finalise.js:174` now reads a non-empty list and shows real pass/fail state when ATS validation ran as part of CV generation.
 **Discovered:** 2026-07-06 (cycle 88) by hr-ats.
-**Description:** The Finalise readiness checklist (`finalise.js:174`) reads `statusData?.ats_checks` from `/api/status`. However, `StatusResponse` in `web_app.py:164` has `ats_score: Optional[int]` but no `ats_checks` field. ATS validation results live in `conversation.state['validation_results']` (written by `/api/ats-validate`) and are never forwarded to `/api/status`. Users who correctly ran the File Review ATS check see "not yet run" in the Finalise checklist regardless.
+**Description:** The Finalise readiness checklist (`finalise.js:174`) reads `statusData?.ats_checks` from `/api/status`. However, `StatusResponse` in `web_app.py:164` had no `ats_checks` field. ATS validation results are stored in `generated_files.metadata.ats_validation.checks` (written by `cv_orchestrator.generate_cv()`) but were never forwarded to `/api/status`. Users who correctly ran a full generation saw "not yet run" in the Finalise checklist regardless.
 **Affected stories:** US-H6, US-O4
-**Fix:** Add `ats_checks: Optional[List[Dict]]` to `StatusResponse` and populate it from `conversation.state.get('validation_results', [])` in the `/api/status` route handler.
 
 ---
 
@@ -3960,11 +3962,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-331: Sessions Modal Focus-Restore Stack Mismatch
 
 **Priority:** MEDIUM (Accessibility)
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 89) — Changed `openSessionsModal()` and `showOwnershipConflictDialog()` in `session-switcher-ui.js` to call `pushFocusStack(document.activeElement)` instead of setting `window._focusedElementBeforeModal`. Both modals now use the shared `_focusStack` that `restoreFocus()` pops, so focus correctly returns to the triggering element on close (WCAG 2.1 AA).
 **Discovered:** 2026-07-06 (cycle 88) by accessibility-specialist.
-**Description:** `openSessionsModal2` in `session-switcher-ui.js` saves the triggering element to `window._focusedElementBeforeModal`, but `closeSessionsModal` calls `restoreFocus()` which pops from `_focusStack`. These are disconnected stacks — focus is never returned to the element that opened the sessions modal, violating WCAG 2.1 AA focus management requirements.
+**Description:** `openSessionsModal()` in `session-switcher-ui.js` saved the triggering element to `window._focusedElementBeforeModal`, but `closeSessionsModal` called `restoreFocus()` which pops from `_focusStack`. These are disconnected stacks — focus was never returned to the element that opened the sessions modal, violating WCAG 2.1 AA focus management requirements.
 **Affected stories:** US-X2, US-S1
-**Fix:** Either use `pushFocusStack()` in `openSessionsModal2` (so `restoreFocus()` pops correctly) or change `closeSessionsModal` to directly focus `window._focusedElementBeforeModal` instead of calling `restoreFocus()`.
 
 ---
 
@@ -4025,11 +4026,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-337: Publications CRUD and Batch Import Routes Lack Pre-Write Backup
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 89) — Added timestamped `publications.bib` backup (to `backups/` subdirectory) in `master_data_update_publication()` (before delete, and before add/update write) and in `master_data_import_publications()` (before the merged write). Pattern matches the existing backup in `master_data_save_raw_publications()`.
 **Discovered:** 2026-07-06 (cycle 88) by master-cv-curator.
-**Description:** The raw `PUT` endpoint for master data (`master_data_routes.py:1273–1283`) creates a timestamped backup before writing. However, the single-entry CRUD route (`1327–1387`) and the BibTeX batch import route (`1457–1465`) do not create backups. A corrupt write via CRUD or import is unrecoverable from the Backup History modal.
+**Description:** The raw `PUT` endpoint for master data (`master_data_routes.py:1273–1283`) creates a timestamped backup before writing. However, the single-entry CRUD route (`1327–1387`) and the BibTeX batch import route (`1457–1465`) did not create backups. A corrupt write via CRUD or import was unrecoverable from the Backup History modal.
 **Affected stories:** US-M6, US-M9
-**Fix:** Add a pre-write backup call (matching the pattern in the raw PUT handler) to both the CRUD route and the BibTeX import route before modifying `Master_CV_Data.json`.
 
 ---
 

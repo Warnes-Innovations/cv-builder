@@ -1343,18 +1343,26 @@ def create_blueprint(deps):
             return jsonify({"error": "key is required"}), 400
 
         pubs = dict(orchestrator.publications or {})
+        bib_path = orchestrator.publications_path
+
+        def _backup_pubs():
+            if bib_path.exists():
+                backup_dir = bib_path.parent / "backups"
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                bp = backup_dir / f"{bib_path.stem}.{ts}{bib_path.suffix}"
+                shutil.copy2(bib_path, bp)
 
         try:
             if action == "delete":
                 if key not in pubs:
                     return jsonify({"ok": False, "error": f"Key '{key}' not found"}), 404
+                _backup_pubs()
                 del pubs[key]
-                orchestrator.publications_path.write_text(
+                bib_path.write_text(
                     serialize_publications_to_bibtex(pubs), encoding="utf-8"
                 )
-                orchestrator.publications = parse_bibtex_file(
-                    str(orchestrator.publications_path)
-                )
+                orchestrator.publications = parse_bibtex_file(str(bib_path))
                 return jsonify({"ok": True, "action": "deleted"})
 
             fields = req.get("fields")
@@ -1374,13 +1382,12 @@ def create_blueprint(deps):
             if action == "add" and key in pubs:
                 return jsonify({"error": f"Key '{key}' already exists; use action=update"}), 409
 
+            _backup_pubs()
             pubs[key] = {"key": key, "type": entry_type, "fields": fields}
-            orchestrator.publications_path.write_text(
+            bib_path.write_text(
                 serialize_publications_to_bibtex(pubs), encoding="utf-8"
             )
-            orchestrator.publications = parse_bibtex_file(
-                str(orchestrator.publications_path)
-            )
+            orchestrator.publications = parse_bibtex_file(str(bib_path))
             return jsonify({"ok": True, "action": action, "key": key})
         except Exception as e:
             logger.exception("Operation failed")
@@ -1454,13 +1461,22 @@ def create_blueprint(deps):
                 added += 1
                 added_keys.append(key)
 
+        bib_path_imp = orchestrator.publications_path
         try:
-            orchestrator.publications_path.write_text(
+            if bib_path_imp.exists():
+                backup_dir = bib_path_imp.parent / "backups"
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                shutil.copy2(bib_path_imp, backup_dir / f"{bib_path_imp.stem}.{ts}{bib_path_imp.suffix}")
+        except Exception:
+            logger.exception("Failed to backup publications before import")
+            return jsonify({"ok": False, "error": "Failed to backup publications"}), 500
+
+        try:
+            bib_path_imp.write_text(
                 serialize_publications_to_bibtex(pubs), encoding="utf-8"
             )
-            orchestrator.publications = parse_bibtex_file(
-                str(orchestrator.publications_path)
-            )
+            orchestrator.publications = parse_bibtex_file(str(bib_path_imp))
         except Exception as e:
             logger.exception("Operation failed")
             return jsonify({"ok": False, "error": "Failed to update publication"}), 500

@@ -14,7 +14,7 @@
  *   formatSessionTimestamp, buildSessionSwitcherLabel,
  *   getActiveSessionOwnershipMeta, _getCurrentSessionIdValue,
  *   loadSessionFile, createNewSessionAndNavigate, fetchStatus,
- *   setInitialFocus, trapFocus, restoreFocus, confirmDialog
+ *   setInitialFocus, trapFocus, restoreFocus, pushFocusStack, confirmDialog
  */
 
 // ── Module-level state ────────────────────────────────────────────────────────
@@ -174,6 +174,7 @@ function showOwnershipConflictDialog(message = 'This session is currently claime
 
     const cleanup = (choice) => {
       overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
       restoreFocus();
       loadDifferentBtn.onclick = null;
       newSessionBtn.onclick = null;
@@ -183,7 +184,8 @@ function showOwnershipConflictDialog(message = 'This session is currently claime
 
     messageEl.textContent = message;
     overlay.style.display = 'flex';
-    window._focusedElementBeforeModal = document.activeElement;
+    overlay.setAttribute('aria-hidden', 'false');
+    pushFocusStack(document.activeElement);
     setInitialFocus('ownership-conflict-overlay');
     trapFocus('ownership-conflict-overlay');
 
@@ -195,7 +197,7 @@ function showOwnershipConflictDialog(message = 'This session is currently claime
 
 function closeOwnershipConflictDialog(choice = 'different') {
   const overlay = document.getElementById('ownership-conflict-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) { overlay.style.display = 'none'; overlay.setAttribute('aria-hidden', 'true'); }
   restoreFocus();
   const loadDifferentBtn = document.getElementById('ownership-load-different-btn');
   if (loadDifferentBtn && typeof loadDifferentBtn.onclick === 'function') {
@@ -570,7 +572,8 @@ async function openSessionsModal({ required = false } = {}) {
   if (closeX)      closeX.style.display      = required ? 'none' : '';
   if (closeFooter) closeFooter.style.display = required ? 'none' : '';
   overlay.style.display = 'flex';
-  window._focusedElementBeforeModal = document.activeElement;
+  overlay.setAttribute('aria-hidden', 'false');
+  pushFocusStack(document.activeElement);
   await _renderSessionsModalBody();
   _refreshTrashBadge();
   trapFocus('sessions-modal-overlay');
@@ -582,6 +585,7 @@ function closeSessionsModal() {
   if (!overlay) return;
   if (overlay.dataset.dismissDisabled === '1') return;
   overlay.style.display = 'none';
+  overlay.setAttribute('aria-hidden', 'true');
   restoreFocus();
 }
 

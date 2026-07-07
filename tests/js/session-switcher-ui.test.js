@@ -55,6 +55,7 @@ beforeEach(() => {
   vi.stubGlobal('setInitialFocus', vi.fn())
   vi.stubGlobal('trapFocus', vi.fn())
   vi.stubGlobal('restoreFocus', vi.fn())
+  vi.stubGlobal('pushFocusStack', vi.fn())
   vi.stubGlobal('confirmDialog', vi.fn().mockResolvedValue(true))
   globalThis.fetch = vi.fn()
 })
@@ -212,6 +213,22 @@ describe('showOwnershipConflictDialog', () => {
     expect(await p).toBe('takeover')
   })
 
+  it('sets aria-hidden false on show', async () => {
+    setupOwnershipDom()
+    const p = showOwnershipConflictDialog('Test conflict')
+    expect(document.getElementById('ownership-conflict-overlay').getAttribute('aria-hidden')).toBe('false')
+    document.getElementById('ownership-load-different-btn').click()
+    await p
+  })
+
+  it('calls pushFocusStack on show', async () => {
+    setupOwnershipDom()
+    const p = showOwnershipConflictDialog()
+    expect(globalThis.pushFocusStack).toHaveBeenCalled()
+    document.getElementById('ownership-load-different-btn').click()
+    await p
+  })
+
   it('resolves "different" immediately when overlay elements absent', async () => {
     const result = await showOwnershipConflictDialog()
     expect(result).toBe('different')
@@ -250,15 +267,31 @@ describe('openSessionsModal / closeSessionsModal', () => {
     expect(document.getElementById('sessions-modal-overlay').style.display).toBe('flex')
   })
 
+  it('sets aria-hidden false on open', async () => {
+    await openSessionsModal()
+    expect(document.getElementById('sessions-modal-overlay').getAttribute('aria-hidden')).toBe('false')
+  })
+
   it('calls trapFocus', async () => {
     await openSessionsModal()
     expect(globalThis.trapFocus).toHaveBeenCalledWith('sessions-modal-overlay')
+  })
+
+  it('calls pushFocusStack on open', async () => {
+    await openSessionsModal()
+    expect(globalThis.pushFocusStack).toHaveBeenCalled()
   })
 
   it('hides overlay on close', async () => {
     await openSessionsModal()
     closeSessionsModal()
     expect(document.getElementById('sessions-modal-overlay').style.display).toBe('none')
+  })
+
+  it('sets aria-hidden true on close', async () => {
+    await openSessionsModal()
+    closeSessionsModal()
+    expect(document.getElementById('sessions-modal-overlay').getAttribute('aria-hidden')).toBe('true')
   })
 
   it('calls restoreFocus on close', async () => {

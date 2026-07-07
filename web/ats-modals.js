@@ -158,6 +158,7 @@ async function openAtsReportModal() {
   pushFocusStack(document.activeElement);
   const overlay = document.getElementById('ats-report-modal-overlay');
   overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
   document.addEventListener('keydown', _atsEscapeHandler);
   // Move focus to the Close button in the modal footer
   const closeBtn = overlay.querySelector('.modal-footer .action-btn');
@@ -195,7 +196,8 @@ async function openAtsReportModal() {
 }
 
 function closeAtsReportModal() {
-  document.getElementById('ats-report-modal-overlay').style.display = 'none';
+  const _atsOverlay = document.getElementById('ats-report-modal-overlay');
+  if (_atsOverlay) { _atsOverlay.style.display = 'none'; _atsOverlay.setAttribute('aria-hidden', 'true'); }
   document.removeEventListener('keydown', _atsEscapeHandler);
   restoreFocus();
 }
@@ -275,6 +277,7 @@ function openJobAnalysisModal() {
   pushFocusStack(document.activeElement);
   const overlay = document.getElementById('job-analysis-modal-overlay');
   overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
   document.addEventListener('keydown', _jobAnalysisEscapeHandler);
   const closeBtn = overlay.querySelector('.modal-footer .action-btn');
   if (closeBtn) closeBtn.focus();
@@ -296,7 +299,8 @@ function openJobAnalysisModal() {
 }
 
 function closeJobAnalysisModal() {
-  document.getElementById('job-analysis-modal-overlay').style.display = 'none';
+  const _jaOverlay = document.getElementById('job-analysis-modal-overlay');
+  if (_jaOverlay) { _jaOverlay.style.display = 'none'; _jaOverlay.setAttribute('aria-hidden', 'true'); }
   document.removeEventListener('keydown', _jobAnalysisEscapeHandler);
   restoreFocus();
 }

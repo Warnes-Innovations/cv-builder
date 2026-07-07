@@ -146,6 +146,7 @@ class StatusResponse:
     ai_attribution: bool
     highest_phase: Optional[str]
     session_last_modified: Optional[str] = None
+    ats_checks: Optional[List[Any]] = None
 
 
 @dataclass
