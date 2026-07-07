@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 91)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 92)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,10 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340.
+
+## 2026-07-06 (Cycle 92) Implementation Notes
+
+Cycle 92 addressed 2 gaps: GAP-334 (compact readiness chip added to the File Review tab h1 heading in `web/download-tab.js` — shows "Required files: N/3 ✅/⚠" plus ATS status, computed from the files list and ATS checks already fetched in `populateDownloadTab()`, with no new fetches required), GAP-336 (harvest bullet provenance: `_compile_harvest_candidates()` in `scripts/routes/generation_routes.py` now looks up `outcome` from `rewrite_audit` by rewrite id and adds it to each candidate dict; `renderCandidateRow()` in `web/harvest.js` renders a "✏️ User-edited" or "🤖 AI accepted" badge alongside the existing type label for `improved_bullet` and `summary_variant` types). 1442 Python + 1223 JS tests passing.
 
 ## 2026-07-06 (Cycle 91) Implementation Notes
 
@@ -3999,11 +4003,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-334: No Pre-Archive Readiness Signal Outside the Finalise Tab
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 92) — Added a compact readiness chip to the "⬇️ File Review" h1 heading in `web/download-tab.js:populateDownloadTab()`. The chip shows "Required files: N/3 ✅/⚠ · ATS ✅/⚠ N issues" computed from the file list and ATS checks already fetched. Color-coded green/amber/red based on readiness. No new API calls needed — data already available in the function.
 **Discovered:** 2026-07-06 (cycle 88) by recruiter-ops.
-**Description:** The 7-item readiness checklist (`finalise.js:163–214`) is rendered only inside the hidden Finalise tab. There is no compact signal in the position bar, File Review tab, or elsewhere showing "3/3 required files ready ✅" before the user navigates to the Finalise step. Users who click "Archive Application" without checking readiness first cannot pre-assess their package status.
+**Description:** The 7-item readiness checklist (`finalise.js:163–214`) was rendered only inside the hidden Finalise tab. There was no compact signal in the File Review tab showing required file readiness before the user navigates to the Finalise step.
 **Affected stories:** US-O4, US-O1
-**Fix:** Surface a compact readiness chip (e.g., "Files ready: 3/3 ✅" or "Files missing: 1 ⚠") in the position bar or File Review tab header, computed from the same readiness data used by the Finalise checklist.
 
 ---
 
@@ -4020,11 +4023,10 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-336: Harvest Bullet Provenance (AI-Accepted vs. User-Edited) Not Shown on Harvest Cards
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 92) — `_compile_harvest_candidates()` in `scripts/routes/generation_routes.py` now builds a `audit_outcome` dict from `rewrite_audit` (keyed by rewrite id) and adds `outcome: 'accept'|'edit'` to each `improved_bullet` and `summary_variant` candidate. `renderCandidateRow()` in `web/harvest.js` now calls `renderProvenanceBadge(c)` which shows "✏️ User-edited" (amber) or "🤖 AI accepted" (violet) next to the type label for these candidate types.
 **Discovered:** 2026-07-06 (cycle 88) by trust-compliance.
-**Description:** The rewrite audit records `outcome: 'accept' | 'edit'` in `conversation_manager.py:1290–1294`, distinguishing AI-accepted rewrites from user-edited ones. However, Harvest cards do not surface this distinction — users cannot identify which bullets were accepted as-is from AI and which they personally edited.
+**Description:** The rewrite audit records `outcome: 'accept' | 'edit'` in `conversation_manager.py:1290–1294`, distinguishing AI-accepted rewrites from user-edited ones. Harvest cards did not surface this distinction.
 **Affected stories:** US-C9, US-C1
-**Fix:** Add a small provenance indicator ("AI accepted" vs. "User-edited") to each Harvest card, reading from the `outcome` field in the rewrite audit log.
 
 ---
 

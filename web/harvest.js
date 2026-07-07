@@ -137,10 +137,19 @@ function renderRecommendationBadge(rec) {
   return `<span style="font-size:0.75em;font-weight:600;border-radius:4px;padding:2px 8px;background:${cfg.bg};color:${cfg.color};white-space:nowrap;">${cfg.icon} ${esc(cfg.label)}</span>`;
 }
 
+function renderProvenanceBadge(c) {
+  if (c.type !== 'improved_bullet' && c.type !== 'summary_variant') return '';
+  if (c.outcome === 'edit') {
+    return '<span style="font-size:0.72em;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 6px;white-space:nowrap;border:1px solid #fcd34d;" title="You edited this rewrite before accepting it">✏️ User-edited</span>';
+  }
+  return '<span style="font-size:0.72em;background:#ede9fe;color:#5b21b6;border-radius:4px;padding:1px 6px;white-space:nowrap;border:1px solid #c4b5fd;" title="Accepted as-is from AI suggestion">🤖 AI accepted</span>';
+}
+
 function renderCandidateRow(c, idx) {
   const checked   = shouldPreCheck(c) ? ' checked' : '';
   const typeCfg   = HARVEST_TYPE_CONFIG[c.type] ?? {};
-  const sourceBadge = HARVEST_SOURCE_BADGE[c.type] ?? '';
+  const sourceBadge    = HARVEST_SOURCE_BADGE[c.type] ?? '';
+  const provenanceBadge = renderProvenanceBadge(c);
   const recBadge  = c.recommendation ? renderRecommendationBadge(c.recommendation) : '';
   const confBadge = c.confidence ? renderConfidenceBadge(c.confidence) : '';
   const rowId     = `harvest-row-${esc(c.id)}`;
@@ -164,7 +173,7 @@ function renderCandidateRow(c, idx) {
         <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
           <div style="flex:1;min-width:200px;">
             <div style="font-size:0.78em;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">
-              ${esc(typeCfg.label ?? c.type)}${sourceBadge}
+              ${esc(typeCfg.label ?? c.type)}${sourceBadge}${provenanceBadge}
             </div>
             <div style="font-size:0.87em;color:#94a3b8;margin-bottom:6px;">${esc(c.label)}</div>
             ${c.original ? `

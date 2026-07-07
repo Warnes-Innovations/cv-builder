@@ -1122,6 +1122,13 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
 
     approved_rewrites = conversation.state.get('approved_rewrites') or []
 
+    # Build provenance index from rewrite_audit (GAP-336)
+    audit_outcome: Dict[str, str] = {
+        entry.get('id', ''): entry.get('outcome', 'accept')
+        for entry in (conversation.state.get('rewrite_audit') or [])
+        if entry.get('id')
+    }
+
     for rw in approved_rewrites:
         if rw.get('section') == 'summary':
             continue
@@ -1131,13 +1138,15 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
             continue
         if proposed.strip() == original.strip():
             continue
+        rw_id = rw.get('id', '')
         candidates.append({
-            'id':        f"rewrite_{rw.get('id', len(candidates))}",
+            'id':        f"rewrite_{rw_id or len(candidates)}",
             'type':      'improved_bullet',
-            'label':     f"Improved bullet — {rw.get('context', rw.get('id', 'unknown'))}",
+            'label':     f"Improved bullet — {rw.get('context', rw_id or 'unknown')}",
             'original':  original,
             'proposed':  proposed,
             'rationale': rw.get('rationale') or 'Approved rewrite improves ATS-keyword coverage or adds a quantified metric.',
+            'outcome':   audit_outcome.get(rw_id, 'accept'),
         })
 
     candidates.extend(_collect_harvest_skill_candidates(conversation))
@@ -1149,6 +1158,7 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
     if summary_rewrite and summary_rewrite.get('proposed'):
         cand_id = 'summary_variant'
         if not any(c['id'] == cand_id for c in candidates):
+            sr_id = summary_rewrite.get('id', '')
             candidates.append({
                 'id':        cand_id,
                 'type':      'summary_variant',
@@ -1156,6 +1166,7 @@ def _compile_harvest_candidates(conversation) -> List[Dict[str, Any]]:
                 'original':  summary_rewrite.get('original', ''),
                 'proposed':  summary_rewrite.get('proposed', ''),
                 'rationale': 'Rewritten summary could be stored as a named variant for future reuse.',
+                'outcome':   audit_outcome.get(sr_id, 'accept'),
             })
 
     return candidates

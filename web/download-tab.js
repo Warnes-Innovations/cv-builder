@@ -404,7 +404,24 @@ async function populateDownloadTab(cvData) {
   }
 
   const files = _collectDownloadableFiles(cvData);
-  let html = '<h1>⬇️ File Review</h1>';
+
+  // ── Readiness chip (GAP-334) ─────────────────────────────────────────────
+  const _fileNames = (files || []).map(f => (f.filename || '').toLowerCase());
+  const _hasPdf    = _fileNames.some(n => n.endsWith('.pdf') && !n.includes('coverletter') && !n.includes('cover_letter'));
+  const _hasDocx   = _fileNames.some(n => n.endsWith('.docx') && !n.includes('coverletter') && !n.includes('cover_letter') && !n.includes('screening'));
+  const _hasHtml   = _fileNames.some(n => n.endsWith('.html'));
+  const _reqCount  = [_hasPdf, _hasDocx, _hasHtml].filter(Boolean).length;
+  const _atsFails  = (checks || []).filter(c => c.status === 'fail' || c.status === 'error').length;
+  const _atsScanned = (checks || []).length > 0;
+  const _chipColor = _reqCount === 3 && (_atsScanned ? _atsFails === 0 : true) ? '#065f46' : (_reqCount >= 2 ? '#92400e' : '#991b1b');
+  const _chipBg    = _reqCount === 3 && (_atsScanned ? _atsFails === 0 : true) ? '#f0fdf4' : (_reqCount >= 2 ? '#fffbeb' : '#fef2f2');
+  const _chipBorder = _reqCount === 3 && (_atsScanned ? _atsFails === 0 : true) ? '#86efac' : (_reqCount >= 2 ? '#fcd34d' : '#fca5a5');
+  const _atsChip   = _atsScanned
+    ? (_atsFails === 0 ? '&nbsp;·&nbsp;ATS ✅' : `&nbsp;·&nbsp;ATS ⚠ ${_atsFails} issue${_atsFails !== 1 ? 's' : ''}`)
+    : '&nbsp;·&nbsp;ATS not run';
+  const _readinessChip = `<span style="display:inline-block;font-size:0.82em;font-weight:600;padding:3px 10px;border-radius:12px;background:${_chipBg};color:${_chipColor};border:1px solid ${_chipBorder};margin-bottom:14px;">Required files: ${_reqCount}/3 ${_reqCount === 3 ? '✅' : '⚠'}${_atsChip}</span>`;
+
+  let html = `<h1>⬇️ File Review <span style="font-weight:400;">${_readinessChip}</span></h1>`;
   html += '<p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">✅ <em>This is the <strong>completeness check</strong> step — ATS validation runs here and you can archive the application. To download files immediately after generation, use the <strong>Generated Files</strong> tab.</em></p>';
   html += _renderValidationSummary(checks, summary, pageCount, atsError);
 
