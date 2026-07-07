@@ -3567,7 +3567,7 @@ def test_fetch_job_url_route_enforces_ownership_and_validates_input(build_app):
             },
         )
         assert invalid_url.status_code == 400
-        assert invalid_url.get_json()["error"] == "Invalid URL format"
+        assert invalid_url.get_json()["error"] == "Invalid or disallowed URL."
 
 
 def test_fetch_job_url_route_returns_protected_site_guidance(build_app):

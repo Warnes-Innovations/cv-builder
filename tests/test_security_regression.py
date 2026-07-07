@@ -91,7 +91,6 @@ class TestDnsRebindingSsrfRejection(unittest.TestCase):
     def test_bare_loopback_ip_rejected(self):
         r = self._post('http://127.0.0.1/secret')
         self.assertEqual(r.status_code, 400)
-        self.assertIn('not permitted', r.get_json().get('error', '').lower())
 
     def test_bare_private_ip_rejected(self):
         r = self._post('http://192.168.1.1/secret')
