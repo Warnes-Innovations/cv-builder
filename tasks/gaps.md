@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 99)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 100)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,16 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 100) Implementation Notes
+
+Cycle 100: code review of the draft GAP-362 implementation found 2 confirmed bugs — gate-type key contamination (stale `include_publications` etc. travelling to the backend and affecting LLM recommendations) and consent bypass (`window.questionAnswers` pre-populated before the existing "No thanks" banner, whose dismiss path did not clear it). Investigation revealed GAP-362 was already resolved by a pre-existing mechanism: `_proceedAfterIntake()` → `/api/prior-clarifications` → consent banner. The buggy draft implementation was fully reverted.
+
+- GAP-362 (MEDIUM, OPEN→RESOLVED via pre-existing impl): No net code change; implementation was reverted after code review confirmed 2 bugs and discovered the pre-existing consent-based mechanism.
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
 
 ## 2026-07-07 (Cycle 99) Implementation Notes
 
@@ -117,7 +127,7 @@ Full 15-persona + heuristic review cycle (discovery only — no code fixes in th
 - **master-cv-curator** — experience `domain_relevance` field absent from Master CV CRUD modal (GAP-359, MEDIUM)
 - **hr-ats** — "Blocked formats reflect ATS validation failures" footer appears when nothing is blocked (GAP-360, MEDIUM, one-line fix)
 - **applicant** — Role-type/mismatch gap analysis computed but not shown in job analysis panel (GAP-361, MEDIUM) ✅ cycle 98
-- **applicant** — Prior-session clarification answers never pre-populated across sessions (GAP-362, MEDIUM)
+- **applicant** — Prior-session clarification answers never pre-populated across sessions (GAP-362, MEDIUM) ✅ pre-existing impl
 - **applicant** — Screening LLM call doesn't inject post-analysis clarification answers (GAP-363, MEDIUM)
 - **ux-expert** — Layout sub-phase has 4 sequential action buttons with no sub-step indicator (GAP-364, MEDIUM)
 - **ux-expert** — `.intake-confirm-card` CSS exists but extracted-field confirmation is unwired (GAP-365, MEDIUM) ✅ cycle 97
@@ -4410,8 +4420,8 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-362: Prior-Session Clarification Answers Not Pre-Populated Across Sessions
 
 **Priority:** MEDIUM
-**Status:** OPEN
-**Discovered:** 2026-07-06 (cycle 93) by applicant.
+**Status:** RESOLVED (pre-existing implementation discovered in cycle 100) — `_proceedAfterIntake()` in `message-dispatch.js:491` calls `/api/prior-clarifications` (status_routes.py:1121), which scans all sessions for role-keyword overlap against `state.intake.role`, then shows a consent banner ("Load defaults" / "No thanks"). When the user clicks "Load defaults", `_loadPriorClarifications()` merges the matched answers into `window.questionAnswers`. This satisfies US-A2 with proper user consent. Note: the mechanism requires `state.intake.role` to be non-empty for keyword matching; if the intake form was skipped or produces no role string, no prior answers are offered — this edge case remains unfixed.
+**Discovered:** 2026-07-06 (cycle 93) by applicant (pre-existing implementation was missed in the source scan).
 **Description:** US-A2 requires that if a prior session exists for the same role type, previous clarification answers are pre-filled as editable defaults. No code was found that loads prior `post_analysis_answers` across sessions. Every session forces the applicant to re-answer from scratch.
 **Affected stories:** US-A2
 
