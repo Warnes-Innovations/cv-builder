@@ -1200,7 +1200,16 @@ def create_blueprint(deps):
                 conversation._save_session()
             session_registry.touch(sid)
 
-            return jsonify({"ok": True, "summary": summary})
+            # Post-validate the generated summary for generic filler phrases (GAP-353)
+            quality_warning = None
+            try:
+                result = LLMClient.check_summary_generic_phrases(summary)
+                if not result.get('pass', True) and result.get('details'):
+                    quality_warning = result['details']
+            except Exception:
+                logger.warning("Summary quality check failed", exc_info=True)
+
+            return jsonify({"ok": True, "summary": summary, "quality_warning": quality_warning})
 
         except Exception as exc:
             import traceback
@@ -1706,13 +1715,17 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                 'company_context': company_context,
             }
 
-            # Run persuasion quality checks on the generated body (GAP-339)
+            # Run persuasion quality checks on the generated body (GAP-339, GAP-344)
             body_text = response.strip()
             cl_persuasion: list = []
             for check_fn, flag in [
-                (LLMClient.check_passive_voice,          'passive_voice'),
-                (LLMClient.check_hedging_language,       'hedging'),
-                (LLMClient.check_summary_generic_phrases,'generic_phrases'),
+                (LLMClient.check_passive_voice,            'passive_voice'),
+                (LLMClient.check_hedging_language,         'hedging'),
+                (LLMClient.check_summary_generic_phrases,  'generic_phrases'),
+                (LLMClient.check_strong_action_verb,       'strong_action_verb'),
+                (LLMClient.check_has_result_clause,        'has_result'),
+                (LLMClient.check_positive_metric_framing,  'positive_metric'),
+                (LLMClient.check_named_institution_position,'named_institution'),
             ]:
                 try:
                     result = check_fn(body_text)

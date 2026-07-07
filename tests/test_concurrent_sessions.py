@@ -1633,10 +1633,10 @@ def test_summary_and_master_data_routes_enforce_ownership(build_app):
             json={"session_id": session_id, "owner_token": "owner-a"},
         )
         assert generated.status_code == 200
-        assert generated.get_json() == {
-            "ok": True,
-            "summary": "Generated summary",
-        }
+        resp_json = generated.get_json()
+        assert resp_json["ok"] is True
+        assert resp_json["summary"] == "Generated summary"
+        assert "quality_warning" in resp_json  # GAP-353: post-generation quality check
         assert manager.state["summary_focus_override"] == "ai_generated"
         assert (
             manager.state["session_summaries"]["ai_generated"]

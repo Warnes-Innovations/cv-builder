@@ -268,6 +268,22 @@ function refreshLayoutReviewState() {
   const hintEl = document.getElementById('layout-two-step-hint');
   if (hintEl) hintEl.style.display = showConfirm;
 
+  // Update sub-step indicator (GAP-364)
+  const subEl = document.getElementById('layout-substep-indicator');
+  if (subEl) {
+    const layoutConfirmed = generationState.layoutConfirmed || generationState.phase === 'confirmed';
+    let substepText, substepStep;
+    if (!generationState.previewAvailable) {
+      substepText = 'Generate preview to start reviewing the layout'; substepStep = 1;
+    } else if (layoutConfirmed) {
+      substepText = 'Layout confirmed — generate final files to continue'; substepStep = 3;
+    } else {
+      substepText = 'Review the preview, then confirm layout when satisfied'; substepStep = 2;
+    }
+    subEl.innerHTML = `<span class="layout-substep-step">Step ${substepStep} of 3</span> <span class="layout-substep-label">${escapeHtml(substepText)}</span>`;
+    subEl.style.display = 'flex';
+  }
+
   if (finalBtn) {
     finalBtn.style.display = generationState.previewAvailable
       && !freshness.isStale
@@ -305,6 +321,7 @@ async function initiateLayoutInstructions() {
 
         <div class="layout-input-pane">
           <h3>Layout Review</h3>
+          <div id="layout-substep-indicator" class="layout-substep-indicator" aria-live="polite" style="display:none;"></div>
           <p class="layout-scope-label">💡 Describe a layout change (spacing, margins, column widths, section order). Text content is finalised — content edits are not applied here.</p>
           <div id="layout-page-estimate" style="display:none;margin-bottom:10px;"></div>
 

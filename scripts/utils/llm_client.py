@@ -1375,7 +1375,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             {
                 'pass': bool,
                 'flag_type': 'car_structure',
-                'severity': 'info' (never 'warn'),
+                'severity': 'info' on pass, 'warn' on fail,
                 'details': message or empty string.
             }
         """
@@ -1402,7 +1402,7 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             return {
                 'pass': False,
                 'flag_type': 'car_structure',
-                'severity': 'info',
+                'severity': 'warn',
                 'details': 'Consider adding Challenge-Action-Result (CAR) structure: "Faced [problem], [Action], resulting in [Result]".'
             }
 

@@ -749,6 +749,21 @@ def create_blueprint(deps):
         """Return a list of all active in-memory sessions."""
         entries = session_registry.all_active()
         requester_token = request.args.get("owner_token")
+
+        def _active_notes(entry):
+            """Read notes from the session's metadata.json sidecar if present."""
+            sd = getattr(entry.manager, 'session_dir', None)
+            if not sd:
+                return ''
+            meta_path = Path(sd) / 'metadata.json'
+            if not meta_path.exists():
+                return ''
+            try:
+                meta = _load_json_guarded(meta_path) or {}
+                return meta.get('notes', '')
+            except Exception:
+                return ''
+
         return jsonify({
             "sessions": [
                 {
@@ -763,6 +778,7 @@ def create_blueprint(deps):
                         and e.owner_token
                         and requester_token == e.owner_token
                     ),
+                    "notes":               _active_notes(e),
                 }
                 for e in entries
             ]

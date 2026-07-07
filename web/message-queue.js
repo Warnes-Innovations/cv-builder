@@ -209,8 +209,9 @@ function appendFormattedAnalysis(result) {
       content.className = 'content job-analysis';
 
       let html = '<h3>📋 Job Analysis Complete</h3>';
-      if (data.title)  html += `<p><strong>Position:</strong> ${data.title} at ${data.company || 'Company'}</p>`;
-      if (data.domain) html += `<p><strong>Domain:</strong> ${data.domain}</p>`;
+      if (data.title)      html += `<p><strong>Position:</strong> ${data.title} at ${data.company || 'Company'}</p>`;
+      if (data.domain)     html += `<p><strong>Domain:</strong> ${data.domain}</p>`;
+      if (data.role_level) html += `<p><strong>Role level:</strong> ${data.role_level}</p>`;
 
       if (data.required_skills?.length) {
         html += '<h4>🎯 Required Skills:</h4><ul>';

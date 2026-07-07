@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 93)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-06 (cycle 95)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,25 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-06 (Cycle 95) Implementation Notes
+
+Cycle 95 addressed 10 gaps:
+
+- GAP-344 (HIGH): Expanded cover letter persuasion checks in `master_data_routes.py` from 3 to 7 (added `check_strong_action_verb`, `check_has_result_clause`, `check_positive_metric_framing`, `check_named_institution_position`)
+- GAP-345 (HIGH): Escalated `check_car_structure()` fail-branch severity from `'info'` to `'warn'` in `llm_client.py:1405`
+- GAP-352 (PARTIAL): Added `notes` field to `/api/sessions/active` response in `session_routes.py` — active session notes now appear in Sessions modal row (session-switcher-ui.js already reads s.notes). Full workspace banner blocked by index.html OFF-LIMITS (GAP-01).
+- GAP-353 (MEDIUM): Added post-generation summary quality check in `master_data_routes.py:generate_professional_summary` route; runs `check_summary_generic_phrases()` on generated text; returns `quality_warning` in API response; `summary-review.js` shows a warning toast when present
+- GAP-356 (MEDIUM): Added company-substance check (Rule 2b) to `_validateCoverLetter()` in `cover-letter.js` — warns when no company context provided; checks that context keywords appear in letter when context is filled; added 4 new persuasion flag labels to `_persuasionFlagLabels`
+- GAP-361 (PARTIAL): Added `role_level` to job analysis panel in `message-queue.js:appendFormattedAnalysis` — shows "Role level: IC / Senior IC …" when present; full skill-gap display deferred (requires backend gap computation)
+- GAP-363 (RESOLVED — already done): Source-verified that `post_analysis_answers` IS already injected into screening prompt at `master_data_routes.py:1968–1986`
+- GAP-364 (MEDIUM): Added `#layout-substep-indicator` to layout panel in `layout-instruction.js`; updates dynamically in `refreshLayoutReviewState()` to show "Step N of 3" with descriptive label; CSS added to `styles.css`
+- GAP-366 (MEDIUM): Added single-level bulk undo to publications review (`publications-review.js`: `_pubUndoSnapshot`, `undoBulkPubAction`, undo button in `pub-bulk-toolbar`) and rewrite review (`rewrite-review.js`: `_rwUndoSnapshot`, `undoBulkRewriteAction`, undo button in tally bar)
+- GAP-368 (PARTIAL): Updated `workflow-steps.js` `STEP_SHORT_LABELS` and dynamic `STEP_LABELS` to use "Update Master CV" instead of "Harvest" — static index.html labels remain (OFF-LIMITS until GAP-01)
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
 
 ## 2026-07-06 (Cycle 94) Implementation Notes
 
@@ -4164,7 +4183,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-344: Only 3/10 Persuasion Checks Applied to Cover Letter Body
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 95) — Added 4 more checks: check_strong_action_verb, check_has_result_clause, check_positive_metric_framing, check_named_institution_position. Skipped check_keyword_appended and check_new_numeric_claims (different signatures not applicable to generation). Skipped check_car_structure (bullet-level). Added 4 new persuasion flag labels to cover-letter.js.
 **Discovered:** 2026-07-06 (cycle 93) by persuasion-expert.
 **Description:** `cover_letter_generate` in `master_data_routes.py:1713–1715` applies only `check_passive_voice`, `check_hedging_language`, and `check_summary_generic_phrases` to the generated letter body. The other 7 checks — `check_strong_action_verb`, `check_has_result_clause`, `check_keyword_appended`, `check_positive_metric_framing`, `check_new_numeric_claims`, `check_named_institution_position`, `check_car_structure` — are never run on cover letters. A cover letter with fabricated metrics or weak passive voice passes through 7 unguarded checks.
 **Affected stories:** US-P5
@@ -4174,7 +4193,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-345: CAR Structure Check Has Zero Enforcement Weight
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 95) — Changed severity from 'info' to 'warn' in the fail branch of check_car_structure() in llm_client.py:1405; updated docstring.
 **Discovered:** 2026-07-06 (cycle 93) by persuasion-expert.
 **Description:** `check_car_structure()` (`llm_client.py:1364–1407`) returns `severity: 'info'` for both pass and fail outcomes. In `renderRewritePanel()` (`rewrite-review.js`), only `severity: 'warn'` entries increment the warning count, appear in the blocking amber banner, and require user acknowledgement before submission. CAR failures silently appear as quiet info badges that users can ignore without any friction. Fix: escalate severity to `warn` and add a suggested CAR-structured rewrite to the flag details.
 **Affected stories:** US-P3
@@ -4244,7 +4263,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-352: Session Notes Invisible During Active Session Workspace
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-06 (cycle 95) — Added _active_notes() helper in session_routes.py:sessions_active() that reads metadata.json sidecar and returns notes field; session-switcher-ui.js already reads s.notes at line 268 and renders notesPreview for all row types, so notes now appear in the Sessions modal row for active sessions. Full "follow into workspace" banner would require a new DOM element in index.html (OFF-LIMITS until GAP-01).
 **Discovered:** 2026-07-06 (cycle 93) by returning-user.
 **Description:** Notes and application status are stored in a `metadata.json` sidecar file, not in the in-memory session. The `/api/sessions/active` endpoint (`session_routes.py:747–768`) never returns `notes`. `_normalizeSessionsForTable()` (`session-switcher-ui.js:238–280`) includes `notes` only for saved-type rows. `loadSessionFile()` does not read `metadata.json`. Result: a returning user who left themselves notes must open the Sessions modal to recall them — notes do not follow the user into the active workspace.
 **Affected stories:** US-S5 (proposed US-S8)
@@ -4254,7 +4273,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-353: Professional Summary Never Post-Validated After Generation
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 95) — Added post-generation check_summary_generic_phrases() call in master_data_routes.py after summary generation; returns quality_warning in API response; summary-review.js shows a warning toast when quality_warning is non-null.
 **Discovered:** 2026-07-06 (cycle 93) by persuasion-expert.
 **Description:** The `generate_professional_summary()` prompt (`llm_client.py:882–903`) explicitly requires a value-identity opening and a forward-looking closing, and prohibits 19 generic filler phrases. None of these are verified on the actual output. `check_summary_generic_phrases()` fires only on rewrite proposals targeting `location == 'summary'`, not on the freshly generated text. A summary opening "Results-driven biostatistician with 10 years of experience seeking a challenging role…" passes the entire pipeline undetected.
 **Affected stories:** US-P1, US-P3
@@ -4284,7 +4303,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-356: Cover Letter Company-Reference Check Passes Without Company-Specific Substance
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 95) — Added Rule 2b company-substance check to _validateCoverLetter() in cover-letter.js. Warns when company_context is empty; when filled, checks for keyword overlap between context and letter body.
 **Discovered:** 2026-07-06 (cycle 93) by hiring-manager.
 **Description:** The `companyCheck` validation in `cover-letter.js:562–589` counts how many times the company name appears in the letter. Mentioning the company name twice counts as a pass. However, the prompt only injects company-specific context (initiatives, products, values) when the user fills in the optional `company_context` textarea (`master_data_routes.py:1640–1643`). When that field is empty (the common case), the letter will say "I'm excited about Acme Corp" twice and still pass the check, with no company-specific substance. US-M6 requires "at least one company-specific reference (recent initiative, product, or value)."
 **Affected stories:** US-M6
@@ -4334,7 +4353,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-361: Role-Type/Mismatch Gap Analysis Missing From Job Analysis Display
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-06 (cycle 95) — Added role_level display to appendFormattedAnalysis() in message-queue.js. Full skill-gap analysis (required vs. master CV) deferred — needs backend gap computation added to analysis result.
 **Discovered:** 2026-07-06 (cycle 93) by applicant.
 **Description:** The backend computes `role_level` (IC vs. leadership, seniority) and has all data needed for apparent-mismatch surfacing, but `appendFormattedAnalysis` in `web/message-queue.js:199–249` renders only: position, domain, required skills, preferred skills, and ATS keywords. Neither the role-type inference nor any gap analysis ("Kubernetes is required but not in your master data") appears in the analysis panel. This is the most decision-critical part of US-A2 for an applicant.
 **Affected stories:** US-A2
@@ -4354,7 +4373,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-363: Screening LLM Call Does Not Inject Post-Analysis Clarification Answers
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED — already implemented prior to cycle 93 discovery. post_analysis_answers injected into screening prompt as cl_context at master_data_routes.py:1968–1986.
 **Discovered:** 2026-07-06 (cycle 93) by applicant.
 **Description:** The `/api/screening/generate` endpoint (`master_data_routes.py:1922`) is a standalone LLM call that reads master data and selected experiences but does not pull `post_analysis_answers` from the active session state. Preferences the applicant already stated (e.g., "emphasise leadership") are silently absent from screening response generation, contrary to US-A8's requirement that screening responses leverage the established conversation context.
 **Affected stories:** US-A8
@@ -4364,7 +4383,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-364: Layout Sub-Phase Has 4 Sequential Action Buttons With No Sub-Step Indicator
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 95) — Added #layout-substep-indicator element to layout panel in layout-instruction.js; refreshLayoutReviewState() updates it to show 'Step N of 3' based on previewAvailable and layoutConfirmed state; CSS .layout-substep-indicator added to styles.css.
 **Discovered:** 2026-07-06 (cycle 93) by ux-expert.
 **Description:** The layout phase exposes four sequentially-labeled primary action buttons — "Generate Preview →", "Open Layout Review →", "Confirm Layout", "Continue to File Review →" — without any sub-step indicator in the workflow nav bar. All four states map to the single "Layout Review" step pill. A returning user cannot tell from the nav which of the four substeps they are on. Source: `app.js:194–197`, `index.html:134`.
 **Affected stories:** US-U9, US-A6
@@ -4384,7 +4403,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-366: Publications and Rewrite Bulk Actions Lack Undo Path
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-06 (cycle 95) — Added _pubUndoSnapshot and undoBulkPubAction() to publications-review.js with pub-bulk-toolbar undo button; added _rwUndoSnapshot and undoBulkRewriteAction() to rewrite-review.js with rw-bulk-undo-btn in tally bar.
 **Discovered:** 2026-07-06 (cycle 93) by power-user.
 **Description:** Experience, skills, and achievements all show an "↩ Undo" button immediately after any bulk action. Publications (`bulkPubAction` in `publications-review.js:295`) and the rewrite panel (`acceptAllRewrites`/`rejectAllRewrites` in `rewrite-review.js:680–695`) perform bulk operations without recording a snapshot — no undo button appears. Accidentally clicking "Reject All" on publications or "Accept All" on rewrites has no recovery path, which is a significant power-user penalty on large review sets.
 **Affected stories:** US-W2, US-A5
@@ -4404,7 +4423,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-368: "Harvest" Step Label Is an Opaque Metaphor for Job Seekers
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** PARTIAL 2026-07-06 (cycle 95) — Updated STEP_SHORT_LABELS[harvest] and dynamic STEP_LABELS[harvest] in workflow-steps.js to 'Update Master CV'. Static step div and tab label in index.html remain (OFF-LIMITS until GAP-01).
 **Discovered:** 2026-07-06 (cycle 93) by applicant, first-time-user.
 **Description:** The workflow step "🌾 Harvest" is an agricultural metaphor with no inline definition. An explanation exists only in a hover tooltip. This violates the US-F1 failure-mode guard: "Terms like rewrites, customisations, layout review, or harvest appearing without context." The meaning ("Save approved rewrites back to your master CV") would be immediately understood if the label were "Update Master CV". Source: `index.html:122–148`, `workflow-steps.js:196–208`.
 **Affected stories:** US-F1, US-A11

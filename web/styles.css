@@ -1779,6 +1779,11 @@ textarea[aria-invalid="true"]:focus {
   100% { outline-color: transparent; background-color: inherit; }
 }
 
+/* Layout sub-step indicator (GAP-364) */
+.layout-substep-indicator { display: flex; align-items: center; gap: 8px; margin: 2px 0 12px; font-size: 0.84em; color: var(--cv-text-muted); }
+.layout-substep-step { font-weight: 700; color: var(--cv-accent); white-space: nowrap; }
+.layout-substep-label { color: var(--cv-text-secondary); }
+
 /* Phase 3: Intake confirmation card */
 .intake-confirm-card {
   background: var(--cv-sky-bg);

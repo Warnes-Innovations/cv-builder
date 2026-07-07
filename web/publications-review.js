@@ -24,6 +24,8 @@ window.publicationDecisions = {};
 // Ordered list of publication objects; mutated by movePubRow()
 window._publicationsOrdered = [];
 
+let _pubUndoSnapshot = null; // single-level undo for bulkPubAction (GAP-366)
+
 // ── Build publications review table ─────────────────────────────────────────
 
 async function buildPublicationsReviewTable() {
@@ -92,7 +94,7 @@ async function buildPublicationsReviewTable() {
           style="margin-left:8px;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;"
           oninput="filterPublicationsTable(this.value)">
       </label>
-      <span style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+      <span id="pub-bulk-toolbar" style="margin-left:auto;display:flex;gap:8px;align-items:center;">
         <span style="font-size:0.82em;color:#6b7280;">Bulk:</span>
         <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
           onclick="bulkPubAction('recommended')" title="Accept all recommended and reject the rest">Accept Recommended</button>
@@ -100,6 +102,7 @@ async function buildPublicationsReviewTable() {
           onclick="bulkPubAction('accept-all')" title="Accept all publications">Accept All</button>
         <button class="action-btn secondary" style="font-size:0.8em;padding:4px 10px;"
           onclick="bulkPubAction('reject-all')" title="Reject all publications">Reject All</button>
+        <button class="bulk-btn bulk-undo-btn" style="display:none" onclick="undoBulkPubAction()" title="Undo last bulk action">↩ Undo</button>
       </span>
     </div>
     <table id="publications-review-table" class="review-table">
@@ -296,6 +299,8 @@ function bulkPubAction(mode) {
   const pubs = window._publicationsOrdered || [];
   if (!pubs.length) return;
 
+  _pubUndoSnapshot = { ...window.publicationDecisions };
+
   pubs.forEach(pub => {
     const citeKey = pub.cite_key;
     let accept;
@@ -317,6 +322,33 @@ function bulkPubAction(mode) {
 
   const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
   showToast(`Bulk action applied: ${accepted} accepted, ${pubs.length - accepted} excluded`);
+  const undoBtn = document.getElementById('pub-bulk-toolbar')?.querySelector('.bulk-undo-btn');
+  if (undoBtn) undoBtn.style.display = '';
+}
+
+function undoBulkPubAction() {
+  if (!_pubUndoSnapshot) return;
+  const snapshot = _pubUndoSnapshot;
+  _pubUndoSnapshot = null;
+  window.publicationDecisions = { ...snapshot };
+  const pubs = window._publicationsOrdered || [];
+  pubs.forEach(pub => {
+    const citeKey = pub.cite_key;
+    const row = document.querySelector(`tr[data-cite-key="${CSS.escape(citeKey)}"]`);
+    if (!row) return;
+    row.querySelectorAll('.icon-btn[data-action="accept"],[data-action="reject"]').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', 'false');
+    });
+    const prev = snapshot[citeKey];
+    if (prev !== undefined) {
+      const target = row.querySelector(`[data-action="${prev ? 'accept' : 'reject'}"]`);
+      if (target) { target.classList.add('active'); target.setAttribute('aria-pressed', 'true'); }
+    }
+  });
+  const undoBtn = document.getElementById('pub-bulk-toolbar')?.querySelector('.bulk-undo-btn');
+  if (undoBtn) undoBtn.style.display = 'none';
+  showToast('Bulk action undone.');
 }
 
 // ── Submit decisions ─────────────────────────────────────────────────────────
@@ -374,6 +406,7 @@ async function submitPublicationDecisions() {
 export {
   buildPublicationsReviewTable,
   bulkPubAction,
+  undoBulkPubAction,
   filterPublicationsTable,
   handlePubAction,
   submitPublicationDecisions,

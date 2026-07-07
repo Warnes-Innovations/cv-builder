@@ -259,6 +259,9 @@ async function _callGenerateSummary(refinementPrompt, previousSummary) {
       window.selectedSummaryKey = 'ai_generated';
       await saveSummaryFocusToBackend('ai_generated');
       scheduleAtsRefresh('review_checkpoint');
+      if (data.quality_warning) {
+        showToast(`Summary quality: ${data.quality_warning}`, 'warning');
+      }
     } else {
       if (statusEl) statusEl.textContent = '⚠ error';
       if (textEl)   textEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(data.error || 'Generation failed.')}</span>`;

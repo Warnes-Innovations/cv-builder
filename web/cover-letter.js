@@ -591,7 +591,32 @@ function _validateCoverLetter(text) {
     };
   }
 
-  // ── Rule 2b: Paragraph 1 contains company name and role title ──
+  // ── Rule 2b: Company-specific substance (GAP-356) ────────────
+  const _ctxValue = (_coverLetterFormState && _coverLetterFormState.companyContext) ||
+                    ((document.getElementById('cl-company-context') || {}).value) || '';
+  let substanceCheck;
+  if (!_ctxValue.trim()) {
+    substanceCheck = {
+      warn: true,
+      label: 'Company substance',
+      detail: 'No company context provided — fill in the Company context field so the letter can reference specific initiatives, products, or values (US-M6).',
+    };
+  } else {
+    const _stopWords = new Set(['with', 'from', 'that', 'this', 'have', 'their', 'they', 'been', 'were', 'will', 'your', 'which', 'about', 'into', 'more', 'also', 'when', 'than', 'then', 'some', 'such', 'each', 'over', 'like', 'just', 'both', 'very', 'after', 'before', 'other', 'would', 'could', 'should', 'team', 'work', 'year', 'time', 'make']);
+    const _ctxKws = [...new Set(_ctxValue.toLowerCase().match(/[a-z]{4,}/g) || [])].filter(w => !_stopWords.has(w));
+    const _textLcSub = text.toLowerCase();
+    const _matched = _ctxKws.filter(kw => _textLcSub.includes(kw));
+    substanceCheck = {
+      pass: _matched.length >= 1,
+      warn: _matched.length === 0,
+      label: 'Company substance',
+      detail: _matched.length >= 1
+        ? `Company-specific context referenced (${_matched.slice(0, 3).join(', ')}${_matched.length > 3 ? ', …' : ''}) — good.`
+        : 'Company context provided but not referenced in the letter — regenerate or add company-specific language.',
+    };
+  }
+
+  // ── Rule 2c: Paragraph 1 contains company name and role title ──
   const _allParas   = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const _firstBody  = _allParas.find(p => !/^dear\s|^to whom/i.test(p)) || _allParas[0] || '';
   // Limit to first 100 words so a single-newline letter with no double-breaks doesn't
@@ -718,18 +743,22 @@ function _validateCoverLetter(text) {
 
   // ── Append backend persuasion warnings (GAP-339) ─────────────
   const _persuasionFlagLabels = {
-    passive_voice:   'Passive voice',
-    hedging:         'Hedging language',
-    generic_phrases: 'Generic phrases',
+    passive_voice:        'Passive voice',
+    hedging:              'Hedging language',
+    generic_phrases:      'Generic phrases',
+    strong_action_verb:       'Strong action verb',
+    has_result:               'Result clause',
+    negative_metric_framing:  'Metric framing',
+    institution_placement:    'Named institution',
   };
   const backendChecks = (_coverLetterFormState.persuasionWarnings || []).map(w => ({
-    warn: w.severity !== 'info',
+    warn: w.severity !== 'error',   // 'info' and 'warn' severity both render as advisory warn
     label: _persuasionFlagLabels[w.flag_type] || w.flag_type,
     detail: w.details || 'Consider revising this section.',
   }));
 
   // ── Render ─────────────────────────────────────────────────────
-  const checks = [openingCheck, iFirstCheck, companyCheck, para1Check, wordCountCheck, ctaCheck, achievementCheck, fillerCheck, ...backendChecks];
+  const checks = [openingCheck, iFirstCheck, companyCheck, substanceCheck, para1Check, wordCountCheck, ctaCheck, achievementCheck, fillerCheck, ...backendChecks];
   container.innerHTML = checks.map(c => {
     const state = c.pass ? 'pass' : c.warn ? 'warn' : 'fail';
     return `<div class="cl-check ${state}">

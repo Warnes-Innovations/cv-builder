@@ -46,7 +46,7 @@ const _STEP_DISPLAY = {
   screening:      'Screening',
   interview_prep: 'Interview Prep',
   thank_you:      'Thank You',
-  harvest:        'Harvest',
+  harvest:        'Update Master CV',
 };
 const _ACTION_LABELS = {
   recommend_customizations: 'Selecting experiences & skills…',
@@ -950,7 +950,7 @@ function updateWorkflowSteps(status) {
     screening:      '📋 Screening',
     interview_prep: '🎤 Interview Prep',
     thank_you:      '🙏 Thank You',
-    harvest:        '🌾 Harvest',
+    harvest:        '🌾 Update Master CV',
   };
 
   // Determine which steps are done based on session state fields.

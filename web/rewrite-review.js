@@ -23,6 +23,7 @@ let _rewritePanelCache = null;
 let persuasionWarningsAcknowledged = false;
 let _warningsByRewriteId = {};  // Map from rewrite id → warning list (Path 1)
 let _restoreToastShown = false;
+let _rwUndoSnapshot = null;     // pending IDs before last bulk action, for single-level undo (GAP-366)
 
 function syncRewriteGlobals() {
   if (typeof window === 'undefined') {
@@ -32,6 +33,7 @@ function syncRewriteGlobals() {
   window._rewritePanelCache = _rewritePanelCache;
   window.acceptAllRewrites = acceptAllRewrites;
   window.rejectAllRewrites = rejectAllRewrites;
+  window.undoBulkRewriteAction = undoBulkRewriteAction;
   window.toggleRewriteCompactMode = toggleRewriteCompactMode;
   window.setBackendRewriteAudit = setBackendRewriteAudit;
 }
@@ -292,6 +294,7 @@ function renderRewritePanel(rewrites, warnings = []) {
         <span class="tally-pending">⏳ Pending: <strong id="tally-pending">${rewrites.length}</strong></span>
         <button class="rw-bulk-btn" onclick="acceptAllRewrites()" title="Accept all pending suggestions">✓ Accept All</button>
         <button class="rw-bulk-btn rw-bulk-reject" onclick="rejectAllRewrites()" title="Reject all pending suggestions">✗ Reject All</button>
+        <button class="rw-bulk-btn rw-bulk-undo-btn" style="display:none;border-color:var(--cv-slate-300);color:var(--cv-text-secondary);" onclick="undoBulkRewriteAction()" title="Undo last bulk action">↩ Undo</button>
         <button class="rw-compact-toggle" id="rw-compact-btn" onclick="toggleRewriteCompactMode()" title="Switch to compact single-line view for rapid review">⊞ Compact</button>
         <button class="submit-rewrites-btn" id="submit-rewrites-btn" disabled
                 onclick="submitRewriteDecisions()">Submit All Decisions</button>
@@ -678,20 +681,56 @@ function setPersuasionWarningsAcknowledged(value) {
 
 /** Bulk-accept all pending rewrite cards. */
 function acceptAllRewrites() {
+  const pendingIds = [];
   document.querySelectorAll('.rewrite-card').forEach(card => {
     const id = card.id.replace('rw-card-', '');
-    if (!rewriteDecisions[id]) applyRewriteAction(id, 'accept');
+    if (!rewriteDecisions[id]) pendingIds.push(id);
   });
+  _rwUndoSnapshot = pendingIds;
+  pendingIds.forEach(id => applyRewriteAction(id, 'accept'));
   updateRewriteTally();
+  _setRwUndoBtnVisible(true);
 }
 
 /** Bulk-reject all pending rewrite cards. */
 function rejectAllRewrites() {
+  const pendingIds = [];
   document.querySelectorAll('.rewrite-card').forEach(card => {
     const id = card.id.replace('rw-card-', '');
-    if (!rewriteDecisions[id]) applyRewriteAction(id, 'reject');
+    if (!rewriteDecisions[id]) pendingIds.push(id);
   });
+  _rwUndoSnapshot = pendingIds;
+  pendingIds.forEach(id => applyRewriteAction(id, 'reject'));
   updateRewriteTally();
+  _setRwUndoBtnVisible(true);
+}
+
+function _setRwUndoBtnVisible(show) {
+  const btn = document.getElementById('rewrite-tally')?.querySelector('.rw-bulk-undo-btn');
+  if (btn) btn.style.display = show ? '' : 'none';
+}
+
+function undoBulkRewriteAction() {
+  if (!_rwUndoSnapshot) return;
+  const pendingIds = _rwUndoSnapshot;
+  _rwUndoSnapshot = null;
+  pendingIds.forEach(id => {
+    delete rewriteDecisions[id];
+    const card = document.getElementById(`rw-card-${id}`);
+    if (!card) return;
+    card.classList.remove('accepted', 'rejected');
+    ['accept', 'edit', 'reject'].forEach(a => {
+      const btn = document.getElementById(`rw-${a}-${id}`);
+      btn?.classList.remove('active');
+      if (btn) btn.setAttribute('aria-pressed', 'false');
+    });
+    const decBadge = document.getElementById(`rw-decision-badge-${id}`);
+    if (decBadge) decBadge.style.display = 'none';
+  });
+  _persistDecisions();
+  updateRewriteTally();
+  _setRwUndoBtnVisible(false);
+  showToast('Bulk action undone.');
 }
 
 /** Toggle compact (single-line) card display for rapid review. */
@@ -723,6 +762,7 @@ export {
   submitRewriteDecisions,
   acceptAllRewrites,
   rejectAllRewrites,
+  undoBulkRewriteAction,
   toggleRewriteCompactMode,
   _renderRewriteAuditLog,
 };
