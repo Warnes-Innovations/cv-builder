@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 96)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 97)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,17 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 97) Implementation Notes
+
+Cycle 97 addressed 2 gaps:
+
+- GAP-351 (HIGH): Added `_maybeShowCustomizationsGuide()` to `review-table-base.js`. Fires once per browser session on first visit to any Customise sub-tab. Prepends a dismissible sky-blue `.intake-confirm-card` guide to `document-content` listing all 10 sub-tabs with suggested order, required/optional distinction, and a dismiss (✕) button. Called from `loadTabContent()` after each customise tab case.
+- GAP-365 (MEDIUM): Added `.intake-confirm-card` with editable position-name input to `populateJobTab()` in `job-input.js` when `data.phase === PHASES.INIT`. "Analyse Job" button now calls `_analyzeJobWithConfirm()` (exported) which reads the input, calls `/api/rename-current-session` if the value changed from the default, then calls `analyzeJob()`.
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
 
 ## 2026-07-07 (Cycle 96) Implementation Notes
 
@@ -75,7 +86,7 @@ Full 15-persona + heuristic review cycle (discovery only — no code fixes in th
 - **power-user** — `kb-focused` CSS missing for DataTable rows — keyboard nav works but invisible (GAP-348, HIGH)
 - **power-user** — `?` header button opens welcome modal (wrong target); shortcut panel undiscoverable and outdated (GAP-349, HIGH)
 - **hr-ats** — Advisory ATS failures counted as blocking in readiness chip and finalise checklist (GAP-350, HIGH)
-- **first-time-user** — Customise stage exposes 9 sub-tabs simultaneously with no guidance (GAP-351, HIGH)
+- **first-time-user** — Customise stage exposes 9 sub-tabs simultaneously with no guidance (GAP-351, HIGH) ✅ cycle 97
 - **returning-user** — Session notes invisible during active session workspace (GAP-352, MEDIUM)
 - **persuasion-expert** — Professional summary never post-validated after generation (GAP-353, MEDIUM)
 - **accessibility** — Review sub-tabs lack arrow-key navigation and roving tabindex (GAP-354, MEDIUM)
@@ -89,7 +100,7 @@ Full 15-persona + heuristic review cycle (discovery only — no code fixes in th
 - **applicant** — Prior-session clarification answers never pre-populated across sessions (GAP-362, MEDIUM)
 - **applicant** — Screening LLM call doesn't inject post-analysis clarification answers (GAP-363, MEDIUM)
 - **ux-expert** — Layout sub-phase has 4 sequential action buttons with no sub-step indicator (GAP-364, MEDIUM)
-- **ux-expert** — `.intake-confirm-card` CSS exists but extracted-field confirmation is unwired (GAP-365, MEDIUM)
+- **ux-expert** — `.intake-confirm-card` CSS exists but extracted-field confirmation is unwired (GAP-365, MEDIUM) ✅ cycle 97
 - **power-user** — Publications and rewrite bulk actions lack undo path (GAP-366, MEDIUM)
 - **multi-persona** — "LLM" / developer jargon in header and status copy (GAP-367, LOW)
 - **multi-persona** — "Harvest" step label is an opaque metaphor for job seekers (GAP-368, LOW)
@@ -4269,7 +4280,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-351: Customise Stage Exposes 9 Sub-Tabs Simultaneously With No Guidance
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 97) — Added `_maybeShowCustomizationsGuide()` in `review-table-base.js`. On first visit to any Customise sub-tab the function prepends a dismissible numbered guide card listing all 10 tabs with suggested order and required/optional labels. Existing `_visitedCustomiseTabs` set still tracks visited-state indicators (tab--visited CSS class).
 **Discovered:** 2026-07-06 (cycle 93) by first-time-user.
 **Description:** When the Customise step activates, 9 sub-tabs unlock at once (Goals, Questions, Experiences, Experience Bullets, Skills, Achievements, Tagline, Summary, Publications) with no ordering guidance, no required/optional distinction, and no visit-tracking progress indicator. A first-time user has no affordance for where to start or when they are done. Source: `ui-core.js` `STAGE_TABS.customizations`.
 **Affected stories:** US-F3, US-A3
@@ -4409,7 +4420,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-365: `.intake-confirm-card` CSS Exists But Extracted-Field Confirmation Is Unwired
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 97) — `populateJobTab()` in `job-input.js` now renders an `.intake-confirm-card` with an editable position-name `<input>` when `phase === PHASES.INIT`. "Analyse Job" button calls `_analyzeJobWithConfirm()` which saves any user edit via `/api/rename-current-session` before calling `analyzeJob()`.
 **Discovered:** 2026-07-06 (cycle 93) by ux-expert.
 **Description:** The `.intake-confirm-card` and `.intake-field-row` CSS classes exist in `styles.css:1781–1825`, indicating a designed extracted-field confirmation step. However, all three job-input paths (paste at `job-input.js:307`, URL fetch at `job-input.js:385`, file upload at `job-input.js:495`) route directly to analysis (or now to `populateJobTab()`) without rendering this confirmation UI. US-U2 criterion 4 explicitly requires extracted fields to be inline-editable before analysis runs. If the company name, role title, or date is misparsed, the user has no in-place correction path.
 **Affected stories:** US-U2, US-A2

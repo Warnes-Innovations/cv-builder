@@ -67,10 +67,25 @@ async function populateJobTab() {
         html += `<div style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:0.85em;margin:-8px 0 8px 0;" title="${escapeHtml(jobUrl)}"><a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:none;">${escapeHtml(jobUrl)}</a></div>`;
       }
 
+      // Intake confirm card: let user verify/correct position name before analysis (GAP-365).
+      if (data.phase === PHASES.INIT) {
+        html += `
+<div class="intake-confirm-card">
+  <h3>✏️ Confirm Position Details</h3>
+  <p>Review and correct the extracted position title before analysis. This label names your session.</p>
+  <div class="intake-field-row">
+    <label for="intake-position-name">Position Title</label>
+    <input id="intake-position-name" type="text"
+           value="${escapeHtml(positionName || '')}"
+           placeholder="e.g. Senior Software Engineer">
+  </div>
+</div>`;
+      }
+
       html += '<div style="line-height: 1.6; background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">' + _renderJobText(jobText) + '</div>';
 
       const analyzeBtn = data.phase === PHASES.INIT
-        ? '<button onclick="analyzeJob()" class="btn-primary" style="margin-right:8px;">🔍 Analyse Job</button>'
+        ? '<button onclick="_analyzeJobWithConfirm()" class="btn-primary" style="margin-right:8px;">🔍 Analyse Job</button>'
         : '';
       html += '<div style="margin-top:20px;">' + analyzeBtn + '<button onclick="showLoadJobPanel()" class="btn-secondary">📥 Load Different Job</button></div>';
       content.innerHTML = html;
@@ -82,6 +97,26 @@ async function populateJobTab() {
     log.error('Error loading job description:', error);
     await showLoadJobPanel();
   }
+}
+
+// Read the intake-position-name input (if visible), save it via the rename endpoint
+// if it differs from the extracted value, then proceed to analysis (GAP-365).
+async function _analyzeJobWithConfirm() {
+  const input = document.getElementById('intake-position-name');
+  if (input) {
+    const newName = input.value.trim();
+    const original = input.defaultValue.trim();
+    if (newName && newName !== original) {
+      try {
+        await fetch('/api/rename-current-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_name: newName }),
+        });
+      } catch (_) { /* non-fatal; analysis still proceeds */ }
+    }
+  }
+  analyzeJob();
 }
 
 // ---------------------------------------------------------------------------
@@ -574,6 +609,7 @@ function _clearFieldError(inputId, errorId) {
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   populateJobTab,
+  _analyzeJobWithConfirm,
   showLoadJobPanel,
   switchInputMethod,
   _pendingUploadFile,

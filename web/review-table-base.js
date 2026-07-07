@@ -113,6 +113,39 @@ function _updateVisitedTabIndicators() {
   });
 }
 
+// Inject a dismissible guidance card on the first visit to any Customise sub-tab (GAP-351).
+function _maybeShowCustomizationsGuide(content) {
+  if (window._customGuideShown) return;
+  window._customGuideShown = true;
+  if (!content) content = document.getElementById('document-content');
+  if (!content) return;
+  const guide = document.createElement('div');
+  guide.id = 'customizations-guide';
+  guide.className = 'intake-confirm-card';
+  guide.style.marginBottom = '20px';
+  guide.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+      '<h3 style="margin:0 0 6px;">📋 Customisation Guide</h3>' +
+      '<button onclick="document.getElementById(\'customizations-guide\').remove()" ' +
+              'style="background:none;border:none;cursor:pointer;font-size:1.1em;color:#64748b;padding:0;" ' +
+              'title="Dismiss" aria-label="Dismiss guide">✕</button>' +
+    '</div>' +
+    '<p style="margin:0 0 10px;font-size:0.88em;">Work through these review tabs in order for best results:</p>' +
+    '<ol style="margin:0;padding-left:20px;line-height:1.8;font-size:0.85em;">' +
+      '<li><strong>Goals</strong> — set page length and ATS constraints <em style="color:#64748b">(optional)</em></li>' +
+      '<li><strong>Screening Questions</strong> — pre-answer role questions <em style="color:#64748b">(optional)</em></li>' +
+      '<li><strong>Experiences</strong> — include/exclude roles and set prominence <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
+      '<li><strong>Experience Bullets</strong> — review AI-generated bullet points <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
+      '<li><strong>Skills</strong> — include/exclude skills <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
+      '<li><strong>Achievements</strong> — select key achievements <em style="color:#64748b">(recommended)</em></li>' +
+      '<li><strong>Tagline</strong> — review or edit your professional tagline <em style="color:#64748b">(recommended)</em></li>' +
+      '<li><strong>Summary</strong> — review or edit your professional summary <em style="color:#64748b">(recommended)</em></li>' +
+      '<li><strong>Publications</strong> — include/exclude publications <em style="color:#64748b">(if applicable)</em></li>' +
+      '<li><strong>ATS Score</strong> — check your keyword match score <em style="color:#64748b">(optional)</em></li>' +
+    '</ol>';
+  content.prepend(guide);
+}
+
 function switchTab(tab) {
   // Clear keyboard-focused card state when leaving a review tab
   if (typeof resetCardFocus === 'function') resetCardFocus();
@@ -329,6 +362,9 @@ async function loadTabContent(tab) {
       await populateScreeningTab();
       break;
   }
+
+  // Show customisations guidance on the first visit to any Customise sub-tab (GAP-351).
+  if (_CUSTOMISE_TABS.has(tab)) _maybeShowCustomizationsGuide(content);
 
   // Inject stale-content banner when this tab's step has been superseded
   const _staleStep = _STALE_TAB_STEP[tab];
