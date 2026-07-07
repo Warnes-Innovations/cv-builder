@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 98)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 99)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,16 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 99) Implementation Notes
+
+Cycle 99 addressed 1 gap:
+
+- GAP-349 (HIGH, PARTIAL→RESOLVED): Fixed the `?` header button wiring in `app.js:setupEventListeners()`. The button's inline `onclick="showWelcomeModal()"` is removed at init time and replaced with a `showKeyboardShortcutsPanel()` listener (index.html is off-limits). Also updated `title` and `aria-label` to say "keyboard shortcuts reference". Updated the shortcuts panel in `keyboard-shortcuts.js` to correctly describe A/R as "Accept/include" and "Reject/exclude" and to mention they work on customise review table rows, not just rewrite/spell cards. The button TEXT ("? Help") could not be changed — it remains in index.html.
+
+Test suite: 1442 Python + 1223 JS passing.
+
+---
 
 ## 2026-07-07 (Cycle 98) Implementation Notes
 
@@ -94,7 +104,7 @@ Full 15-persona + heuristic review cycle (discovery only — no code fixes in th
 - **accessibility** — No skip navigation link — WCAG 2.4.1 Level A violation (GAP-346, HIGH)
 - **master-cv-curator** — Publication edit modal silently drops non-hardcoded BibTeX fields on save (GAP-347, HIGH)
 - **power-user** — `kb-focused` CSS missing for DataTable rows — keyboard nav works but invisible (GAP-348, HIGH)
-- **power-user** — `?` header button opens welcome modal (wrong target); shortcut panel undiscoverable and outdated (GAP-349, HIGH)
+- **power-user** — `?` header button opens welcome modal (wrong target); shortcut panel undiscoverable and outdated (GAP-349, HIGH) ✅ cycle 99
 - **hr-ats** — Advisory ATS failures counted as blocking in readiness chip and finalise checklist (GAP-350, HIGH)
 - **first-time-user** — Customise stage exposes 9 sub-tabs simultaneously with no guidance (GAP-351, HIGH) ✅ cycle 97
 - **returning-user** — Session notes invisible during active session workspace (GAP-352, MEDIUM)
@@ -4270,7 +4280,7 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 ## GAP-349: Keyboard Shortcut `?` Header Button Opens Wrong Modal
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 99) — `setupEventListeners()` in `app.js` now removes the inline `onclick` from `#help-btn` at init and replaces it with `showKeyboardShortcutsPanel()`. Also updates `title`/`aria-label` to say "keyboard shortcuts reference". Shortcuts panel content in `keyboard-shortcuts.js` updated to describe A/R as working on customise review rows too. Button text "? Help" could not be changed (in index.html).
 **Discovered:** 2026-07-06 (cycle 93) by power-user.
 **Description:** The `?` key correctly opens a floating shortcuts panel, but the "? Help" header button (`index.html:63`) calls `showWelcomeModal()` — the onboarding wizard, not the shortcuts panel — so a user who investigates the `?` button is taken to the wrong place. Additionally, the shortcuts panel content says "A/R: Accept focused card (rewrite / spell)" without mentioning that A/R also works on all four customizations DataTable sub-tabs (added in GAP-332). The panel is undiscoverable for users who don't know the `?` key.
 **Affected stories:** US-W1

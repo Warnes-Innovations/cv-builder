@@ -205,9 +205,9 @@ export function showKeyboardShortcutsPanel() {
         <tbody>
           <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Trigger primary action on current step</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Re-run current workflow phase</td></tr>
-          <tr><td style="padding:4px 12px 4px 0"><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Navigate between review cards</td></tr>
-          <tr><td style="padding:4px 12px 4px 0"><kbd>A</kbd></td><td>Accept focused card (rewrite / spell)</td></tr>
-          <tr><td style="padding:4px 12px 4px 0"><kbd>R</kbd></td><td>Reject focused card (rewrite / spell)</td></tr>
+          <tr><td style="padding:4px 12px 4px 0"><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Navigate between review cards / table rows</td></tr>
+          <tr><td style="padding:4px 12px 4px 0"><kbd>A</kbd></td><td>Accept / include focused item (rewrite, spell, or customise review row)</td></tr>
+          <tr><td style="padding:4px 12px 4px 0"><kbd>R</kbd></td><td>Reject / exclude focused item (rewrite, spell, or customise review row)</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>?</kbd></td><td>Toggle this help panel</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>Esc</kbd></td><td>Close modals / this panel</td></tr>
         </tbody>

@@ -162,6 +162,19 @@ function setupEventListeners() {
   }
 
   if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
+
+  // Redirect the "? Help" header button from the welcome wizard to the keyboard
+  // shortcuts panel — the `?` key opens shortcuts, so the button should match
+  // (GAP-349). index.html is off-limits, so the onclick is overridden here.
+  const helpBtn = document.getElementById('help-btn');
+  if (helpBtn) {
+    helpBtn.removeAttribute('onclick');
+    helpBtn.title = 'Keyboard shortcuts reference';
+    helpBtn.setAttribute('aria-label', 'Open keyboard shortcuts reference');
+    helpBtn.addEventListener('click', () => {
+      if (typeof showKeyboardShortcutsPanel === 'function') showKeyboardShortcutsPanel();
+    });
+  }
 }
 
 // Tests now import helper functions from their canonical ES modules directly.
