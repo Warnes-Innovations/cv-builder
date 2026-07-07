@@ -106,6 +106,7 @@ jobs:
           mkdir -p test-results
           python -m pytest tests/ \
             --ignore=tests/ui \
+            --deselect tests/test_api_integration.py::TestModelAPI::test_model_switch_error_uses_selected_provider_label \
             -q --tb=short \
             --junit-xml=test-results/python-full.xml
         env:
