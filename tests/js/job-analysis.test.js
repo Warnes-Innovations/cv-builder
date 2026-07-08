@@ -171,7 +171,7 @@ describe('analyzeJob', () => {
 
     expect(globalThis.appendMessage).toHaveBeenCalledWith(
       'system',
-      "ℹ️ Content you submit is sent to the configured LLM provider for analysis. Review your provider's data policy for details.",
+      "ℹ️ Content you submit is sent to the configured AI Model provider for analysis. Review your provider's data policy for details.",
     )
     expect(global.localStorage.setItem).toHaveBeenCalledWith('cv-builder-llm-disclosure-shown-unknown', '1')
   })

@@ -341,7 +341,7 @@ function _renderAchievementsReviewTable(container) {
   achToolbar.id = 'ach-bulk-toolbar';
   achToolbar.innerHTML = `
     <span>Bulk:</span>
-    <button class="bulk-btn bulk-recommended" onclick="bulkAchievementAction('recommended')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
+    <button class="bulk-btn bulk-recommended" onclick="bulkAchievementAction('recommended')" title="Set all to the AI recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAchievementAction('emphasize')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAchievementAction('include')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAchievementAction('exclude')">${eyeSlashIcon()} Exclude All</button>

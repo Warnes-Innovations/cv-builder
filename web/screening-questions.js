@@ -234,7 +234,7 @@ async function generateScreeningResponse(idx) {
     if (!localStorage.getItem(key)) {
       const label = provider ? ` (${provider})` : '';
       if (typeof appendMessage === 'function') {
-        appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis. Review your provider's data policy for details.`);
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured AI Model provider${label} for analysis. Review your provider's data policy for details.`);
       }
       localStorage.setItem(key, '1');
     }

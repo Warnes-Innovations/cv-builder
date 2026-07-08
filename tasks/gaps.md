@@ -4611,3 +4611,154 @@ The Customise stage has 10 sub-tabs. There is no visual indicator on any tab sho
 **Discovered:** 2026-07-06 (cycle 93) by hiring-manager.
 **Description:** `_validate_summary()` in `cv_orchestrator.py:3607–3656` runs four checks (no "I" opener, word count, dense paragraph, top-3 skills) but never verifies that the summary mentions the target job title or quantifies years of experience. Both are US-M1 acceptance criteria. A hiring manager expects to read "10+ years in data science" and the specific role title in the opening paragraph — the current validator will pass a summary that omits both.
 **Affected stories:** US-M1
+
+---
+
+## GAP-376: `response_library.json` Written as Dict by Finalise but List Everywhere Else — TypeError on Archive
+
+**Priority:** CRITICAL (Bug)
+**Status:** RESOLVED 2026-07-07 (cycle 103) — `generation_routes.py`'s Finalise/Archive handler loaded `response_library.json` and immediately did `library[tag] = resp`, treating it as a dict. `master_data_routes.py`'s Screening-tab save/search handlers (the normal source of this file) write and read it as a **list** of entries. Whenever a user saved screening responses before finalising — the ordinary tab order — the Finalise action raised `TypeError: list indices must be integers or slices, not str` and failed. Rewrote the Finalise-side handler to treat the file as a list, matching the established format, with tag-based dedup so re-finalising doesn't duplicate entries. 3 regression tests added/updated in `tests/test_finalise.py`, including one that reproduces the original crash by pre-seeding the file in list form.
+**Discovered:** 2026-07-07 (cycle 103) by applicant persona, cvUiReview committee pass.
+**Description:** Two independent writers of the same file disagreed on its shape, and no test exercised the case where the file already existed (both existing tests mocked `Path.exists()` to always return `False` for this path, masking the bug entirely).
+**Affected stories:** US-A9
+
+---
+
+## GAP-377: `_renderDownloadGrid()` Referenced an Undeclared Variable — Crashed the Entire File Review Tab
+
+**Priority:** CRITICAL (Bug)
+**Status:** RESOLVED 2026-07-07 (cycle 103) — `web/download-tab.js`'s `_renderDownloadGrid()` referenced `blockingFails`, a variable that only existed in the scope of the sibling function `_renderValidationSummary()` (introduced during GAP-360's cycle-94 fix). This threw `ReferenceError: blockingFails is not defined` inside `populateDownloadTab()` whenever any generated file existed — the normal case — preventing the entire File Review tab (file grid, ATS report, "Skip to Finalise"/"Proceed to Cover Letter" buttons, everything) from ever reaching the DOM. Fixed by using the function's own already-computed `blockDocx`/`blockHtml`/`blockPdf` flags instead. No test file existed for `download-tab.js` at all before this fix; created `tests/js/download-tab.test.js` (6 tests) covering the crash scenario plus basic blocked/unblocked rendering.
+**Discovered:** 2026-07-07 (cycle 103) by hr-ats and recruiter-ops personas independently, cvUiReview committee pass.
+**Affected stories:** US-H6, US-O1, US-O3
+
+---
+
+## GAP-378: "Re-run" Confirmation Modal Wired to Plain Navigation, Never Actually Recomputed Anything
+
+**Priority:** HIGH (Bug)
+**Status:** RESOLVED 2026-07-07 (cycle 103) — `confirmReRunPhase()` in `web/workflow-steps.js` showed a modal whose own copy explicitly promises a recompute ("↻ Re-run {step}?" / "The following stages will see updated inputs and may show changed recommendations"), but its Proceed button called `backToPhase(step)` — pure navigation (`POST /api/back-to-phase`), no LLM call. The real recompute function, `reRunPhase(step)` (`POST /api/re-run-phase`), was fully implemented and already had passing unit tests, but had **zero callers anywhere in the UI**. Every ↻ re-run affordance in the app (step-pill re-run buttons, keyboard shortcut, layout-instruction re-run) silently just navigated back with stale data instead of regenerating. Fixed by wiring the modal's Proceed callback to `reRunPhase(step)`. 2 regression tests added to `tests/js/workflow-steps.test.js`.
+**Discovered:** 2026-07-07 (cycle 103) by returning-user persona, cvUiReview committee pass.
+**Description:** This is a significant functional bug, not a UI nit — the app's core "re-run this stage with corrected inputs" workflow did not work, for every re-run entry point, with no error to alert the user.
+**Affected stories:** US-S2
+
+---
+
+## GAP-379: Cycle 102's Finalise Step Pill Regressions (found by the cycle-103 committee review of cycle 102's own work)
+
+**Priority:** HIGH (Bug)
+**Status:** RESOLVED 2026-07-07 (cycle 103) — The `#step-finalise` workflow-step pill added in cycle 102 (GAP-341) had two regressions, both found and fixed in cycle 103:
+
+  1. **Keyboard-inaccessible**: `updateWorkflowStepsClickable()` in `web/ui-core.js` grants `role="button"`/`tabindex="0"`/keyboard handlers via a hardcoded `postLayoutSteps` array that omitted `step-finalise` — it was visually clickable (styled via CSS once "completed") but never keyboard-reachable. Fixed by adding it to the array. (Found by accessibility-specialist.)
+  2. **Spurious back-navigation warning**: since `finalise` and `harvest` (and all other post-layout steps) unlock simultaneously via the same `postLayout` boolean rather than a true sequential relationship, clicking the new `step-finalise` pill saw `step-harvest` (positioned after it in `_STEP_ORDER`) as a "completed downstream step" and fired an incorrect "you are navigating back past completed work" confirmation dialog on the very first click — before this cycle's fix, this same latent bug already existed for the other post-layout siblings clicking each other, just never surfaced because `harvest` was previously the last item in `_STEP_ORDER` with nothing after it. Fixed `handleStepClick()` to exclude the whole post-layout sibling group from counting each other as "downstream." (Found by recruiter-ops.)
+
+Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new `#position-notes-indicator` (GAP-352, removed — a `<div>` needs no ARIA role for plain status text) and a missing `tabindex="-1"` on `#document-content`, the skip-navigation link's target, which meant activating the skip link (GAP-346) scrolled the page but never actually moved keyboard focus per the HTML fragment-navigation spec.
+**Discovered:** 2026-07-07 (cycle 103) by accessibility-specialist, recruiter-ops, and ux-expert personas, cvUiReview committee pass.
+**Affected stories:** US-X1, US-O1
+
+---
+
+## GAP-380: LLM/Reasoning/Harvest Terminology Cleanup Was Scoped Only to `index.html`, Not Propagated to Tab-Content Modules
+
+**Priority:** LOW
+**Status:** RESOLVED 2026-07-07 (cycle 103) — Cycles 101–103's "LLM" → "AI Model" and "Harvest" → "Update Master CV" terminology passes only touched `index.html`'s chrome (header, modals, onboarding). The same jargon persisted, unfixed, in the actual tab-content modules a first-time user reads during normal use: user-facing tooltips and chat messages in `achievements-review.js`, `experience-review.js`, `skills-review.js`, `cover-letter.js`, `harvest.js` (including its own `<h1>🌾 Harvest Improvements</h1>` heading, still shown 5 places after the nav pill/tab had already been renamed), `layout-instruction.js`, `llm-log.js`, `screening-questions.js`, `spell-check.js`, `job-analysis.js`, `thank-you.js`, and `master-cv.js`. Fixed all of these to consistently use "AI"/"AI Model" and "Update Master CV" — every user-visible occurrence now matches; only internal code comments, function/variable/CSS-class names (e.g. `applyHarvestSelections`, `_showLlmDisclosure`) still say "LLM"/"Harvest", which is fine since those are never shown to users. 2 pre-existing tests hard-coded the old text and were updated (`tests/js/job-analysis.test.js`, `tests/js/skills-review.test.js`).
+**Discovered:** 2026-07-07 (cycle 103) by first-time-user persona and the UX heuristic reviewer independently, cvUiReview committee pass.
+**Affected stories:** US-F1, US-A1, US-U1
+
+---
+
+## GAP-381: `cover_letter_reused_from` Metadata Field Initialized but Never Assigned
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by applicant persona, cvUiReview committee pass.
+**Description:** `conversation_manager.py:112,1974` initializes `state['cover_letter_reused_from'] = None` and `master_data_routes.py:2334` reads it through into the session's `metadata.json`, but no code anywhere ever assigns it a real value (e.g. a prior session path when a cover letter is reused/copied from an earlier application). The field is permanently `null`, so any UI or downstream tooling that reads it to show "reused from {prior session}" provenance would silently show nothing.
+**Fix:** Either implement the actual reuse-tracking write-through wherever cover letter reuse/duplication happens, or remove the dead field and its read-through if the feature was abandoned.
+**Affected stories:** US-A7
+
+---
+
+## GAP-382: Screening Response Metadata Is Missing `reused_from_session` Entirely
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by applicant persona, cvUiReview committee pass.
+**Description:** Unlike `cover_letter_reused_from` (GAP-381, at least present as a dead field), screening response metadata built in `master_data_routes.py:2564` and `screening-questions.js:318` has no `reused_from_session`-equivalent field at all, even though the response-library search feature (`master_data_routes.py:2360–2399`) explicitly surfaces prior similar answers from past sessions for reuse.
+**Fix:** Add a `reused_from_session` field to the screening response payload/metadata, populated when a response is accepted from the similarity search rather than freshly written.
+**Affected stories:** US-A8
+
+---
+
+## GAP-383: Accepted Weak-Evidence Skills Silently Excluded From Some Output Formats but Not Others
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by trust-compliance persona, cvUiReview committee pass.
+**Description:** A `skill_add` rewrite flagged "⚠ Weak evidence" and explicitly **accepted** by the user (`rewrite-review.js:399–402`) is tagged `candidate_to_confirm: True` (`cv_orchestrator.py:1814`) with no UI path to ever clear that flag once accepted. At generation time it is silently filtered out of the ATS DOCX (`cv_orchestrator.py:4407–4408`) and human DOCX (`:5427–5428`), but is **kept** in the HTML/PDF path (`:172–222`). A user who reviews the HTML/PDF preview sees the skill; the DOCX an employer might actually receive is silently missing content the user explicitly approved, with no warning anywhere (not in the Rewrites tab, not in the Finalise readiness checklist, not in the rewrite audit log).
+**Fix:** Either (a) apply the same `candidate_to_confirm` exclusion consistently across all three output formats, or (b) surface a clear "this skill won't appear in Word/ATS formats" notice at accept-time and in the Finalise checklist.
+**Affected stories:** US-C1
+
+---
+
+## GAP-384: Focus-Restore Systemic Bug — ~19 Master CV Modals Use a Dead Variable Instead of the Shared Focus Stack
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by accessibility-specialist persona, cvUiReview committee pass.
+**Description:** `web/master-cv.js`'s ~19 add/edit modal open functions (publications, achievements, summaries, personal info, experience, skills, education, awards, certifications, plus `openMasterCvModal()` itself) and 3 dialogs in `web/workflow-steps.js` set `_focusedElementBeforeModal = document.activeElement` — a plain module-level variable that is never read by `restoreFocus()`. `restoreFocus()` actually pops from a separate `_focusStack` array (correctly used elsewhere: `web/ats-modals.js`, `web/ui-helpers.js`, `web/session-switcher-ui.js` all call `pushFocusStack()`). Every close of one of these ~22 modals either no-ops (nothing was pushed) or incorrectly pops a stack entry meant for a different, unrelated modal, since `restoreFocus()` still runs regardless. Focus restoration for essentially the entire Master CV editing experience is broken for keyboard/screen-reader users.
+**Fix:** Replace `_focusedElementBeforeModal = document.activeElement` with `pushFocusStack(document.activeElement)` at all ~22 call sites.
+**Affected stories:** US-X2
+
+---
+
+## GAP-385: "? Help" Header Button Has No Path Back to the Onboarding Guide
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by the UX heuristic reviewer, cvUiReview committee pass.
+**Description:** Since GAP-349 (cycle 99) rewired the header's "? Help" button from `showWelcomeModal()` to `showKeyboardShortcutsPanel()` (`web/app.js:170–178`), `showWelcomeModal()` has had zero callers anywhere in the codebase except the one-time auto-show on first visit (gated by a `localStorage` flag). A user who dismissed the onboarding modal, or any returning user, now has no way to ever reopen the getting-started guide.
+**Fix:** Add an explicit "Getting Started" or similar entry point (e.g. in the Settings modal, or a small secondary link near the Help button) that calls `showWelcomeModal()`.
+**Affected stories:** US-F1, US-U9 (proposed)
+
+---
+
+## GAP-386: Session Notes Cannot Be Set or Edited for an Active (Non-Saved) Session
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by returning-user persona, cvUiReview committee pass. Follow-up to GAP-352 (cycle 95/103), which made existing notes *visible* in the Sessions modal and the active workspace, but never added a way to *create or edit* a note for a session that is currently active/in-progress.
+**Description:** The Sessions modal's notes-edit UI is gated to `row.type === 'saved'` only (`web/session-switcher-ui.js:405–424`), and the active-session rows returned by `/api/sessions/active` never receive the `notes` field in `_normalizeSessionsForTable()` (`web/session-switcher-ui.js:243–259` vs. `:269`) despite the backend already returning it (`scripts/routes/session_routes.py:766–794`). A user working through Job/Analysis/Customize/Rewrite/Spell/Layout has no way to jot a note on their own currently-open session at all — only once files are generated (via the Finalise tab) or once the session is no longer active (via the Sessions modal) can a note be attached.
+**Fix:** Extend `_normalizeSessionsForTable()` to include `notes` for active rows too, and extend the notes-edit UI's gate to cover active sessions, writing through to the session's `metadata.json` sidecar the same way saved-session notes already do.
+**Affected stories:** US-S5 (proposed US-S8)
+
+---
+
+## GAP-387: `check_generic_filler()` Detector Fully Implemented but Never Wired Into the Persuasion Check Pipeline
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by resume-expert persona, cvUiReview committee pass.
+**Description:** `scripts/utils/llm_client.py:1076–1441` defines `_GENERIC_FILLER_PHRASES` and `check_generic_filler()`, a complete detector for boilerplate professional-summary phrases ("results-driven", "team player", etc. — exactly the class of fluff US-R4 asks to prevent). It is never called from `run_persuasion_checks()` (`conversation_manager.py:1508–1551`) or anywhere else — fully dead code. A generated summary opening with "Results-driven biostatistician with 10 years of experience seeking a challenging role…" passes the entire pipeline undetected, even though the code to catch it already exists.
+**Fix:** Add `check_generic_filler()` to the call list in `run_persuasion_checks()`, matching the pattern already used for the other 10 `check_*` functions in that pipeline.
+**Affected stories:** US-P1, US-R4
+
+---
+
+## GAP-388: "Finalise" / "Archive" / "Package Application Files" Used Interchangeably for the Same Action Across Surfaces
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) — independently flagged by hiring-manager, recruiter-ops, master-cv-curator, trust-compliance, and accessibility-specialist personas, cvUiReview committee pass (five independent reviewers converging on the same terminology finding is itself notable).
+**Description:** The same feature/action is labeled differently depending on where a user encounters it: the workflow-step pill and tab both say "Finalise" (`index.html:151,235`); the header action button's raw HTML source still says "📦 Package Application Files" (`index.html:205`) and is only patched to "Archive Application" at runtime by `app.js:159–161` (a JS string-replace over stale markup, not a source fix); the tab's own tooltip says the action will "mark the application ready to send"; screen-reader users hear all three phrasings with no surrounding visual context to reconcile them.
+**Fix:** Pick one verb ("Finalise" is already the nav/tab label and the least ambiguous) and apply it consistently: fix the stale `index.html:205` source text directly instead of runtime-patching it, and align the button label and tooltip wording to match.
+**Affected stories:** US-M8 (proposed), US-O1
+
+---
+
+## GAP-389: Finalise Tab Auto-Embeds Its Own Harvest/Update-Master-CV Panel, Duplicating the Dedicated Tab
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 103) by ux-expert and master-cv-curator personas independently, cvUiReview committee pass.
+**Description:** `web/finalise.js`'s `showHarvestSection()` fetches `/api/harvest/candidates` and renders a full "📥 Update Master CV Data" panel *inside* the Finalise tab immediately after a user clicks "Finalise & Archive" (`finalise.js:342,356`) — duplicating the same surface `web/harvest.js`'s dedicated `populateHarvestTab()` implements as its own top-level workflow step. This creates ambiguity about which entry point is the canonical place to update the master CV, and is the same "same feature implemented twice in two places" risk class this project's CLAUDE.md already flags for duplicate functions (GAP-146/48/43), just at the UI-surface level rather than the code level.
+**Fix:** Either endorse this as intentional progressive disclosure (finish archiving, then immediately offer to harvest improvements) and document it as such, or remove the embedded panel and rely solely on the dedicated Harvest/Update Master CV step.
+**Affected stories:** US-M3

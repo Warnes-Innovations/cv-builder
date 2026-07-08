@@ -396,7 +396,7 @@ async function _confirmProceedToGenerate() {
   }
   const reviewedSections = ['experiences', 'skills', 'achievements'].filter(k => decisionsConfirmed[k]);
   if (reviewedSections.length === 0) {
-    lines.push('⚠ No customisation sections reviewed — experience, skill, and achievement selections are all LLM defaults.');
+    lines.push('⚠ No customisation sections reviewed — experience, skill, and achievement selections are all AI defaults.');
   }
   let weakBulletCount = 0, passiveBulletCount = 0;
   Object.values(window.achievementEdits || {}).forEach(list => {

@@ -256,7 +256,11 @@ function _renderDownloadGrid(files, checks, summary, generatedAt = null, generat
 
   html += '</div></div>';
   // Only show "blocked formats" notice when something is genuinely blocked (GAP-360).
-  if (blockingFails.length > 0 && files.length) {
+  // Bug fix: this function has its own blockDocx/blockHtml/blockPdf flags —
+  // `blockingFails` was never declared in this scope (only in the sibling
+  // _renderValidationSummary()), so this threw a ReferenceError and broke
+  // File Review rendering entirely whenever any generated file existed.
+  if ((blockDocx || blockHtml || blockPdf) && files.length) {
     html += '<p style="margin-top:12px;color:#6b7280;font-size:0.88em;">Blocked formats reflect ATS validation failures for the corresponding output types.</p>';
   }
   return html;
@@ -520,7 +524,7 @@ async function populateDownloadTab(cvData) {
   html += _renderRefinementPanel();
   html += `<div class="nav-buttons" style="margin-top:16px;">
     <button class="back-btn" onclick="handleStepClick('finalise')">
-      ✅ Skip to Finalise
+      ✅ Skip to Finalise →
     </button>
     <button class="continue-btn" onclick="handleStepClick('cover_letter')">
       📩 Proceed to Cover Letter →
@@ -529,4 +533,4 @@ async function populateDownloadTab(cvData) {
   content.innerHTML = html;
 }
 
-export { populateDownloadTab, _NON_BLOCKING_CHECKS };
+export { populateDownloadTab, _NON_BLOCKING_CHECKS, _renderDownloadGrid };

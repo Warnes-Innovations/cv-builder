@@ -269,7 +269,7 @@ function renderHarvestTabHtml(enriched, analysisOk, analysisError) {
 
   const analysisWarning = !analysisOk
     ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:0.87em;color:#92400e;">
-        ⚠️ LLM analysis unavailable${analysisError ? `: ${esc(analysisError)}` : ''}. Checkboxes are unchecked — review manually.
+        ⚠️ AI analysis unavailable${analysisError ? `: ${esc(analysisError)}` : ''}. Checkboxes are unchecked — review manually.
         <button onclick="refreshHarvestAnalysis()" style="margin-left:10px;font-size:0.85em;padding:2px 10px;border:1px solid #d97706;border-radius:4px;background:white;color:#b45309;cursor:pointer;">Retry analysis</button>
       </div>`
     : '';
@@ -281,9 +281,9 @@ function renderHarvestTabHtml(enriched, analysisOk, analysisError) {
   }).join('');
 
   return `
-    <h1>🌾 Harvest Improvements</h1>
+    <h1>🌾 Update Master CV</h1>
     <p style="color:#6b7280;margin-bottom:8px;">
-      Review LLM-scored candidates for promotion to your master CV.
+      Review AI-scored candidates for promotion to your master CV.
       Check the items you want to apply (${totalCount} candidate${totalCount === 1 ? '' : 's'} found).
     </p>
     ${analysisWarning}
@@ -306,7 +306,7 @@ function renderHarvestTabHtml(enriched, analysisOk, analysisError) {
 
 function renderEmptyStateHtml() {
   return `
-    <h1>🌾 Harvest Improvements</h1>
+    <h1>🌾 Update Master CV</h1>
     <p style="color:#6b7280;">No harvest candidates found for this session.</p>
     <p style="color:#94a3b8;font-size:0.9em;">
       Candidates are generated from approved rewrites, skills added during review,
@@ -330,7 +330,7 @@ async function fetchAnalysis(forceRefresh = false) {
     if (!localStorage.getItem(key)) {
       const label = provider ? ` (${provider})` : '';
       if (typeof appendMessage === 'function') {
-        appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis. Review your provider's data policy for details.`);
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured AI Model provider${label} for analysis. Review your provider's data policy for details.`);
       }
       localStorage.setItem(key, '1');
     }
@@ -363,10 +363,10 @@ async function populateHarvestTab() {
   if (!content) return;
 
   content.innerHTML = `
-    <h1>🌾 Harvest Improvements</h1>
+    <h1>🌾 Update Master CV</h1>
     <div style="text-align:center;padding:40px;">
       <div class="loading-spinner"></div>
-      <p style="color:#6b7280;margin-top:12px;">Loading candidates and running LLM analysis…</p>
+      <p style="color:#6b7280;margin-top:12px;">Loading candidates and running AI analysis…</p>
     </div>`;
 
   let candidates = [];
@@ -377,13 +377,13 @@ async function populateHarvestTab() {
   try {
     const candData = await fetchCandidates();
     if (!candData.ok) {
-      content.innerHTML = `<h1>🌾 Harvest Improvements</h1><p class="error-message">Failed to load candidates: ${esc(candData.error || 'Unknown error')}</p>`;
+      content.innerHTML = `<h1>🌾 Update Master CV</h1><p class="error-message">Failed to load candidates: ${esc(candData.error || 'Unknown error')}</p>`;
       return;
     }
     candidates = candData.candidates || [];
   } catch (err) {
     log.error('populateHarvestTab: candidates fetch failed', err);
-    content.innerHTML = `<h1>🌾 Harvest Improvements</h1><p class="error-message">Network error loading candidates.</p>`;
+    content.innerHTML = `<h1>🌾 Update Master CV</h1><p class="error-message">Network error loading candidates.</p>`;
     return;
   }
 

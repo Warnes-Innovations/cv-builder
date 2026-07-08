@@ -6,143 +6,126 @@
   For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# First-Time User Review Status
+# First-Time-User Review Status
 
-**Last Updated:** 2026-07-06 (cycle 92 source-first re-read)
+**Last Updated:** 2026-07-07 20:14 ET
 
-**Executive Summary:** Source-verified first-time user persona review. The onboarding modal is well-structured and adapts correctly to Master CV state (missing / empty skeleton / ready). The job input flow correctly shows extracted position details and the full job text before analysis is triggered. However, four recurring friction areas affect the first-time experience: (1) all 12 workflow steps are visible from startup, exposing jargon-heavy labels before context exists; (2) the Customise stage unlocks 9 sub-tabs simultaneously with no ordering or required/optional guidance; (3) the generation pipeline "Step N of 3" distinction is conveyed only through button tooltip text, not button labels; (4) "LLM" appears prominently in the header without any plain-language label — the "⚙ LLM button" reference in the onboarding modal does not match the actual header label.
-
----
+**Executive Summary:** This file captures the source-verified persona review snapshot separately from the story specification so sub-agents can work in parallel safely.
 
 ## Application Evaluation
 
 ### US-F1: First-Run Orientation
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Entry screen explains first required action | ✅ Pass | Welcome modal (`session-manager.js:175–209`) shows on every startup for users at `init` phase who have not dismissed it. Three adaptive sections: **present** — green box "Your master profile is ready. Next: switch to the Job tab, provide a job description, and click Analyse Job" (`index.html:361–364`); **empty** — amber warning directing user to Master CV tab (`session-manager.js:139–141`); **missing** — "Start here (Step 1)" with file path and two action buttons (`index.html:374–383`). "Get Started" CTA closes modal and switches to the job tab (`session-manager.js:144–147`). A permanent "? Help" button (`index.html:63–66`) reopens the modal unconditionally mid-session. |
-| Key workflow concepts understandable without domain knowledge | ⚠️ Partial | Welcome modal explains the 3-phase workflow (Build → Target → Harvest) in plain English (`index.html:332–348`). All 12 workflow step labels are visible from startup in the header bar (`index.html:122–148`): Job Input, Analysis, Customise, Rewrites, Spell Check, Layout Review, File Review, Cover Letter, Screening, Interview Prep, Thank You, Harvest. Each locked step has a hover tooltip with a plain-English description (`_STEP_DESCRIPTIONS`, `workflow-steps.js:196–208`), but tooltips are hover-only and unavailable on touch devices or keyboard-only navigation. "Harvest" is an agricultural metaphor; "Customise" understates 9 distinct sub-tabs; "Rewrites" implies user editing rather than AI-proposed rewrite approval. |
-| First stage makes clear what data is needed and why | ✅ Pass | Job Input tab renders textarea ("Paste the job description here…"), URL input, and file upload with three clearly labeled tabs (`job-input.js:107–113`). The primary "🔍 Analyse Job" button is the single visible action button on load. `app.js:93–99` injects a system message "📋 Job description detected — click Analyse Job when ready to begin" with a blue focus ring on the button when a job is loaded but not yet analyzed. |
-| Job input flow shows position details before triggering analysis | ✅ Pass | `populateJobTab()` (`job-input.js:49–85`) is called after every job submission method (paste, URL, file). It fetches `/api/status` and renders the full job text plus an "Analyse Job" button **before** analysis is triggered. All three post-submission chat messages confirm the pattern: "Review the extracted details below, then click '🔍 Analyse Job' to continue" (`job-input.js:306, 406, 496`). |
-| Guard: users not dropped into a complex screen with no primary action | ⚠️ Partial | On page load `updateTabBarForStage('job')` (ui-core.js:1972) shows only the Job tab — clean tab-bar progressive disclosure. Only the "🔍 Analyse Job" button is visible in the actions area. However, all 12 workflow steps are visible in the top nav bar from startup, including post-generation steps (Cover Letter, Screening, Interview Prep, Thank You, Harvest). These are inert (`workflow-steps.js` skips non-active, non-completed steps) but their labels are fully visible and unexplained. |
-| Guard: terms without context do not appear | ⚠️ Partial | "Harvest" (`index.html:146`), "Rewrites" (`index.html:130`), "Customise" (`index.html:128`) appear in the workflow bar immediately. "LLM:" label is prominently in the header with an "⚠ Not ready" status badge (`index.html:51–62`) — a first-time user who has never encountered AI tooling will not know what "LLM" means. Welcome modal prerequisites say "use the **⚙ LLM** button in the header" (`index.html:355`) but the actual header button label is "LLM: [provider] ⚠ Not ready" — the icon and label do not match. Step tooltips explain every term on hover; hover-only disclosure is insufficient for discovery. |
+| # | Criterion (abbreviated) | Status | Notes / File:Line refs |
+|---|--------------------------|--------|------------------------|
+| 1 | Entry screen explains the first required action clearly | ✅ Pass | Onboarding modal (`web/index.html:342-424`) is shown on every startup until dismissed (`maybeShowWelcomeModal()`, `web/session-manager.js:176-210`). When `Master_CV_Data.json` is missing it shows "⚠️ Start here (Step 1): your master profile was not found at: …" (`index.html:395-405`); when present it shows "✅ Your master profile is ready. Next: switch to the Job tab, provide a job description, and click Analyse Job." (`index.html:381-385`). |
+| 2 | Key workflow concepts understandable without domain-specific prior knowledge | ⚠️ Partial | The header/AI-Model and step-pill renames (cycles 102–103) are clean and well done (see Terminology section below), **but** the onboarding modal's own "How it works" step 3 still reads "**Harvest improvements**" (`index.html:368`) — the exact jargon term the workflow step pill was renamed away from ("Update Master CV", `index.html:153,241`). A first-time user reads "Harvest improvements" in the modal, then never sees that word again in the top nav, then — if they click through to the actual tab — sees it reappear as "🌾 Harvest Improvements" (`web/harvest.js:284,309,366,380,386,418`). This is an incomplete rename, not a design intent; see Terminology section for full evidence. |
+| 3 | First stage makes clear what data is needed and why | ✅ Pass | Onboarding step 1 explains `Master_CV_Data.json` purpose (`index.html:358-359`); Job tab empty state: "Job description and analysis results will appear here" (`index.html:264`); chat input placeholder "Type a message (e.g., 'analyse job')" (`index.html:192`). |
 
-**Failure modes observed:**
-- All 12 steps including post-generation steps (Cover Letter → Harvest) are visible in the workflow bar from page load, though locked.
-- "Harvest," "Screening," "Rewrites" visible before context exists.
-- "LLM" appears as the primary header label without plain-language explanation.
-- "Position title not yet extracted…" placeholder shown in the Job tab title area after submission but before analysis (`job-input.js:61`), because `position_name` is only populated during analysis (`conversation_manager.py:2115–2128`). This italicised placeholder may cause first-time users to think something went wrong; the guidance to click "Analyse Job" appears only in the chat panel, not adjacent to the placeholder.
-- After submission, two "Analyse Job" buttons exist simultaneously: one in the chat action panel (`#analyze-btn`, `index.html:190`) and one injected into the document viewer by `populateJobTab()` (`job-input.js:72–74`). Both trigger `analyzeJob()`. Not a bug (doubles discoverability), but may be momentarily confusing.
+**Failure Modes Present**
 
----
+| Failure mode | Present? |
+|--------------|----------|
+| Users dropped into a complex screen with no clear primary action | ⚠️ Partially mitigated — the onboarding modal blocks the full-complexity screen on first load and gives one clear CTA ("Get Started" / "Create empty profile"), but once dismissed the user immediately sees a 15-pill workflow nav (`index.html:129-154`) with 13 arrows, a position bar with 3 metric widgets, and a 20+-item tab bar (`index.html:216-241`, only a subset shown per stage via `updateTabBarForStage()`, `web/ui-core.js:564-583`). Most pills are inert (locked) until reached, but clicking a locked pill produces **no feedback at all** — `handleStepClick()` silently returns (`web/workflow-steps.js:1174-1175`: `if (!el.classList.contains('completed') && !el.classList.contains('active')) return;`). A first-time user who clicks "Cover Letter" or "Finalise" out of curiosity gets no toast, no message, nothing — only a native `title` tooltip they may never hover to see. |
+| Terms like rewrites, customisations, layout review, or harvest appearing without context | ⚠️ Present for "harvest" — see Terminology section. "Rewrites", "Customise", and "Layout Review" step pills each have an explanatory tooltip via `_STEP_DESCRIPTIONS` (`web/workflow-steps.js:197-210`), so those are adequately contextualized. |
 
 ### US-F2: Progressive Disclosure Through the Workflow
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| UI reveals decisions in a staged way | ⚠️ Partial | Tab bar: `updateTabBarForStage()` (ui-core.js:562–565) correctly shows only tabs relevant to the current stage. Workflow step bar: all 12 steps are always visible; inert steps are inert but not hidden. Customise stage: `STAGE_TABS.customizations = ['goals','questions','exp-review','ach-editor','skills-review','achievements-review','tagline-review','summary-review','publications-review','ats-score']` (ui-core.js) — 9 tabs unlock simultaneously with no ordering guidance, required/optional distinction, or visit-tracking progress indicator. |
-| Each stage communicates its purpose before demanding action | ⚠️ Partial | Step tooltip descriptions (`_STEP_DESCRIPTIONS`, `workflow-steps.js:196–208`) provide plain-language stage explanations on hover. Primary action buttons carry "Step N of 3" information in their `title` attributes (e.g., `spell-btn` title: "Step 1 of 3: Generate an HTML preview to review the layout before final DOCX/PDF files are produced", `index.html:194`). These are tooltip-only; button labels alone ("Generate Preview →", "Open Layout Review →", "Confirm Layout") do not convey the intermediate-vs-final distinction to a first-time reader. |
-| Transition from one stage to the next feels predictable | ✅ Pass | Stage transitions are driven by backend phase and surfaced via step bar highlighting, chat messages, and toast notifications. `stateManager.onPhaseChange` fires `updateWorkflowStepsClickable` on every transition (ui-core.js:1978). The generation sub-pipeline shows a live step checklist: "Rendering HTML → Generating PDF → Building DOCX files" with active/pending/complete states (`layout-instruction.js:1187–1210`). The `workflow-stage-announcer` aria-live region (`index.html:149–151`) announces stage changes to screen readers. |
-| Workflow can be followed sequentially without guessing which surface is primary | ⚠️ Partial | Two navigation surfaces co-exist: the top workflow bar (step pills) and the second-row tab bar. A first-time user at Customise who has been working in the Skills tab, then clicks the "Customise" step pill, is routed to "goals" (default) — not their last-visited sub-tab. Dual action surfaces also exist at the Rewrite stage: a chat-area "Continue to Spell Check →" button and a separate inline button within the rewrite tab. |
-| Post-layout steps unlock with no sequence guidance | ⚠️ Partial | After layout confirmation, six steps (Cover Letter, Screening, Interview Prep, Thank You, Harvest) unlock simultaneously (`ui-core.js:1857–1864`, `1921–1929`). No ordering guidance, no optional/required distinction. Only File Review (download step) is mandatory; the remaining five are optional but rendered with identical visual weight. |
-| Stage transitions include sufficient feedback | ✅ Pass | Chat messages, step state changes (active → completed), and toast notifications are posted at every phase boundary. Generation step checklist provides granular in-progress feedback. |
+| # | Criterion (abbreviated) | Status | Notes / File:Line refs |
+|---|--------------------------|--------|------------------------|
+| 1 | UI reveals next set of decisions in a staged way | ✅ Pass | `STAGE_TABS` map (`web/ui-core.js:358-372`) + `updateTabBarForStage()` (`web/ui-core.js:564-583`) hide all tabs outside the current stage. `handleStepClick()` gates navigation to completed/active/forward-skip steps only (`web/workflow-steps.js:1146-1175`). |
+| 2 | Each stage communicates its purpose before demanding action | ✅ Pass | Every step pill has a purpose tooltip via `_STEP_DESCRIPTIONS` (`web/workflow-steps.js:197-210`, e.g. `job: 'Paste a job description to start tailoring your CV.'`); primary action buttons carry explicit staged titles: "Step 1 of 3: Generate an HTML preview…", "Step 2 of 3: Review and adjust layout settings…", "Step 3 of 3: Confirm layout and produce final…" (`index.html:201-204`). |
+| 3 | Transition from one stage to the next feels predictable | ✅ Pass | `#tab-stage-label` shows "Now viewing: {step}" (`web/ui-core.js:578-582`); `#workflow-stage-announcer` is an `aria-live` region for screen readers (`index.html:156-158`); re-run/back-nav is gated behind a confirmation modal listing affected downstream stages (`_showReRunConfirmModal`, `web/workflow-steps.js:139-189`). |
 
----
+**Failure Modes Present**
+
+| Failure mode | Present? |
+|--------------|----------|
+| Too many tabs, controls, or special cases exposed before the user understands the current step | ⚠️ Partially present — all 15 workflow-stage pills render simultaneously on first load (`index.html:129-154`), which is a lot of vocabulary ("Rewrites", "Spell Check", "Layout Review", "File Review", "Screening", "Interview Prep", "Thank You", "Finalise", "Update Master CV") to show a brand-new user before they've done anything. Mitigated by per-stage tab filtering but the top-level step bar itself is not progressively revealed — it's the full itinerary up front. |
+| Major stage transitions happening with insufficient explanation | Not present — see criterion 3 evidence above. |
 
 ### US-F3: Confidence Before Finalisation
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| System communicates whether key review steps are complete | ⚠️ Partial | Workflow step pills show completed/active/stale/stale-critical states (`workflow-steps.js:1007–1058`). Within the Customise stage the 9 sub-tabs have no visit-tracking counter or required/optional indicator. The Finalise tab's Submission Readiness Checklist (`finalise.js:163–213`) shows ✅/⚠️/❌ per item with legend: "⚠ items are optional — they warn but do not block archiving. ❌ items must be resolved before submitting." This is clear once reached, but only visible at the end of the workflow. |
-| Relationship between generation, layout review, and finalisation is understandable | ⚠️ Partial | The three-step generation pipeline uses "Step N of 3" in button `title` attributes (`index.html:194–196`), but button labels alone do not indicate that step 1 produces a preview and step 3 produces final submission-ready files. Preview HTML files are badged "Working file — not for submission" in the File Review tab (`download-tab.js:232–234`), which is clear once the file list is visible. |
-| Guard: preview generation confused with final completion | ✅ Pass | Preview files are clearly badged "Working file — not for submission" (`download-tab.js:232–234`). Preview file items use a dashed border (`download-tab.js:237`). The "Generate Preview →" button title confirms this is "Step 1 of 3: Generate an HTML preview…" (`index.html:194`). |
-| Guard: optional post-generation actions looking mandatory | ⚠️ Partial | Post-layout steps (Cover Letter, Screening, Interview Prep, Thank You, Harvest) unlock simultaneously with identical visual styling to mandatory steps. No badge, label, or tooltip specifically marks these as optional. The welcome modal describes Cover Letter as part of the standard workflow without flagging it as optional. |
-| Guard: "Finalise & Archive" confused with actual job application submission | ⚠️ Partial | The Finalise tab description reads "Archive this application to your CV history, update the response library, and optionally write any improvements back to Master CV Data" (`finalise.js:79–80`) — the archival/local nature is stated. However, the button label "✅ Finalise & Archive" carries no adjacent disclaimer that this does not submit the application to an employer. The description paragraph appears above the generated files list where it may be skimmed. |
+| # | Criterion (abbreviated) | Status | Notes / File:Line refs |
+|---|--------------------------|--------|------------------------|
+| 1 | System communicates whether key review steps are complete | ✅ Pass | `_renderReadinessChecklist()` in `web/finalise.js:164-216` renders a "📋 Submission Readiness" panel with ✅/⚠/❌ icons per item (CV PDF/DOCX/HTML generated, cover letter, screening Q&A, ATS validation, layout freshness) and an explicit legend: "⚠ items are optional — they warn but do not block archiving. ❌ items must be resolved before submitting." (`web/finalise.js:211-214`). |
+| 2 | Relationship between generation, layout review, and finalisation is understandable | ✅ Pass | Explicit "Step 1 of 3 / Step 2 of 3 / Step 3 of 3" button titles (`index.html:201-204`); layout freshness chip labels "Layout current" / "Layout outdated" / "Files outdated" (`web/state-manager.js:145-177`) keep the user oriented about whether previewed content matches the latest edits. |
+| 3 | The final stage distinguishes clearly between archive/finalise actions and optional follow-on work | ✅ Pass, with one design wrinkle | The Finalise tab's readiness checklist explicitly marks Cover Letter/Screening as optional (`web/finalise.js:186-187,211-214`), and the "Archive Application" button is clearly separated from the harvest/update-master-CV step that follows (`web/app.js:158-162`, GAP-325 rename). **Wrinkle:** the top-level step-pill order lists Cover Letter → Screening → Interview Prep → Thank You *before* Finalise (`index.html:141-153`), visually implying they are required prerequisites to reach Finalise, even though the readiness checklist says they're optional. A first-time user skimming only the top nav (not the checklist) could reasonably infer all four must be completed first. |
+
+**Failure Modes Present**
+
+| Failure mode | Present? |
+|--------------|----------|
+| Users mistaking preview generation for final completion | ✅ Not present — "Step X of 3" labelling and layout-freshness chip disambiguate preview vs. final state clearly. |
+| Optional post-generation actions looking mandatory, or vice versa | ⚠️ Partially present — see the step-order wrinkle noted in criterion 3 above. |
+
+---
+
+## Terminology Findings (Central to This Persona)
+
+### "AI Model" / "Working…" rename (cycles 102–103): largely successful
+
+- Header button: `AI Model:` label + `model-current-label` (`index.html:52-63`) — clean, no "LLM" visible.
+- Modal titles: "AI Model Configuration Wizard" (`index.html:446`), "AI Model Defaults" (`index.html:613`), "AI Model Retry Policy (Browser)" (`index.html:681`) — clean.
+- Busy indicators: `#llm-busy-label` → "Working…" (`index.html:170`), `#llm-thinking` → "Working…" (`index.html:183`) — clean; only element `id`s retain `llm-*`, which is invisible to users.
+- Onboarding prerequisites: "An AI Model provider configured — use the **AI Model** button in the header before your first session" (`index.html:376`) — clean.
+- HTML `<!-- LLM busy overlay -->` / `<!-- LLM Configuration Wizard -->` comments (`index.html:166,181,442`) still say "LLM" but these are source comments, never rendered to the user — **N/A**, not a persona-facing issue.
+
+### "LLM" jargon still leaks into user-visible text elsewhere in the app — ⚠️ Not fully removed
+
+The rename appears to have been scoped to `index.html` and header/modal chrome only. The word "LLM" is still shown to users in numerous tooltips, chat messages, and panel copy across the tab-rendering JS modules:
+
+- Tooltips on bulk-action buttons: `title="Set all to the LLM recommendation"` — `web/achievements-review.js:344`, `web/experience-review.js:292`, `web/skills-review.js:1057`.
+- System chat message shown before every job/cover-letter/screening/harvest submission: `` `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis...` `` — `web/job-analysis.js:106`, `web/cover-letter.js:233`, `web/screening-questions.js:237`, `web/harvest.js:333`.
+- Error message: `"LLM did not return a cover letter."` — `web/cover-letter.js:307`.
+- Harvest tab copy: `"⚠️ LLM analysis unavailable…"` and `"Review LLM-scored candidates for promotion to your master CV."` and `"...running LLM analysis…"` — `web/harvest.js:272,286,369`.
+- Spell-check summary: `"⚠ No customisation sections reviewed — experience, skill, and achievement selections are all LLM defaults."` — `web/spell-check.js:399`.
+- Debug/log panel label: `"LLM Interaction"` — `web/llm-log.js:101`.
+
+A first-time user who has just been taught the app calls this "AI Model" in the header will, minutes later inside the actual workflow, see raw "LLM" in tooltips and system messages with zero definition — reintroducing exactly the confusion the rename was meant to eliminate.
+
+### "Harvest" step rename (cycles 102–103): renamed in navigation chrome, NOT propagated to the destination content — ❌ Fail
+
+The step pill (`index.html:153`) and tab label (`index.html:241`) were correctly renamed to "🌾 Update Master CV", and `workflow-steps.js`'s `_STEP_DISPLAY`/`_STEP_DESCRIPTIONS` maps were updated to match (`web/workflow-steps.js:50,209`). However, the actual page a user lands on when they click that pill still displays the old term:
+
+- `web/harvest.js` — the module that renders the "Update Master CV" tab content (dispatched from `web/review-table-base.js:426-427` `case 'harvest': populateHarvestTab()`) — headings read **"🌾 Harvest Improvements"** in three places: `renderHarvestTabHtml()` (`harvest.js:284`), `renderEmptyStateHtml()` (`harvest.js:309`), and the loading/error states inside `populateHarvestTab()` (`harvest.js:366,380,386`).
+- Onboarding modal step 3 still says **"Harvest improvements"** (`index.html:368`), not "Update your master profile" or similar.
+- Thank-You placeholder tab's call-to-action button: **"Proceed to Harvest Improvements →"** (`web/thank-you.js:36`).
+- Master CV modal copy (shown while editing the profile, i.e. very early in a first-time user's session): "These are cross-role highlights... The **Harvest feature (Harvest tab)** can add new ones from your current session." (`web/master-cv.js:328`) and "Use the **Harvest feature** to add achievements from a completed session…" (`web/master-cv.js:1783`).
+- Skills review hint: "…available for write-back to master CV in the **Harvest tab**)" (`web/skills-review.js:1193`).
+
+Notably, `web/finalise.js`'s own embedded post-archive section (a *different*, second surface that also offers to write improvements back to the master CV) **was** correctly renamed to "📥 Update Master CV Data" (`finalise.js:360,370,382,399,460`) — proving the team knows the target wording; it just wasn't applied to `harvest.js`, `thank-you.js`, `master-cv.js`, or the onboarding modal. This is a partial/inconsistent rename, and for a first-time user it is worse than not renaming at all: the same feature is called three different things in three different places within one session ("Update Master CV" in the top nav, "Harvest Improvements" when you actually open it, "Update Master CV Data" if you reach it via Finalise instead).
 
 ---
 
 ## Generated Materials Evaluation
 
-Generated CV content is not directly inspectable from static source. Evaluation is based on output-related UI visible to a first-time user.
+Not applicable to this persona pass — the first-time-user story (US-F1–F3) concerns onboarding and in-app orientation, not the quality of generated CV/cover-letter documents. No generated-materials findings recorded here; see `resume-expert`/`hr-ats` review files for document-quality evaluation.
 
-| Aspect | Status | Evidence |
-|--------|--------|----------|
-| Output format names are clear | ⚠️ Partial | Settings modal exposes "ATS DOCX," "Human PDF," "Human DOCX" (`index.html:642–645`). "ATS DOCX" is unexplained; no inline definition. The ATS badge tooltip at `index.html:92` fully expands the abbreviation ("Applicant Tracking System (ATS) match score — percentage of job keywords present in your CV") but is hidden until after analysis. |
-| Download and File Review tabs explain what the user is downloading | ✅ Pass | Preview files are badged "Working file — not for submission." The layout review step tooltip sets expectation: "Adjust margins, fonts, and column balance, then generate your final CV files." |
-| Harvest purpose is explained before use | ✅ Pass | Harvest step tooltip: "Save refined bullets, new skills, and summary variants back to your Master CV for future applications" (`workflow-steps.js:208`). Welcome modal step 3 also describes harvesting in plain language (`index.html:344–348`). |
+## Additional Story Gaps / Proposed Story Items
 
----
+- **Locked-step click feedback**: no acceptance criterion currently covers what happens when a user clicks a step pill they haven't unlocked yet. Currently: nothing happens (`web/workflow-steps.js:1174-1175`). Propose a new criterion under US-F2: "Clicking a locked/future step gives some feedback (toast, shake, or tooltip auto-show) rather than silently doing nothing."
+- **Terminology consistency across a rename**: US-F1's failure-mode list names specific jargon terms to avoid (rewrites, customisations, layout review, harvest) but the story set has no acceptance criterion requiring that a renamed term be applied *consistently everywhere it appears*, only that jargon not appear "without context." Propose adding: "When a workflow-stage term is renamed, the same new term is used in every surface a first-time user can reach for that stage (nav pill, tab heading, onboarding copy, and any related feature descriptions), not just the primary navigation chrome."
+- **Step-order vs. optionality mismatch**: no current criterion covers the case where the linear step nav visually implies a required order that the actual business logic treats as optional (Cover Letter/Screening/Interview Prep/Thank You before Finalise). Propose adding to US-F3: "Steps that are optional are visually distinguishable from required steps in the primary workflow nav, not only in a secondary checklist."
 
-## Terminology Analysis
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, plus web/session-manager.js, web/workflow-steps.js, web/harvest.js, web/finalise.js, web/thank-you.js, web/master-cv.js, web/skills-review.js, web/achievements-review.js, web/experience-review.js, web/cover-letter.js, web/job-analysis.js, web/screening-questions.js, web/spell-check.js, web/llm-log.js, web/review-table-base.js
 
-| Term | Location | Issue |
-|------|----------|-------|
-| "LLM" | Header (`index.html:51–62`), LLM Configuration Wizard title | Technical acronym (Large Language Model); unexplained at first contact; "⚠ Not ready" badge visible before user has done anything |
-| "Harvest" | Workflow bar (`index.html:146`), tab bar (`index.html:233`) | Agricultural metaphor; tooltip-only definition; no inline label at first view |
-| "ATS" | Position bar badge (`index.html:92`), ATS Score tab (`index.html:219`), Settings (`index.html:642`) | Expanded in tooltip/title attribute only; no inline first-use definition |
-| "ATS DOCX" | Settings modal (`index.html:642`) | Both "ATS" and "DOCX" unexplained; purpose distinction from "Human DOCX" is opaque |
-| "Customise" | Workflow step (`index.html:128`) | Covers 9 sub-tabs; label significantly understates scope |
-| "Rewrites" | Workflow step (`index.html:130`), tab (`index.html:220`) | Implies user editing; actually an AI-proposed rewrite approval UI |
-| "Non-confidential" badge | Header (`index.html:59`) | Amber warning badge; significance not explained inline |
-| "Goals" tab | Under Customise stage | Tab name implies application strategy; content is configuration-heavy — label/content mismatch |
-| "Screening" | Workflow step (`index.html:140`), tab (`index.html:230`) | Abbreviation of "Screening Questions"; context-free on first view |
-| "Position title not yet extracted…" | Job tab heading, post-submission (`job-input.js:61`) | Shown after job submission but before analysis; first-time users may interpret as an error |
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|-------|---------|-----------|--------|------------|-------|
+| US-F1 | 2 | 1 | 0 | 0 | 0 |
+| US-F2 | 3 | 0 | 0 | 0 | 0 |
+| US-F3 | 3 | 0 | 0 | 0 | 0 |
 
----
+**Key evidence references:**
+- US-F1.1: Onboarding modal blocking first action → `web/index.html:342-424`, `web/session-manager.js:176-210`
+- US-F1.2: Stale "Harvest improvements" text inside otherwise-renamed onboarding modal → `web/index.html:368`
+- US-F2.1: Stage-scoped tab visibility → `web/ui-core.js:358-372,564-583`
+- US-F3.1: Optional-vs-required legend in readiness checklist → `web/finalise.js:211-214`
+- Terminology: "LLM" jargon still shown to users outside index.html chrome → `web/achievements-review.js:344`, `web/harvest.js:272,286,333,369`, `web/cover-letter.js:233,307`, `web/job-analysis.js:106`, `web/screening-questions.js:237`, `web/spell-check.js:399`, `web/llm-log.js:101`
+- Terminology: "Harvest" jargon still shown to users despite step/tab rename → `web/harvest.js:284,309,366,380,386,418`, `web/thank-you.js:36`, `web/master-cv.js:328,1783`, `web/skills-review.js:1193`, `web/index.html:368`
+- Terminology: same feature named three different ways in one session ("Update Master CV" nav pill vs. "Harvest Improvements" tab heading vs. "Update Master CV Data" finalise-embedded section) → `web/index.html:153,241` vs. `web/harvest.js:284` vs. `web/finalise.js:360`
+- Locked-step click gives no feedback → `web/workflow-steps.js:1174-1175`
 
-## Gap Items
-
-**GAP-FTU-01: LLM button label mismatch in onboarding modal**
-Prerequisites note says "use the **⚙ LLM** button" but actual header button is labelled "LLM: [provider] ⚠ Not ready." New user cannot locate it by the described label. Severity: Low. Evidence: `index.html:51–62`; `index.html:355`.
-
-**GAP-FTU-02: All 12 workflow steps visible from startup**
-Locked steps are inert but their labels (Harvest, Screening, Interview Prep) are exposed before context exists. Consider hiding post-generation steps (Cover Letter → Harvest) until layout is confirmed, or grouping them behind an expandable section. Severity: Medium. Evidence: `index.html:122–148`; `ui-core.js:1946–1972`.
-
-**GAP-FTU-03: Customise stage — 9 tabs with no ordering guidance**
-No "start here" callout, no required/optional distinction, no visit-tracking progress counter. A first-time user at Customise has no orientation. Proposed fix: introductory banner or ordered checklist on first arrival. Severity: High. Evidence: `ui-core.js` STAGE_TABS.customizations.
-
-**GAP-FTU-04: Post-layout steps lack sequence and optionality guidance**
-Cover Letter, Screening, Interview Prep, Thank You, Harvest unlock simultaneously with equal visual weight. No indication of recommended order or which are optional. Severity: Medium. Evidence: `ui-core.js:1857–1864`, `1921–1929`.
-
-**GAP-FTU-05: "Finalise & Archive" risks confusion with actual submission**
-No explicit disclaimer adjacent to the button that archiving is a local tracking action, not an application send. Propose one sentence adjacent to the button. Severity: Medium. Evidence: `finalise.js:123–128`.
-
-**GAP-FTU-06: Generation pipeline "Step N of 3" labels are tooltip-only**
-The preview-vs-intermediate-vs-final distinction is conveyed only through button `title` attributes. Button labels alone ("Generate Preview →", "Open Layout Review →", "Confirm Layout") do not communicate the pipeline. Severity: Medium. Evidence: `index.html:193–198`.
-
-**GAP-FTU-07: "Position title not yet extracted…" placeholder after job submission**
-After a user submits job text (paste/URL/file) but before clicking "Analyse Job," the Job tab title area shows italic placeholder text "Position title not yet extracted…" (`job-input.js:61`). `position_name` is only set during analysis (`conversation_manager.py:2115–2128`). Guidance to click Analyse Job appears in the chat panel but not adjacent to this placeholder. Severity: Low. Evidence: `job-input.js:58–65`; `conversation_manager.py:2115–2128`.
-
-**GAP-FTU-08: "LLM" unexplained in header and wizard title**
-The header permanently displays "LLM: [provider] ⚠ Not ready" and the configuration dialog is titled "LLM Configuration Wizard." A first-time user unfamiliar with the term "Large Language Model" has no affordance to understand what this controls. Plain-language alternatives: "AI Model," "AI Provider." Severity: Medium. Evidence: `index.html:51–62`; `index.html:421–427`.
-
----
-
-## Source Coverage
-
-**Files read for this review:**
-
-- `web/index.html` (complete)
-- `web/app.js` (complete)
-- `web/ui-core.js` (sections: modal management, tab management, step management, init)
-- `web/state-manager.js` (complete)
-- `web/styles.css` (design tokens section)
-- `web/job-input.js` (complete)
-- `web/session-manager.js` (welcome modal logic, lines 114–299)
-- `web/workflow-steps.js` (step descriptions, tooltip logic, updateWorkflowSteps)
-- `web/finalise.js` (populateFinaliseTab, _renderReadinessChecklist)
-- `scripts/web_app.py` (position_name field definition)
-- `scripts/utils/conversation_manager.py` (_store_job_analysis position_name extraction)
-
----
-
-## Score Summary
-
-| Story    | Pass | Partial | Fail | Not Impl |
-|----------|------|---------|------|----------|
-| US-F1    | 3    | 3       | 0    | 0        |
-| US-F2    | 2    | 4       | 0    | 0        |
-| US-F3    | 1    | 4       | 0    | 0        |
-| **Total**| **6**| **11**  | **0**| **0**    |
-
-No failures. The six passing criteria are genuinely clean; the eleven partial criteria all have concrete, addressable root causes documented in the gap items above.
+**Evidence standard:**
+- Every conclusion should be supported by evidence sufficient for another reviewer to verify it independently.
+- Cite all supporting references using repository-relative paths plus line numbers wherever available.

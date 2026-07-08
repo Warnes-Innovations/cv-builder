@@ -325,7 +325,7 @@ async function populateMasterTab(container = null) {
       </div>
       <p style="color:#6b7280;font-size:0.9em;margin-bottom:12px;">
         These are cross-role highlights shown in the Achievements review during customisation.
-        The Harvest feature (Harvest tab) can add new ones from your current session.
+        The Update Master CV feature can add new ones from your current session.
       </p>
       <div id="master-achievements-container">
         ${_renderMasterAchievementsTable(achievements)}
@@ -1780,7 +1780,7 @@ function _renderCertificationsList(certs) {
 
 function _renderMasterAchievementsTable(achievements) {
   if (!achievements.length) {
-    return '<p style="color:#6b7280;padding:12px 0;">No selected achievements yet. Use the Harvest feature to add achievements from a completed session, or click "+ Add Achievement" above.</p>';
+    return '<p style="color:#6b7280;padding:12px 0;">No selected achievements yet. Use the Update Master CV feature to add achievements from a completed session, or click "+ Add Achievement" above.</p>';
   }
   let rows = achievements.map(ach => {
     const id      = escapeHtml(ach.id || '');

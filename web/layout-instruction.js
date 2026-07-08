@@ -781,7 +781,7 @@ async function submitSmartInstruction(instructionText) {
         appendLayoutSafetyAlert(response.safety_alert);
         let errorHtml = `⚠️ Error: ${escapeHtml(response.error)} — ${escapeHtml(response.details || '')}`;
         if (response.raw_response !== undefined) {
-          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${escapeHtml(response.raw_response || '(empty)')}</pre></details>`;
+          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw AI response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${escapeHtml(response.raw_response || '(empty)')}</pre></details>`;
         }
         appendMessageHtml('system', errorHtml);
       }
@@ -913,7 +913,7 @@ async function submitLayoutInstruction(instructionText) {
         appendLayoutSafetyAlert(response.safety_alert);
         let errorHtml = `⚠️ Error: ${escapeHtml(response.error)} — ${escapeHtml(response.details || '')}`;
         if (response.raw_response !== undefined) {
-          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw LLM response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${escapeHtml(response.raw_response || '(empty)')}</pre></details>`;
+          errorHtml += `<br><details style="margin-top:6px"><summary style="cursor:pointer;font-size:0.85em;color:#64748b">Raw AI response</summary><pre style="font-size:0.75em;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px">${escapeHtml(response.raw_response || '(empty)')}</pre></details>`;
         }
         appendMessageHtml('system', errorHtml);
       }

@@ -33,7 +33,7 @@ async function populateThankYouTab() {
       <div style="margin-top:40px;">
         <button class="btn-primary" onclick="handleStepClick('harvest')"
                 style="font-size:1em;padding:10px 24px;">
-          Proceed to Harvest Improvements →
+          Proceed to Update Master CV →
         </button>
       </div>
     </div>`;

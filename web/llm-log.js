@@ -98,7 +98,7 @@ function _renderInteraction(ix) {
   const html = `
     <div class="llm-log-header">
       <span class="llm-log-icon">🤖</span>
-      <span class="llm-log-label">LLM Interaction</span>
+      <span class="llm-log-label">AI Model Interaction</span>
       <span class="llm-log-meta">${msgCount} message${msgCount === 1 ? '' : 's'}</span>
       ${ts ? `<span class="llm-log-ts">${escapeHtml(ts)}</span>` : ''}
     </div>

@@ -1816,6 +1816,7 @@ function updateWorkflowStepsClickable(currentPhase) {
     'step-screening',
     'step-interview_prep',
     'step-thank_you',
+    'step-finalise',
     'step-harvest',
   ];
   // Map backend phase strings to how many sequential steps are unlocked (0-based index).

@@ -230,7 +230,7 @@ function _showLlmDisclosure() {
     if (!localStorage.getItem(key)) {
       const label = provider ? ` (${provider})` : '';
       if (typeof appendMessage === 'function') {
-        appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${label} for analysis. Review your provider's data policy for details.`);
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured AI Model provider${label} for analysis. Review your provider's data policy for details.`);
       }
       localStorage.setItem(key, '1');
     }
@@ -304,7 +304,7 @@ async function generateCoverLetter() {
       _coverLetterFormState.letterText    = data.text;
       _coverLetterFormState.letterVisible = true;
     } else {
-      showAlertModal('❌ Generation Failed', data.error || 'LLM did not return a cover letter.');
+      showAlertModal('❌ Generation Failed', data.error || 'The AI Model did not return a cover letter.');
     }
   } catch (e) {
     showAlertModal('❌ Error', 'Failed to contact server.');

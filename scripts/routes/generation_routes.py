@@ -2168,16 +2168,29 @@ def create_blueprint(deps):
 
                 screening = metadata.get('screening_responses') or []
                 if screening:
+                    # response_library.json is a list of response entries (the
+                    # format master_data_routes.py's screening-save/search
+                    # handlers already use). This used to load-and-treat it as
+                    # a tag-keyed dict instead, which raised TypeError here
+                    # whenever the file already existed as a list -- i.e.
+                    # whenever the user had saved screening responses before
+                    # finalising, the normal tab order.
                     library_path = Path(conversation.orchestrator.master_data_path).parent / 'response_library.json'
+                    library: list = []
                     if library_path.exists():
                         with open(library_path, encoding='utf-8') as f:
-                            library = json.load(f)
-                    else:
-                        library = {}
+                            loaded = json.load(f)
+                        if isinstance(loaded, list):
+                            library = loaded
+                    existing_tags = {
+                        (entry.get('topic_tag') or entry.get('question', '')[:40])
+                        for entry in library if isinstance(entry, dict)
+                    }
                     for resp in screening:
                         tag = resp.get('topic_tag') or resp.get('question', '')[:40]
-                        if tag:
-                            library[tag] = resp
+                        if tag and tag not in existing_tags:
+                            library.append(resp)
+                            existing_tags.add(tag)
                     library_path.parent.mkdir(parents=True, exist_ok=True)
                     with open(library_path, 'w', encoding='utf-8') as f:
                         json.dump(library, f, indent=2)
