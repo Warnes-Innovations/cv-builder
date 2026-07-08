@@ -579,6 +579,31 @@ describe('_renderSkillsTable qualifier inputs', () => {
     expect(payload).toEqual({ skill: 'Python', category: 'Data Science' })
   })
 
+  it('does not claim the Include action "confirms" a weak-evidence skill, since no confirm mechanism exists (GAP-390)', () => {
+    document.body.innerHTML = '<div id="skills-table-container"></div>'
+    window.pendingRecommendations = { recommended_skills: [] }
+    window._skillsOrdered = [
+      { name: 'Quantum Computing', category: 'Programming', candidate_to_confirm: true, evidence: 'Mentioned once in passing.' },
+    ]
+    stateManager.setTabData('analysis', { required_skills: [], nice_to_have_skills: [] })
+
+    const dataTableMock = vi.fn().mockReturnValue({ destroy: vi.fn() })
+    globalThis.$ = vi.fn(() => ({ DataTable: dataTableMock }))
+    globalThis.$.fn = { DataTable: { isDataTable: vi.fn().mockReturnValue(false) } }
+
+    _renderSkillsTable(document.getElementById('skills-table-container'), new Set(), window.pendingRecommendations, new Set(), new Set())
+
+    const html = document.getElementById('skills-table-container').innerHTML
+    // The old copy implied clicking Include would "confirm" the skill — it never did.
+    expect(html).not.toContain('Confirm this skill')
+    expect(html).not.toContain('Verify evidence')
+    // The new copy states plainly that the skill is excluded regardless of the row's action.
+    expect(html).toContain('Excluded — weak evidence')
+    expect(html).toContain('Not included in generated documents')
+    const includeBtn = document.querySelector('[data-action="include"]')
+    expect(includeBtn.title).toContain('still excluded from generated documents')
+  })
+
   it('submits user-created skills as rich extra_skills objects', async () => {
     window._skillsOrdered = [
       {

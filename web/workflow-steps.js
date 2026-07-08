@@ -439,6 +439,16 @@ async function _executeReRunPhase(step) {
     const changedSuffix = changeInfo
       ? ` (${changeInfo.changed} of ${changeInfo.total} items changed)`
       : '';
+    // GAP-393: report the diff already computed above back to the server so
+    // the rerun_log audit entry records it, instead of only ever surfacing
+    // it in this one-time toast message.
+    if (changeInfo) {
+      fetch('/api/re-run-phase/audit-diff', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ phase: step, changed: changeInfo.changed, total: changeInfo.total }),
+      }).catch(() => {});
+    }
     appendMessage('assistant', `✅ ${step} re-run complete. Review the updated results — changed items are highlighted${changedSuffix}.`);
     await fetchStatus();
 

@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 105)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 106)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,16 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 106) Implementation Notes
+
+Closed out all 6 gaps (GAP-390 through GAP-395) filed at the end of cycle 105 as genuine-but-deferred findings, rather than leaving them open. All 6 are now RESOLVED with regression tests:
+
+- **GAP-390** (HIGH): the only one requiring a design decision rather than a straightforward fix. Building a real "confirm weak evidence" mechanism would need new state threaded through `skill_decisions`, `apply_approved_rewrites`, and all three generation filters — judged too risky to implement and fully validate in one cycle. Fixed the actual trust violation instead: the UI no longer implies a confirm action exists that doesn't.
+- **GAP-391** (MEDIUM): removed the venue-warning glyph from all 3 generated-document code paths; left untouched in the in-app editor where it's actionable.
+- **GAP-392–395** (all LOW): ownership-gated the notes-edit affordance, wired the client-computed re-run diff back to the server instead of duplicating the diff logic in Python, added session-scope reminders to Customisation and Rewrite Review, and normalized the two "reused from" provenance fields to the same directory-based format.
+
+This closes the gap backlog opened by cycle 105's re-verification pass — no gaps from cycles 103–106 remain OPEN as of this update (GAP-387 is the sole FALSE POSITIVE; everything else is RESOLVED).
 
 ## 2026-07-07 (Cycle 105) Implementation Notes
 
@@ -4797,7 +4807,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-390: "Confirm This Skill" Affordance Is Fully Interactive but Confirms Nothing — Generation Always Excludes the Skill Regardless
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 106) — chose option (b): the misleading affordance was replaced with honest messaging rather than building a "real confirm" mechanism, since the flag is recomputed fresh from the rewrite's own `evidence_strength` on every generation (`cv_orchestrator.py`'s `apply_approved_rewrites()`, `skill_add` branch) rather than being a persisted, toggleable flag — implementing a genuine confirm action would require new state threaded through `skill_decisions`, `apply_approved_rewrites`, and all three generation filters, which was judged too risky to build and validate correctly in this cycle. `web/skills-review.js`'s badge now reads "⚠ Excluded — weak evidence" (was "Verify evidence"/implied a working confirm action), the inline note now states plainly the skill is "Not included in generated documents," and the Emphasize/Include/De-emphasize button tooltips append "— still excluded from generated documents (weak evidence)" for these rows. Regression test: `tests/js/skills-review.test.js`.
 **Discovered:** 2026-07-07 (cycle 105) by trust-compliance persona, independent re-verification pass of GAP-383's fix.
 **Description:** A `skill_add` rewrite flagged "⚠ Weak evidence" is tagged `candidate_to_confirm: True` (`scripts/utils/cv_orchestrator.py:1822`). The Skills Review table (`web/skills-review.js:587-593,723-731,853-857`) renders a fully clickable "✓ Include" checkbox for these rows with active/checked visual state, and the badge's own tooltip text explicitly says "Confirm this skill is genuinely demonstrated…" — clearly implying a confirm action exists. It does not: as of GAP-383's cycle-104/105 fix, all three output formats (HTML/PDF, ATS DOCX, human DOCX) now *consistently* filter out `candidate_to_confirm` skills unconditionally at generation time (`cv_orchestrator.py:217-224, 4415-4419, 5435-5436`), with no code path anywhere that ever clears the flag or reads a "user confirmed" decision. A user can click Include, see it render as active/checked, save their session, and the skill will never appear in any generated document — with no warning that their explicit action had no effect. GAP-383 made this *more* consistent (previously it silently appeared in HTML/PDF only) but did not create or surface the missing confirm mechanism itself.
 **Fix:** Either (a) implement a real confirm action — e.g. a "Confirm evidence" button that flips `candidate_to_confirm` to `False` once the user attests the skill is genuine, and thread that decision through to generation — or (b) if weak-evidence skills should never be includable regardless of user action, remove the misleading Include affordance and its "confirm this skill" tooltip copy, replacing it with a clear "excluded from generated documents" notice.
@@ -4808,7 +4818,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-391: Publication Venue-Warning Glyph Baked Into Final Delivered HTML/PDF/DOCX Output
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 106) — removed the `⚠ [venue unavailable]` marker from all three generated-document paths: `templates/cv-template.html` (HTML/PDF), the ATS DOCX renderer, and the human DOCX renderer (`cv_orchestrator.py`). The warning remains fully visible in the in-app editor (`web/publications-review.js`, unchanged) — it was never removed from the one place a user can actually act on it, only from the documents an employer receives. Regression tests: `tests/test_cv_orchestrator.py::test_human_docx_does_not_leak_venue_warning_glyph`, `tests/test_ats_generation.py::test_ats_docx_does_not_leak_venue_warning_glyph`.
 **Discovered:** 2026-07-07 (cycle 105) by hiring-manager persona, independent re-verification pass of GAP-383's fix.
 **Description:** When a publication's venue/journal cannot be resolved, the internal QA marker `⚠ [venue unavailable]` is written directly into the final rendered output — `templates/cv-template.html:712-714` (HTML/PDF), `scripts/utils/cv_orchestrator.py:5150-5151` and `:5494-5498` (human DOCX) — rather than being surfaced only as an editor-side warning during Customisation/Review. A hiring manager receiving the finished resume/CV could see this internal placeholder text directly in a delivered document.
 **Fix:** Either resolve the missing venue before allowing generation to proceed (blocking, with a clear in-app warning), or omit the venue field entirely from generated output when unavailable rather than emitting a visible glyph, reserving the `⚠` marker for the in-app review UI only.
@@ -4819,7 +4829,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-392: Active-Session "Edit Notes" Button Shown Regardless of Ownership — Rejection Only Surfaces After Clicking Save
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 106) — `web/session-switcher-ui.js`'s row renderer now checks `row.ownership?.label === 'Owned by another tab'` (the same ownership metadata `getActiveSessionOwnershipMeta()` already computes) and renders a disabled icon with an explanatory title instead of a live "Edit notes" button for those rows, so the rejection is visible before the user invests effort typing a note. Regression test: `tests/js/session-switcher-ui.test.js`.
 **Discovered:** 2026-07-07 (cycle 105) by returning-user persona, independent re-verification pass of GAP-386's fix.
 **Description:** GAP-386 (cycle 104) correctly implemented `PATCH /api/sessions/active/notes` with owner-token validation, so editing notes on a session claimed by a different tab is correctly rejected server-side (403). However, `web/session-switcher-ui.js`'s "Edit notes" icon (`:405-429`) is rendered identically for every active row regardless of whether the current tab owns that session — a user can open the notes editor for someone else's active session, type a note, click Save, and only then learn (via a toast) that the edit was rejected.
 **Fix:** Either disable/hide the "Edit notes" affordance for active rows not owned by the current tab (matching how other ownership-gated actions in the Session Switcher already behave), or show an inline "not your session" notice before the user invests effort typing a note.
@@ -4830,7 +4840,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-393: Re-Run Audit Trail Records Only Phase/Timestamp, Not the Diff Data Already Computed Client-Side
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 106) — added `ConversationManager.record_rerun_diff(phase, changed, total)` and a new `POST /api/re-run-phase/audit-diff` endpoint (`scripts/routes/job_routes.py`). Rather than duplicating the step-specific diff logic already implemented and tested in `web/workflow-steps.js`'s `_countChangedItems()` in Python too (a two-language-drift risk), the frontend now reports its own already-computed `{changed, total}` back to the server immediately after `_executeReRunPhase()` computes it, which attaches it to the most recent matching `rerun_log` entry. Regression tests: `tests/test_intake_rerun.py` (5 new: manager-level + endpoint-level), `tests/js/workflow-steps.test.js` (2 new).
 **Discovered:** 2026-07-07 (cycle 105) by applicant persona, full US-A12 re-review.
 **Description:** US-A12's acceptance criteria call for the audit log to record "previous clarification answers (if changed) and count of downstream items affected" on re-run. `rerun_log` (`scripts/utils/conversation_manager.py:1861-1865`) records only `phase`, `timestamp`, and a constant `'user'` marker. The richer diff (which answers changed, how many downstream items were affected) is computed client-side purely for a one-time toast message and is never sent back to the server to be persisted.
 **Fix:** Include the computed diff summary in the `POST /api/re-run-phase` (or equivalent) request body and persist it alongside the existing `rerun_log` entry fields.
@@ -4841,7 +4851,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-394: No In-Context Reminder That Customisation/Rewrite-Review Edits Are Session-Only, Not Yet Saved to Master Data
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 106) — added a small persistent note to both the shared Customizations header (`web/review-table-base.js`'s `populateReviewTab()`, rendered once on the `experiences` pane so it's not repeated per sub-tab) and `web/rewrite-review.js`'s Rewrite Review panel, each pointing to the Update Master CV step for anything the user wants to keep permanently. Regression test: `tests/js/rewrite-review.test.js` (`populateReviewTab()`'s equivalent is not independently unit-tested in this codebase — see its own file header comment — so only the rewrite-review.js addition has a dedicated test; the review-table-base.js change was verified by re-running its full existing suite, which stayed 63/63 green).
 **Discovered:** 2026-07-07 (cycle 105) by master-cv-curator persona, re-confirmed during independent verification of GAP-384/GAP-389.
 **Description:** US-M1's second acceptance criterion calls for a clear signal, outside the Master CV tab, that in-session edits (customizations, rewrite acceptances) are scoped to the current application only and will not silently propagate to `Master_CV_Data.json` unless explicitly harvested. `web/rewrite-review.js` has no such disclaimer anywhere in its UI.
 **Fix:** Add a small persistent note or tooltip in the Customisation/Rewrite Review tabs clarifying that changes are session-scoped, with a pointer to the Update Master CV step for anything the user wants to keep permanently.
@@ -4852,7 +4862,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-395: `cover_letter_reused_from`/`reused_from_session` Use Different Session-Identifier Semantics (File Path vs. Directory)
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 106) — normalized `cover_letter_prior()` (`master_data_routes.py`) to return the containing directory (`session_file.parent`) rather than the `session.json` file path, matching screening's already-persisted `response_library.json` format — chosen over the reverse direction since the cover-letter value is computed fresh on every request with no persisted format to migrate, while `response_library.json` entries are written to disk and would need a migration path if changed. Regression test: `tests/test_cover_letter.py::test_session_path_is_the_containing_directory_not_the_session_json_file`.
 **Discovered:** 2026-07-07 (cycle 105) by applicant persona, independent re-verification pass of GAP-381/GAP-382's fixes.
 **Description:** GAP-381's `cover_letter_reused_from` stores a path to a `session.json` *file* (`scripts/routes/master_data_routes.py:2046`), while GAP-382's `reused_from_session` stores the session's output *directory* (`master_data_routes.py:2593`). Both work correctly within their own feature, but the two "reused from" provenance fields are not directly comparable or interchangeable — a future feature attempting to unify "this was reused from session X" display across cover letters and screening responses would need to normalize one representation to the other first.
 **Fix:** Low priority — either document the differing semantics explicitly at each field's definition, or normalize both to the same representation (e.g. always the containing directory) for future consistency.

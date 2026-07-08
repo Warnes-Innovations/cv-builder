@@ -740,6 +740,9 @@ async function populateReviewTab(pane) {
   const headerHtml = pane === 'experiences' ? `
     <h1>⚙️ Review Customization Recommendations</h1>
     <p style="color:#6b7280;margin-bottom:16px;">Review the AI's recommendations. Use the action buttons to adjust each item, then save your decisions before generating the CV.</p>
+    <p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">
+      💡 <em>Changes here apply to <strong>this application only</strong> — they won't change your saved Master CV data. To keep something permanently, use the <strong>Update Master CV</strong> step after finalising.</em>
+    </p>
     <div id="page-estimate-widget" class="page-estimate ok">
       <span id="pe-icon">📄</span>
       <span id="pe-label">Estimated length: calculating…</span>

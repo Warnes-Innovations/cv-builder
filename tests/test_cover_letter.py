@@ -168,6 +168,25 @@ class TestCoverLetterPrior(unittest.TestCase):
         self.assertEqual(len(s['full_text']), 500)
         self.assertEqual(len(s['preview']),   200)
 
+    def test_session_path_is_the_containing_directory_not_the_session_json_file(self):
+        """GAP-395: session_path must have the same shape as screening's
+        response_library.json session_path (a directory), not a second,
+        incompatible "reused from" representation pointing at session.json."""
+        app, _, _, _, stack = _make_app()
+        with stack, tempfile.TemporaryDirectory() as tmpdir:
+            session_file = self._write_session(Path(tmpdir), cover_letter_text='Dear Team,')
+
+            mock_cfg = MagicMock()
+            mock_cfg.get.return_value = tmpdir
+
+            with app.test_client() as client, \
+                 patch('utils.config.get_config', return_value=mock_cfg):
+                data = client.get('/api/cover-letter/prior').get_json()
+
+        s = data['sessions'][0]
+        self.assertEqual(s['session_path'], str(session_file.parent))
+        self.assertNotIn('session.json', s['session_path'])
+
 
 # ---------------------------------------------------------------------------
 # POST /api/cover-letter/generate

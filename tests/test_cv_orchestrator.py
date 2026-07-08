@@ -983,6 +983,35 @@ class TestGenerateHumanDocx(unittest.TestCase):
         self.assertIn("CORE CAPABILITIES", paragraphs)
         self.assertNotIn("TECHNICAL SKILLS", paragraphs)
 
+    def test_human_docx_does_not_leak_venue_warning_glyph(self):
+        """GAP-391: venue_warning is an in-app editor data-quality flag
+        (web/publications-review.js) and must never appear in a document
+        delivered to an employer."""
+        from docx import Document  # type: ignore
+
+        out_dir = Path(self.tmp.name) / "output"
+        out_dir.mkdir()
+
+        content = self._content()
+        content["publications"] = [
+            {
+                "formatted_citation": "Doe, J. (2024). Some Preprint Title.",
+                "venue_warning": "No journal or conference name found in BibTeX entry",
+            }
+        ]
+
+        human_docx = self.orc._generate_human_docx(
+            content,
+            {"company": "Acme Corp", "title": "Data Scientist"},
+            out_dir,
+        )
+        doc = Document(str(human_docx))
+        full_text = "\n".join(p.text for p in doc.paragraphs)
+
+        self.assertIn("Some Preprint Title", full_text)
+        self.assertNotIn("venue unavailable", full_text)
+        self.assertNotIn("⚠", full_text)
+
 
 class TestConvertHtmlToPdf(unittest.TestCase):
     """Focused tests for renderer selection and reporting."""

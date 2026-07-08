@@ -343,6 +343,12 @@ describe('renderRewritePanel', () => {
     expect(document.getElementById('document-content').textContent).toContain('No Rewrite Suggestions')
     expect(document.getElementById('document-content').textContent).toContain('Continue to Spell Check')
   })
+
+  it('reminds the user decisions here are session-only, not saved to Master CV data (GAP-394)', () => {
+    renderRewritePanel([{ id: 'rw-1', original: 'old', proposed: 'new' }], [])
+    expect(document.getElementById('document-content').textContent).toContain('this application only')
+    expect(document.getElementById('document-content').textContent).toContain('Update Master CV')
+  })
 })
 
 describe('fetchAndReviewRewrites', () => {

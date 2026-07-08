@@ -218,6 +218,37 @@ def test_ats_docx_soft_skill_section(orchestrator, job_analysis, tmp_path):
     assert "Core Competencies" in heading1_texts
 
 
+def test_ats_docx_does_not_leak_venue_warning_glyph(orchestrator, job_analysis, tmp_path):
+    """GAP-391: venue_warning is an in-app editor data-quality flag
+    (web/publications-review.js) and must never appear in a document
+    delivered to an employer."""
+    from docx import Document  # type: ignore
+
+    out_dir = tmp_path / "ats_out_venue_warning"
+    out_dir.mkdir()
+
+    content = {
+        "personal_info": {"name": "Test User", "contact": {}},
+        "summary": "Test summary.",
+        "experiences": [], "skills": [], "education": [], "certifications": [],
+        "awards": [], "achievements": [],
+        "publications": [
+            {
+                "formatted_citation": "Doe, J. (2024). Some Preprint Title.",
+                "venue_warning": "No journal or conference name found in BibTeX entry",
+            }
+        ],
+    }
+
+    ats_file, _ = orchestrator._generate_ats_docx(content, job_analysis, out_dir)
+    doc = Document(str(ats_file))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+
+    assert "Some Preprint Title" in full_text
+    assert "venue unavailable" not in full_text
+    assert "⚠" not in full_text
+
+
 def test_ats_docx_phone_normalized(orchestrator, job_analysis, tmp_path):
     """Phone number in ATS DOCX contact line is normalized to NNN-NNN-NNNN (US-H3)."""
     from docx import Document  # type: ignore

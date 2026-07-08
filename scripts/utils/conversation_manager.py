@@ -1871,6 +1871,28 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
             'new_output':   new_output,
         }
 
+    def record_rerun_diff(self, phase: str, changed: int, total: int) -> Dict[str, Any]:
+        """Attach a changed/total item count to the most recent rerun_log entry
+        for ``phase``.
+
+        GAP-393: the diff itself is computed client-side from the
+        ``prior_output``/``new_output`` this same re-run already returned
+        (see ``web/workflow-steps.js``'s ``_countChangedItems()``) — porting
+        that per-step comparison logic into Python too would duplicate it in
+        two languages that could drift out of sync. Instead the frontend
+        reports its own already-computed result back here so the audit trail
+        has it, without a second implementation of the diff.
+        """
+        resolved = str(self._STEP_TO_PHASE.get(phase, phase))
+        log = self.state.get('rerun_log') or []
+        for entry in reversed(log):
+            if entry.get('phase') == resolved and 'changed' not in entry:
+                entry['changed'] = changed
+                entry['total'] = total
+                self._save_session()
+                return {'ok': True}
+        return {'ok': False, 'error': f'No pending rerun_log entry found for phase: {phase!r}'}
+
 
     def add_job_description(self, job_text: str):
         """Add job description to state."""
