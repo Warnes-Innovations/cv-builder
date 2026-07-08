@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.stubGlobal('CSS', { escape: s => String(s) })
   vi.stubGlobal('trapFocus', vi.fn())
   vi.stubGlobal('restoreFocus', vi.fn())
-  vi.stubGlobal('_focusedElementBeforeModal', null)
+  vi.stubGlobal('pushFocusStack', vi.fn())
 
   globalThis.fetch = vi.fn()
 })

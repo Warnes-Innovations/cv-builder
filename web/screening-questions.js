@@ -156,6 +156,7 @@ async function searchForQuestion(question, idx) {
         </div>`;
       if (!_screeningState[idx]) _screeningState[idx] = {};
       _screeningState[idx].priorResponse = p.response_text || '';
+      _screeningState[idx].priorSessionPath = p.session_path || '';
     } else {
       priorEl.innerHTML = '';
     }
@@ -314,8 +315,13 @@ async function saveScreeningResponses() {
     const responseText = (_screeningState[i]?.responseText) || textEl.value || '';
     const fmt          = _getSelectedFormat(i);
     const topicTag     = topicEl ? topicEl.value.trim() : '';
+    // GAP-382: record which prior session's response (if any) this answer
+    // was reused from, so provenance is visible instead of untracked.
+    const reusedFromSession = _screeningState[i]?.usePrior
+      ? (_screeningState[i]?.priorSessionPath || null)
+      : null;
 
-    responses.push({ question, topic_tag: topicTag, format: fmt, response_text: responseText });
+    responses.push({ question, topic_tag: topicTag, format: fmt, response_text: responseText, reused_from_session: reusedFromSession });
   });
 
   if (!responses.length) {

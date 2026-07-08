@@ -38,7 +38,7 @@
  *   - closeAlertModal               (globalThis function)
  *   - setInitialFocus               (globalThis function)
  *   - trapFocus                     (globalThis function)
- *   - _focusedElementBeforeModal    (globalThis)
+ *   - pushFocusStack                (globalThis function)
  *   - CSS.escape                    (browser built-in)
  */
 
@@ -804,7 +804,7 @@ function _openRewriteModal(originalText, currentInstructions, currentSuggestion,
     </div>`;
 
   document.getElementById('alert-modal-overlay').style.display = 'block';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('alert-modal-overlay');
   trapFocus('alert-modal-overlay');
 

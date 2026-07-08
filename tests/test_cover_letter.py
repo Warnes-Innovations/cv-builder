@@ -236,6 +236,36 @@ class TestCoverLetterGenerate(unittest.TestCase):
         self.assertEqual(params['hiring_manager'],  'Ms Jones')
         self.assertEqual(params['highlight'],       'Grew revenue 3x')
 
+    def test_generate_records_reused_from_session_path(self):
+        """GAP-381: reusing a prior letter records its session path in
+        cover_letter_reused_from instead of leaving it permanently null."""
+        app, conv, mock_llm, sid, stack = _make_app()
+        mock_llm.chat.return_value = 'Dear Team, body.'
+
+        with stack, app.test_client() as client:
+            client.post('/api/cover-letter/generate',
+                        json={'tone': 'startup/tech',
+                              'reuse_body': 'Dear Prior Co., …',
+                              'reuse_session_path': '/tmp/cv_output/2026-01-01/session.json',
+                              'session_id': sid})
+
+        self.assertEqual(
+            conv.state['cover_letter_reused_from'],
+            '/tmp/cv_output/2026-01-01/session.json',
+        )
+
+    def test_generate_without_reuse_leaves_reused_from_none(self):
+        """GAP-381: generating fresh (no prior letter selected) must not
+        record a stale/incorrect reused_from value."""
+        app, conv, mock_llm, sid, stack = _make_app()
+        mock_llm.chat.return_value = 'Dear Team, body.'
+
+        with stack, app.test_client() as client:
+            client.post('/api/cover-letter/generate',
+                        json={'tone': 'startup/tech', 'session_id': sid})
+
+        self.assertIsNone(conv.state['cover_letter_reused_from'])
+
 
 # ---------------------------------------------------------------------------
 # POST /api/cover-letter/save

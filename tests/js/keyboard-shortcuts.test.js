@@ -12,7 +12,7 @@
  * text field (native browser text-undo must keep working there).
  */
 
-import { initKeyboardShortcuts } from '../../web/keyboard-shortcuts.js'
+import { initKeyboardShortcuts, showKeyboardShortcutsPanel } from '../../web/keyboard-shortcuts.js'
 
 let undoMock
 let redoMock
@@ -95,5 +95,35 @@ describe('Ctrl+Z / Ctrl+Shift+Z master-cv undo/redo scoping', () => {
     fireCtrlZ()
 
     expect(undoMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('showKeyboardShortcutsPanel Getting Started entry point (GAP-385)', () => {
+  let welcomeMock
+
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    welcomeMock = vi.fn()
+    vi.stubGlobal('showWelcomeModal', welcomeMock)
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.stubGlobal('showWelcomeModal', undefined)
+  })
+
+  it('renders a Getting Started Guide button in the panel', () => {
+    showKeyboardShortcutsPanel()
+    const btn = document.getElementById('kb-shortcuts-getting-started')
+    expect(btn).not.toBeNull()
+    showKeyboardShortcutsPanel() // close it (toggle) to avoid leaking into other tests
+  })
+
+  it('calls showWelcomeModal and closes the panel when clicked', () => {
+    showKeyboardShortcutsPanel()
+    const btn = document.getElementById('kb-shortcuts-getting-started')
+    btn.click()
+    expect(welcomeMock).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('kb-shortcuts-panel')).toBeNull()
   })
 })

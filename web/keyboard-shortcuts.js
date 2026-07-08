@@ -222,6 +222,9 @@ export function showKeyboardShortcutsPanel() {
           <tr><td style="padding:4px 12px 4px 0"><kbd>Esc</kbd></td><td>Close modals / this panel</td></tr>
         </tbody>
       </table>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid #374151">
+        <button id="kb-shortcuts-getting-started" style="background:none;border:none;color:#93c5fd;cursor:pointer;padding:0;font-size:0.95em;text-decoration:underline">🚀 Getting Started Guide</button>
+      </div>
     </div>`;
   Object.assign(panel.style, {
     position:   'fixed',
@@ -239,6 +242,10 @@ export function showKeyboardShortcutsPanel() {
   });
   document.body.appendChild(panel);
   panel.querySelector('#kb-shortcuts-close').addEventListener('click', () => panel.remove());
+  panel.querySelector('#kb-shortcuts-getting-started').addEventListener('click', () => {
+    panel.remove();
+    if (typeof showWelcomeModal === 'function') showWelcomeModal();
+  });
 }
 
 // ── Reset card focus when tab changes ────────────────────────────────────────

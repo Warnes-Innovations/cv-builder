@@ -11,6 +11,7 @@
  */
 import {
   finaliseApplication,
+  showHarvestSection,
 } from '../../web/finalise.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────────
@@ -134,5 +135,52 @@ describe('finaliseApplication', () => {
     const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
     expect(body.status).toBe('ready')
     expect(body.notes).toBe('Some notes')
+  })
+})
+
+// ── showHarvestSection (GAP-389) ──────────────────────────────────────────────
+// Verifies the Finalise tab's embedded panel links to the dedicated Update
+// Master CV tab instead of re-rendering its own duplicate candidates table
+// (the prior implementation fully duplicated web/harvest.js's render logic).
+
+describe('showHarvestSection', () => {
+  beforeEach(setupFinaliseDOM)
+
+  it('shows a count and a link to the dedicated harvest tab when candidates exist', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, candidates: [{ id: 'c1' }, { id: 'c2' }] }),
+    })
+    await showHarvestSection()
+    const html = document.getElementById('harvest-section').innerHTML
+    expect(html).toContain('2 improvements')
+    expect(html).toContain("switchTab('harvest')")
+  })
+
+  it('does not render a duplicate candidates table or checkboxes', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, candidates: [{ id: 'c1' }] }),
+    })
+    await showHarvestSection()
+    const html = document.getElementById('harvest-section').innerHTML
+    expect(html).not.toContain('harvest-chk-')
+    expect(html).not.toContain('harvest-apply-btn')
+  })
+
+  it('shows empty-state message when there are no candidates', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true, candidates: [] }),
+    })
+    await showHarvestSection()
+    expect(document.getElementById('harvest-section').innerHTML).toContain('No Update Candidates')
+  })
+
+  it('shows an error message when the fetch fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: false, error: 'boom' }),
+    })
+    await showHarvestSection()
+    expect(document.getElementById('harvest-section').innerHTML).toContain('boom')
   })
 })

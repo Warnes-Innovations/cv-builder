@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 103)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 104)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,20 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 104) Implementation Notes
+
+Follow-on cycle resolving the GAP-381–389 backlog filed by cycle 103's cvUiReview committee pass. 8 of 9 were genuine gaps and are now fixed with regression tests; GAP-387 was found to be a false positive (the persona named a nonexistent function — the real, equivalently-named function was already wired in). Also independently re-verified (not just trusted) as part of this cycle: GAP-383's fix follows the established GAP-326/342 precedent instead of inventing a new pattern; GAP-389's fix removes duplicate UI-rendering logic per this project's own CLAUDE.md guidance on duplicate-implementation risk (GAP-146/48/43 precedent), rather than merely documenting the duplication as intentional.
+
+- **GAP-383** (HIGH): added the same `candidate_to_confirm` exclusion filter already used by the ATS DOCX (GAP-326) and human DOCX (GAP-342) paths to the shared HTML/PDF template path (`cv_orchestrator.py:_prepare_cv_data_for_template`), so all three output formats are now consistent.
+- **GAP-381**: `cover_letter_reused_from` is now actually assigned — the frontend sends the selected prior session's `session_path` (`web/cover-letter.js`), and the backend records it in `conversation.state` only when a prior letter's body was actually used as the reuse basis (`master_data_routes.py`).
+- **GAP-382**: screening responses now carry a `reused_from_session` field, populated from the response-library entry's own `session_path` (already present server-side) whenever "Use as starting point" was checked (`web/screening-questions.js`).
+- **GAP-384**: all ~22 call sites across `master-cv.js`, `workflow-steps.js`, and `achievements-review.js` (one extra site found beyond the originally-estimated ~19+3) now call the real `pushFocusStack()` instead of assigning to a never-declared/never-read `_focusedElementBeforeModal` variable.
+- **GAP-385**: added a "🚀 Getting Started Guide" link inside the keyboard-shortcuts panel (which the Help button now opens per GAP-349) wired to `showWelcomeModal()`, restoring a path back to onboarding.
+- **GAP-386**: added `PATCH /api/sessions/active/notes` (session-id-scoped, since active sessions have no file path yet) and extended the Session Switcher's notes UI to cover active rows, not just saved ones.
+- **GAP-387**: FALSE POSITIVE — the persona named a nonexistent `check_generic_filler()`; the actual detector, `LLMClient.check_summary_generic_phrases()`, was already called from `run_persuasion_checks()` at `conversation_manager.py:1555`. No code change.
+- **GAP-388**: fixed the stale `index.html:205` "📦 Package Application Files" source text directly (was previously only patched at runtime via a JS string-replace in `app.js`) to read "✅ Finalise Application", matching the nav pill/tab label, and removed the now-redundant runtime patch.
+- **GAP-389**: removed the Finalise tab's embedded panel's duplicate fetch-candidates-and-render-table logic; it now shows a candidate count and a single button to the dedicated Update Master CV tab, eliminating the "one feature, two implementations" drift risk instead of just documenting it.
 
 ## 2026-07-07 (Cycle 103) Implementation Notes
 
@@ -4669,7 +4683,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-381: `cover_letter_reused_from` Metadata Field Initialized but Never Assigned
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — `web/cover-letter.js` now sends the selected prior letter's `session_path` as `reuse_session_path` alongside `reuse_body`. `master_data_routes.py`'s `cover_letter_generate()` records it into `conversation.state['cover_letter_reused_from']` (only when a reuse actually happened, i.e. `reuse_body` was non-empty; otherwise explicitly `None`), which the existing read-through into `metadata.json` (`master_data_routes.py`) already picks up unchanged. Regression tests added: `tests/test_cover_letter.py::test_generate_records_reused_from_session_path`, `::test_generate_without_reuse_leaves_reused_from_none`.
 **Discovered:** 2026-07-07 (cycle 103) by applicant persona, cvUiReview committee pass.
 **Description:** `conversation_manager.py:112,1974` initializes `state['cover_letter_reused_from'] = None` and `master_data_routes.py:2334` reads it through into the session's `metadata.json`, but no code anywhere ever assigns it a real value (e.g. a prior session path when a cover letter is reused/copied from an earlier application). The field is permanently `null`, so any UI or downstream tooling that reads it to show "reused from {prior session}" provenance would silently show nothing.
 **Fix:** Either implement the actual reuse-tracking write-through wherever cover letter reuse/duplication happens, or remove the dead field and its read-through if the feature was abandoned.
@@ -4680,7 +4694,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-382: Screening Response Metadata Is Missing `reused_from_session` Entirely
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — `web/screening-questions.js`'s `searchForQuestion()` now records the matched library entry's existing `session_path` field into `_screeningState[idx].priorSessionPath`; `saveScreeningResponses()` includes it as `reused_from_session` (or `null` when the prior match wasn't accepted) in each response payload, which passes through unchanged into `metadata.json`'s `screening_responses` (no backend filtering exists on this payload). Regression tests: `tests/js/screening-questions.test.js` (2 new), `tests/test_screening.py::test_save_persists_reused_from_session_in_metadata`.
 **Discovered:** 2026-07-07 (cycle 103) by applicant persona, cvUiReview committee pass.
 **Description:** Unlike `cover_letter_reused_from` (GAP-381, at least present as a dead field), screening response metadata built in `master_data_routes.py:2564` and `screening-questions.js:318` has no `reused_from_session`-equivalent field at all, even though the response-library search feature (`master_data_routes.py:2360–2399`) explicitly surfaces prior similar answers from past sessions for reuse.
 **Fix:** Add a `reused_from_session` field to the screening response payload/metadata, populated when a response is accepted from the similarity search rather than freshly written.
@@ -4691,7 +4705,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-383: Accepted Weak-Evidence Skills Silently Excluded From Some Output Formats but Not Others
 
 **Priority:** HIGH
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — applied option (a): `cv_orchestrator.py`'s `_prepare_cv_data_for_template()` (the shared HTML/PDF path) now filters `candidate_to_confirm` skills before calling `_organize_skills_by_category()`, using the identical pattern already established at the ATS DOCX (GAP-326, line ~4408) and human DOCX (GAP-342, line ~5428) call sites. All three output formats now agree on which skills appear. Regression test: `tests/test_cv_orchestrator.py::TestPrepareCvDataForTemplate::test_candidate_to_confirm_skills_excluded_from_html_pdf`.
 **Discovered:** 2026-07-07 (cycle 103) by trust-compliance persona, cvUiReview committee pass.
 **Description:** A `skill_add` rewrite flagged "⚠ Weak evidence" and explicitly **accepted** by the user (`rewrite-review.js:399–402`) is tagged `candidate_to_confirm: True` (`cv_orchestrator.py:1814`) with no UI path to ever clear that flag once accepted. At generation time it is silently filtered out of the ATS DOCX (`cv_orchestrator.py:4407–4408`) and human DOCX (`:5427–5428`), but is **kept** in the HTML/PDF path (`:172–222`). A user who reviews the HTML/PDF preview sees the skill; the DOCX an employer might actually receive is silently missing content the user explicitly approved, with no warning anywhere (not in the Rewrites tab, not in the Finalise readiness checklist, not in the rewrite audit log).
 **Fix:** Either (a) apply the same `candidate_to_confirm` exclusion consistently across all three output formats, or (b) surface a clear "this skill won't appear in Word/ATS formats" notice at accept-time and in the Finalise checklist.
@@ -4702,7 +4716,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-384: Focus-Restore Systemic Bug — ~19 Master CV Modals Use a Dead Variable Instead of the Shared Focus Stack
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — replaced `_focusedElementBeforeModal = document.activeElement` (and two `typeof _focusedElementBeforeModal !== 'undefined'`-guarded variants that were always false, since the variable was never declared) with `pushFocusStack(document.activeElement)` at all 25 actual call sites: 20 in `master-cv.js`, 4 in `workflow-steps.js`, and 1 in `achievements-review.js` (found beyond the originally-estimated ~19+3 during the fix — the review undercounted). Stale doc-comment references to the dead variable updated too. Regression tests: `tests/js/master-cv.test.js`, `tests/js/achievements-review.test.js` (new `_openRewriteModal` focus-restore test).
 **Discovered:** 2026-07-07 (cycle 103) by accessibility-specialist persona, cvUiReview committee pass.
 **Description:** `web/master-cv.js`'s ~19 add/edit modal open functions (publications, achievements, summaries, personal info, experience, skills, education, awards, certifications, plus `openMasterCvModal()` itself) and 3 dialogs in `web/workflow-steps.js` set `_focusedElementBeforeModal = document.activeElement` — a plain module-level variable that is never read by `restoreFocus()`. `restoreFocus()` actually pops from a separate `_focusStack` array (correctly used elsewhere: `web/ats-modals.js`, `web/ui-helpers.js`, `web/session-switcher-ui.js` all call `pushFocusStack()`). Every close of one of these ~22 modals either no-ops (nothing was pushed) or incorrectly pops a stack entry meant for a different, unrelated modal, since `restoreFocus()` still runs regardless. Focus restoration for essentially the entire Master CV editing experience is broken for keyboard/screen-reader users.
 **Fix:** Replace `_focusedElementBeforeModal = document.activeElement` with `pushFocusStack(document.activeElement)` at all ~22 call sites.
@@ -4713,7 +4727,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-385: "? Help" Header Button Has No Path Back to the Onboarding Guide
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — added a "🚀 Getting Started Guide" link inside the keyboard-shortcuts panel (`web/keyboard-shortcuts.js`'s `showKeyboardShortcutsPanel()` — the panel the Help button already opens per GAP-349), wired to `showWelcomeModal()`. Regression tests added in `tests/js/keyboard-shortcuts.test.js`.
 **Discovered:** 2026-07-07 (cycle 103) by the UX heuristic reviewer, cvUiReview committee pass.
 **Description:** Since GAP-349 (cycle 99) rewired the header's "? Help" button from `showWelcomeModal()` to `showKeyboardShortcutsPanel()` (`web/app.js:170–178`), `showWelcomeModal()` has had zero callers anywhere in the codebase except the one-time auto-show on first visit (gated by a `localStorage` flag). A user who dismissed the onboarding modal, or any returning user, now has no way to ever reopen the getting-started guide.
 **Fix:** Add an explicit "Getting Started" or similar entry point (e.g. in the Settings modal, or a small secondary link near the Help button) that calls `showWelcomeModal()`.
@@ -4724,7 +4738,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-386: Session Notes Cannot Be Set or Edited for an Active (Non-Saved) Session
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — `_normalizeSessionsForTable()` now includes `notes` for active rows (the backend already returned it). The notes-edit UI's gate now covers both row types, using a session-id-based key for active rows (which have no numeric `idx`) instead of the saved-only numeric-idx key. A new `PATCH /api/sessions/active/notes` endpoint (`session_routes.py`) writes to the active session's own `session_dir/metadata.json`, since the existing `PATCH /api/sessions/metadata` addresses saved sessions by file path only — an active session has none yet. Regression tests: `tests/js/session-switcher-ui.test.js` (3 new), `tests/test_session_notes.py` (new file, 5 tests).
 **Discovered:** 2026-07-07 (cycle 103) by returning-user persona, cvUiReview committee pass. Follow-up to GAP-352 (cycle 95/103), which made existing notes *visible* in the Sessions modal and the active workspace, but never added a way to *create or edit* a note for a session that is currently active/in-progress.
 **Description:** The Sessions modal's notes-edit UI is gated to `row.type === 'saved'` only (`web/session-switcher-ui.js:405–424`), and the active-session rows returned by `/api/sessions/active` never receive the `notes` field in `_normalizeSessionsForTable()` (`web/session-switcher-ui.js:243–259` vs. `:269`) despite the backend already returning it (`scripts/routes/session_routes.py:766–794`). A user working through Job/Analysis/Customize/Rewrite/Spell/Layout has no way to jot a note on their own currently-open session at all — only once files are generated (via the Finalise tab) or once the session is no longer active (via the Sessions modal) can a note be attached.
 **Fix:** Extend `_normalizeSessionsForTable()` to include `notes` for active rows too, and extend the notes-edit UI's gate to cover active sessions, writing through to the session's `metadata.json` sidecar the same way saved-session notes already do.
@@ -4735,7 +4749,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-387: `check_generic_filler()` Detector Fully Implemented but Never Wired Into the Persuasion Check Pipeline
 
 **Priority:** MEDIUM
-**Status:** OPEN
+**Status:** FALSE POSITIVE 2026-07-07 (cycle 104) — no function named `check_generic_filler()` exists anywhere in the codebase (verified via full-repo grep); the persona misnamed it. `_GENERIC_FILLER_PHRASES` (llm_client.py:1076) is real, but the detector built on it is actually called `check_summary_generic_phrases()` (llm_client.py:1409), and it **is** already wired into `run_persuasion_checks()` at `conversation_manager.py:1555` (`if location == 'summary' or rewrite_type == 'summary': generic_result = LLMClient.check_summary_generic_phrases(proposed)`). No code change made.
 **Discovered:** 2026-07-07 (cycle 103) by resume-expert persona, cvUiReview committee pass.
 **Description:** `scripts/utils/llm_client.py:1076–1441` defines `_GENERIC_FILLER_PHRASES` and `check_generic_filler()`, a complete detector for boilerplate professional-summary phrases ("results-driven", "team player", etc. — exactly the class of fluff US-R4 asks to prevent). It is never called from `run_persuasion_checks()` (`conversation_manager.py:1508–1551`) or anywhere else — fully dead code. A generated summary opening with "Results-driven biostatistician with 10 years of experience seeking a challenging role…" passes the entire pipeline undetected, even though the code to catch it already exists.
 **Fix:** Add `check_generic_filler()` to the call list in `run_persuasion_checks()`, matching the pattern already used for the other 10 `check_*` functions in that pipeline.
@@ -4746,7 +4760,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-388: "Finalise" / "Archive" / "Package Application Files" Used Interchangeably for the Same Action Across Surfaces
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — standardized on "Finalise" (already the nav pill/tab label). Fixed the stale `index.html:205` source text directly (was "📦 Package Application Files") to read "✅ Finalise Application" with a matching tooltip, and removed the runtime JS string-replace patch in `app.js` that used to paper over it (`finaliseBtn.innerHTML = ...`) — the button's `click` listener registration is all that remains in `app.js` now.
 **Discovered:** 2026-07-07 (cycle 103) — independently flagged by hiring-manager, recruiter-ops, master-cv-curator, trust-compliance, and accessibility-specialist personas, cvUiReview committee pass (five independent reviewers converging on the same terminology finding is itself notable).
 **Description:** The same feature/action is labeled differently depending on where a user encounters it: the workflow-step pill and tab both say "Finalise" (`index.html:151,235`); the header action button's raw HTML source still says "📦 Package Application Files" (`index.html:205`) and is only patched to "Archive Application" at runtime by `app.js:159–161` (a JS string-replace over stale markup, not a source fix); the tab's own tooltip says the action will "mark the application ready to send"; screen-reader users hear all three phrasings with no surrounding visual context to reconcile them.
 **Fix:** Pick one verb ("Finalise" is already the nav/tab label and the least ambiguous) and apply it consistently: fix the stale `index.html:205` source text directly instead of runtime-patching it, and align the button label and tooltip wording to match.
@@ -4757,7 +4771,7 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-389: Finalise Tab Auto-Embeds Its Own Harvest/Update-Master-CV Panel, Duplicating the Dedicated Tab
 
 **Priority:** LOW
-**Status:** OPEN
+**Status:** RESOLVED 2026-07-07 (cycle 104) — chose the "remove the embedded panel" option rather than endorsing the duplication, consistent with this project's own CLAUDE.md guidance against duplicate implementations (GAP-146/48/43 precedent). `finalise.js`'s `showHarvestSection()` still calls `/api/harvest/candidates` (one shared API, not duplicated) but no longer re-renders its own candidates table with its own checkboxes/Apply button — it now shows a count and a single button (`switchTab('harvest')`) to the dedicated Update Master CV tab, which owns the one remaining implementation of that table. Regression tests added in `tests/js/finalise.test.js`.
 **Discovered:** 2026-07-07 (cycle 103) by ux-expert and master-cv-curator personas independently, cvUiReview committee pass.
 **Description:** `web/finalise.js`'s `showHarvestSection()` fetches `/api/harvest/candidates` and renders a full "📥 Update Master CV Data" panel *inside* the Finalise tab immediately after a user clicks "Finalise & Archive" (`finalise.js:342,356`) — duplicating the same surface `web/harvest.js`'s dedicated `populateHarvestTab()` implements as its own top-level workflow step. This creates ambiguity about which entry point is the canonical place to update the master CV, and is the same "same feature implemented twice in two places" risk class this project's CLAUDE.md already flags for duplicate functions (GAP-146/48/43), just at the UI-surface level rather than the code level.
 **Fix:** Either endorse this as intentional progressive disclosure (finish archiving, then immediately offer to harvest improvements) and document it as such, or remove the embedded panel and rely solely on the dedicated Harvest/Update Master CV step.

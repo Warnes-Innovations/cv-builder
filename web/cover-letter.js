@@ -278,17 +278,20 @@ async function generateCoverLetter() {
 
   // Check for prior letter selection
   let reuse_body = '';
+  let reuse_session_path = '';
   const checkedPrior = document.querySelector('input[name="cl-prior"]:checked');
   if (checkedPrior) {
     const idx = parseInt(checkedPrior.value, 10);
-    reuse_body = (_coverLetterPriorSessions[idx] || {}).full_text || '';
+    const prior = _coverLetterPriorSessions[idx] || {};
+    reuse_body = prior.full_text || '';
+    reuse_session_path = prior.session_path || '';
   }
 
   try {
     const res  = await fetch('/api/cover-letter/generate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tone, opening_style, hiring_manager, company_address, highlight, company_context, reuse_body }),
+      body:    JSON.stringify({ tone, opening_style, hiring_manager, company_address, highlight, company_context, reuse_body, reuse_session_path }),
     });
     const data = await res.json();
 

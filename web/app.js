@@ -155,9 +155,6 @@ function setupEventListeners() {
   document.getElementById('final-generate-proceed-btn').addEventListener('click', finalGenerationComplete);
   const finaliseBtn = document.getElementById('finalise-action-btn');
   if (finaliseBtn) {
-    // Rename from "📦 Package Application Files" → clearer label (GAP-325).
-    finaliseBtn.innerHTML = '<span aria-hidden="true">📦</span> Archive Application';
-    finaliseBtn.title = 'Run the completeness checklist and archive this application package';
     finaliseBtn.addEventListener('click', () => switchTab('finalise'));
   }
 

@@ -436,3 +436,77 @@ describe('emptyTrash', () => {
 // could silently never resolve the retried request depending on module load
 // order. Removed as dead/duplicate code; see web/session-switcher-ui.js's
 // header comment.
+
+// ── Active-session notes editing (GAP-386) ───────────────────────────────────
+
+describe('active-session notes editing (GAP-386)', () => {
+  function mockSessionsFetch({ activeNotes = '' } = {}) {
+    return vi.fn((url) => {
+      if (url === '/api/sessions/active') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            sessions: [{
+              session_id: 'sess-active-1', position_name: 'Active Job',
+              phase: 'analysis', created: '2026-01-01T00:00:00Z',
+              last_modified: '2026-01-02T00:00:00Z', claimed: false,
+              owned_by_requester: false, notes: activeNotes,
+            }],
+          }),
+        });
+      }
+      if (url === '/api/sessions') {
+        return Promise.resolve({ ok: true, json: async () => ({ sessions: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="sessions-modal-overlay" style="display:none;">
+        <div id="sessions-modal-body"></div>
+      </div>`;
+  });
+
+  it('shows an Edit notes button for an active session row', async () => {
+    globalThis.fetch = mockSessionsFetch();
+    await openSessionsModal();
+    const btn = document.querySelector('[data-sm-action="edit-notes"][data-sm-row-type], [data-sm-action="edit-notes"]');
+    expect(btn).not.toBeNull();
+  });
+
+  it('renders the active session notes preview text when notes exist', async () => {
+    globalThis.fetch = mockSessionsFetch({ activeNotes: 'Phone screen scheduled' });
+    await openSessionsModal();
+    expect(document.getElementById('sessions-modal-body').innerHTML).toContain('Phone screen scheduled');
+  });
+
+  it('submits notes for an active session to /api/sessions/active/notes with session_id, not the path-based endpoint', async () => {
+    globalThis.fetch = mockSessionsFetch();
+    await openSessionsModal();
+
+    const editBtn = document.querySelector('[data-sm-action="edit-notes"]');
+    editBtn.click();
+
+    const notesKey = editBtn.dataset.smNotesKey;
+    expect(notesKey).toBe('active-sess-active-1');
+    const ta = document.getElementById(`sm-notes-ta-${notesKey}`);
+    expect(ta).not.toBeNull();
+    ta.value = 'Called back, interview next week';
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true, notes: 'Called back, interview next week' }),
+    });
+    document.querySelector('[data-sm-action="submit-notes"]').click();
+    await Promise.resolve();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/sessions/active/notes', expect.objectContaining({
+      method: 'PATCH',
+    }));
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(body.session_id).toBe('sess-active-1');
+    expect(body.notes).toBe('Called back, interview next week');
+    expect(body.path).toBeUndefined();
+  });
+});

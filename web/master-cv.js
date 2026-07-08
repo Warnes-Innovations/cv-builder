@@ -1369,7 +1369,7 @@ function showImportPublicationsModal() {
   document.getElementById('master-pub-import-overwrite').checked = false;
   _setPublicationStatus('master-pub-import-status', '');
   document.getElementById('master-pub-import-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-pub-import-modal-overlay');
   trapFocus('master-pub-import-modal-overlay');
 }
@@ -1441,7 +1441,7 @@ function showConvertPublicationsModal() {
   document.getElementById('master-pub-convert-overwrite').checked = false;
   _setPublicationStatus('master-pub-convert-status', '');
   document.getElementById('master-pub-convert-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-pub-convert-modal-overlay');
   trapFocus('master-pub-convert-modal-overlay');
 }
@@ -1563,7 +1563,7 @@ function showAddPublicationModal() {
   document.getElementById('pub-modal-key').disabled = false;
   document.getElementById('pub-modal-title-heading').textContent = 'Add Publication';
   document.getElementById('master-pub-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-pub-modal-overlay');
   trapFocus('master-pub-modal-overlay');
 }
@@ -1597,7 +1597,7 @@ function editMasterPublication(pub) {
   document.getElementById('pub-modal-key').disabled  = true;  // key is immutable on edit
   document.getElementById('pub-modal-title-heading').textContent = 'Edit Publication';
   document.getElementById('master-pub-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-pub-modal-overlay');
   trapFocus('master-pub-modal-overlay');
 }
@@ -1853,7 +1853,7 @@ function showAddAchievementModal() {
   document.getElementById('ach-modal-importance-input').value = '7';
   document.getElementById('master-ach-modal-title').textContent = 'Add Achievement';
   document.getElementById('master-ach-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-ach-modal-overlay');
   trapFocus('master-ach-modal-overlay');
   document.getElementById('ach-modal-title-input').focus();
@@ -1867,7 +1867,7 @@ function editMasterAchievement(ach) {
   document.getElementById('ach-modal-importance-input').value = ach.importance || 7;
   document.getElementById('master-ach-modal-title').textContent = 'Edit Achievement';
   document.getElementById('master-ach-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-ach-modal-overlay');
   trapFocus('master-ach-modal-overlay');
 }
@@ -1916,7 +1916,7 @@ function showAddSummaryModal() {
   document.getElementById('sum-modal-text-input').value = '';
   document.getElementById('master-sum-modal-title').textContent = 'Add Professional Summary';
   document.getElementById('master-sum-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-sum-modal-overlay');
   trapFocus('master-sum-modal-overlay');
 }
@@ -1926,7 +1926,7 @@ function editMasterSummary(obj) {
   document.getElementById('sum-modal-text-input').value = obj.text || '';
   document.getElementById('master-sum-modal-title').textContent = 'Edit Professional Summary';
   document.getElementById('master-sum-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-sum-modal-overlay');
   trapFocus('master-sum-modal-overlay');
 }
@@ -1981,7 +1981,7 @@ function showEditPersonalInfoModal() {
       document.getElementById('pi-city-input').value    = address.city || '';
       document.getElementById('pi-state-input').value   = address.state || '';
       document.getElementById('master-pi-modal-overlay').style.display = 'flex';
-      _focusedElementBeforeModal = document.activeElement;
+      pushFocusStack(document.activeElement);
       setInitialFocus('master-pi-modal-overlay');
       trapFocus('master-pi-modal-overlay');
     })
@@ -2040,7 +2040,7 @@ function showAddExperienceModal() {
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
   _masterExpModalAchievements = [];
   _renderExpAchievementsEditor();
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-exp-modal-overlay');
   trapFocus('master-exp-modal-overlay');
 }
@@ -2137,7 +2137,7 @@ function editMasterExperience(id) {
   document.getElementById('master-exp-modal-overlay').style.display = 'flex';
   _masterExpModalAchievements = JSON.parse(JSON.stringify(exp.achievements || []));
   _renderExpAchievementsEditor();
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-exp-modal-overlay');
   trapFocus('master-exp-modal-overlay');
 }
@@ -2240,7 +2240,7 @@ function showAddSkillModal(categoryKey, isFlat) {
     catRow.style.display = 'none';
   }
   document.getElementById('master-skill-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-skill-modal-overlay');
   trapFocus('master-skill-modal-overlay');
   document.getElementById('skill-name-input').focus();
@@ -2277,7 +2277,7 @@ function editMasterSkill(skillObj, categoryKey, isFlat) {
   }
 
   document.getElementById('master-skill-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-skill-modal-overlay');
   trapFocus('master-skill-modal-overlay');
   document.getElementById('skill-name-input').focus();
@@ -2376,7 +2376,7 @@ function showAddEducationModal() {
   document.getElementById('edu-end-year-input').value       = '';
   document.getElementById('master-edu-modal-title').textContent = 'Add Education';
   document.getElementById('master-edu-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-edu-modal-overlay');
   trapFocus('master-edu-modal-overlay');
 }
@@ -2392,7 +2392,7 @@ function editMasterEducation(edu, idx) {
   document.getElementById('edu-end-year-input').value    = edu.end_year || '';
   document.getElementById('master-edu-modal-title').textContent = 'Edit Education';
   document.getElementById('master-edu-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-edu-modal-overlay');
   trapFocus('master-edu-modal-overlay');
 }
@@ -2475,7 +2475,7 @@ function showAddAwardModal() {
   document.getElementById('award-relevant-input').value = '';
   document.getElementById('master-award-modal-title').textContent = 'Add Award / Honour';
   document.getElementById('master-award-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-award-modal-overlay');
   trapFocus('master-award-modal-overlay');
 }
@@ -2489,7 +2489,7 @@ function editMasterAward(award, idx) {
     ? award.relevant_for : (award.relevant_for || []).join(', ');
   document.getElementById('master-award-modal-title').textContent = 'Edit Award / Honour';
   document.getElementById('master-award-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-award-modal-overlay');
   trapFocus('master-award-modal-overlay');
 }
@@ -2567,7 +2567,7 @@ function showAddCertificationModal() {
   document.getElementById('cert-year-input').value   = '';
   document.getElementById('master-cert-modal-title').textContent = 'Add Certification';
   document.getElementById('master-cert-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-cert-modal-overlay');
   trapFocus('master-cert-modal-overlay');
 }
@@ -2579,7 +2579,7 @@ function editMasterCertification(cert, idx) {
   document.getElementById('cert-year-input').value   = cert.year || '';
   document.getElementById('master-cert-modal-title').textContent = 'Edit Certification';
   document.getElementById('master-cert-modal-overlay').style.display = 'flex';
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   setInitialFocus('master-cert-modal-overlay');
   trapFocus('master-cert-modal-overlay');
 }
@@ -3042,7 +3042,7 @@ async function deleteMasterSummary(key) {
 function openMasterCvModal() {
   const overlay = document.getElementById('master-cv-modal-overlay');
   if (!overlay) return;
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   overlay.style.display = 'flex';
   document.body.style.overflow = 'hidden';
   const container = document.getElementById('master-cv-modal-body');

@@ -71,7 +71,8 @@ vi.stubGlobal('escapeHtml', escapeHtmlImpl)
 vi.stubGlobal('restoreFocus', vi.fn())
 vi.stubGlobal('setInitialFocus', vi.fn())
 vi.stubGlobal('trapFocus', vi.fn())
-vi.stubGlobal('_focusedElementBeforeModal', null)
+const pushFocusStackMock = vi.fn()
+vi.stubGlobal('pushFocusStack', pushFocusStackMock)
 // populateMasterTab()'s template calls these two (from web/master-data-ai-update.js)
 // as bare globals, matching how web/src/main.js wires them onto window in
 // production. Without a stub here, every test that exercises the real
@@ -665,6 +666,12 @@ describe('experience achievements editor', () => {
   it('showAddExperienceModal resets the achievements editor to empty', () => {
     showAddExperienceModal()
     expect(document.getElementById('exp-achievements-editor-list').textContent).toContain('No achievements yet')
+  })
+
+  it('showAddExperienceModal pushes the triggering element onto the shared focus stack (GAP-384)', () => {
+    pushFocusStackMock.mockClear()
+    showAddExperienceModal()
+    expect(pushFocusStackMock).toHaveBeenCalledTimes(1)
   })
 
   it('editMasterExperience shows an error and does not open the modal for an unknown id', () => {

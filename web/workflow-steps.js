@@ -13,7 +13,7 @@
  *   appendLoadingMessage, removeLoadingMessage, appendRetryMessage, appendMessage,
  *   setLoading, fetchStatus, switchTab, sendAction,
  *   showLoadJobPanel, updateActionButtons, updateTabBarForStage,
- *   trapFocus, restoreFocus, _focusedElementBeforeModal,
+ *   trapFocus, restoreFocus, pushFocusStack,
  *   postAnalysisQuestions, questionAnswers, CSS
  */
 
@@ -177,7 +177,7 @@ function _showReRunConfirmModal(step, mode, onConfirm) {
     </div>`;
 
   document.body.appendChild(overlay);
-  _focusedElementBeforeModal = document.activeElement;
+  pushFocusStack(document.activeElement);
   if (typeof trapFocus === 'function') trapFocus('rerun-confirm-overlay');
   document.getElementById('rerun-proceed-btn').focus();
 
@@ -359,7 +359,7 @@ async function _showAnalysisClarificationAmendModal(onProceed) {
     </div>`;
 
   document.body.appendChild(overlay);
-  if (typeof _focusedElementBeforeModal !== 'undefined') window._focusedElementBeforeModal = document.activeElement;
+  if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
   if (typeof trapFocus === 'function') trapFocus('clar-amend-overlay');
   overlay.querySelector('#clar-amend-save').focus();
 
@@ -731,8 +731,8 @@ async function showBulletReorder(expId, expTitle) {
   }
 
   // Save focus origin for restoration on close (GAP-176)
-  if (typeof _focusedElementBeforeModal !== 'undefined') {
-    _focusedElementBeforeModal = document.activeElement;
+  if (typeof pushFocusStack === 'function') {
+    pushFocusStack(document.activeElement);
   }
 
   // Build modal content
