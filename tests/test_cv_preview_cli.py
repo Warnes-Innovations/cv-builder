@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -191,6 +192,10 @@ def test_render_generated_assets_uses_session_state_when_present(monkeypatch):
         assert result['cover_letter_source'] == 'session'
         cover_letters = list(output_dir.glob('CoverLetter_*.docx'))
         assert len(cover_letters) == 1
+
+        metadata = json.loads((output_dir / 'metadata.json').read_text(encoding='utf-8'))
+        assert metadata['cover_letter_reused_from'] == str(source_dir.resolve())
+        assert 'session.json' not in metadata['cover_letter_reused_from']
 
 
 def test_render_generated_assets_accepts_direct_session_file_path(monkeypatch):

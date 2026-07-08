@@ -20,6 +20,7 @@ import {
   populateAnalysisTab,
   handleCustomizationResponse,
   showTableBasedReview,
+  populateReviewTab,
   switchReviewSubtab,
   _loadReviewPane,
   _updatePageEstimate,
@@ -403,6 +404,23 @@ describe('showTableBasedReview', () => {
     window.pendingRecommendations = { recommended_experiences: ['e1'] }
     await showTableBasedReview()
     expect(globalThis.appendMessage).toHaveBeenCalledWith('assistant', expect.stringContaining('Customizations generated'))
+  })
+})
+
+// ── populateReviewTab (GAP-394) ───────────────────────────────────────────
+
+describe('populateReviewTab', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+    window.pendingRecommendations = { recommended_experiences: ['e1'] }
+    stateManager.setTabData('customizations', { experience_recommendations: [] })
+  })
+
+  it('reminds the user changes are session-only, not saved to Master CV data (GAP-394)', async () => {
+    await populateReviewTab('experiences')
+    const html = document.getElementById('document-content').innerHTML
+    expect(html).toContain('this application only')
+    expect(html).toContain('Update Master CV')
   })
 })
 
