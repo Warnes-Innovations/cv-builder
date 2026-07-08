@@ -764,7 +764,7 @@ function _validateCoverLetter(text) {
   const _persuasionFlagLabels = {
     passive_voice:        'Passive voice',
     hedging:              'Hedging language',
-    generic_phrases:      'Generic phrases',
+    generic_summary:      'Generic phrases',
     strong_action_verb:       'Strong action verb',
     has_result:               'Result clause',
     negative_metric_framing:  'Metric framing',

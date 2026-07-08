@@ -58,6 +58,7 @@ beforeEach(() => {
   vi.stubGlobal('setInitialFocus', vi.fn())
   vi.stubGlobal('trapFocus', vi.fn())
   vi.stubGlobal('restoreFocus', vi.fn())
+  vi.stubGlobal('pushFocusStack', vi.fn())
 })
 
 afterEach(() => {
@@ -88,6 +89,14 @@ describe('showAlertModal', () => {
     showAlertModal('T', 'M')
     expect(globalThis.setInitialFocus).toHaveBeenCalledWith('alert-modal-overlay')
     expect(globalThis.trapFocus).toHaveBeenCalledWith('alert-modal-overlay')
+  })
+
+  it('pushes onto the shared focus stack exactly once per open (GAP-384 cycle-105)', () => {
+    // A merge artifact used to call pushFocusStack() twice per open while
+    // closeAlertModal() only ever popped once, leaking a stale stack entry
+    // that corrupted focus restoration for whatever modal closed next.
+    showAlertModal('T', 'M')
+    expect(globalThis.pushFocusStack).toHaveBeenCalledTimes(1)
   })
 })
 

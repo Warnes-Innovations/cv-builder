@@ -6,48 +6,66 @@ This file is part of CV-Builder.
 For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# Recruiter-Ops Review Status
+# Recruiter Ops Review Status
 
-**Last Updated:** 2026-07-07 20:16 ET
+**Last Updated:** 2026-07-07 22:02 ET
 
-**Executive Summary:** This file captures the source-verified persona review snapshot separately from the story specification so sub-agents can work in parallel safely.
+**Executive Summary:** Follow-up cycle review. **GAP-378** (re-run confirm modal wired to real recompute endpoint) remains fixed — no regression. **GAP-386** (active-session notes editing) is **RESOLVED end-to-end** — verified backend endpoint, request wiring, and frontend round-trip, not just presence of a function name. **GAP-388** (Finalise/Archive/Package terminology) is **PARTIAL** — the four specifically-named entry-point surfaces (workflow-step pill, tab label, header CTA button, and their tooltips) are now consistently "Finalise" with the stale "📦 Package Application Files" HTML and the app.js runtime text-patch both gone — but "Archive" still appears as a co-equal, unremoved verb *inside* the Finalise tab's own action button ("Finalise & Archive"), descriptive copy ("Archive this application to your CV history…"), and success messaging ("Application archived!" / "✅ Archived"), plus contextual copy on two other tabs. A recruiter-ops user who actually runs the flow (not just looks at entry points) still sees both verbs. Two additional bugs found in the *previous* review cycle (a `ReferenceError` crashing the File Review tab, and a spurious "navigating back" warning on first Finalise-pill click) have both been fixed since, meaningfully improving US-O1/US-O3 scores this cycle.
+
+---
 
 ## Application Evaluation
 
-### Finalise-Tab-Reachability Trace (central finding for this cycle)
+### GAP-378 re-verification: Re-run confirmation → real recompute endpoint
 
-The gap-102/103 fix correctly removed the structural blockers that made the Finalise tab unreachable (`STAGE_TABS.finalise`, the `display:none` on `#tab-finalise`, the `#step-finalise` pill, and the `workflow-steps.js` wiring). However, tracing the actual runtime behaviour surfaces two real regressions/bugs and one confirmed-working path.
+**Status: RESOLVED, no regression.**
 
-**1. Top workflow-step pill (`#step-finalise`) → Finalise tab: WORKS, but with a spurious warning dialog.**
-- `STAGE_TABS.finalise = ['finalise']` — `web/ui-core.js:370`
-- `#step-finalise` pill exists, `onclick="handleStepClick('finalise')"` — `web/index.html:151`
-- `#tab-finalise` no longer carries `display:none` — `web/index.html:235` (confirmed: no inline style attribute present)
-- `_STEP_ORDER` includes `'finalise'` — `web/workflow-steps.js:35`; `_STEP_DISPLAY.finalise = 'Finalise'` — `:49`; `_STEP_FWD_PHASE_MIN.finalise = 7` — `:926`; `STEP_LABELS.finalise = '✅ Finalise'` — `:955`; `done.finalise = postLayout` — `:976`; `stepToTab.finalise = 'finalise'` in both `_doStepNavigate` (`:1133`) and `handleStepClick` (`:1200`).
-- `populateFinaliseTab()` (`web/finalise.js:53`) is invoked via `review-table-base.js:423-424` (`case 'finalise': await populateFinaliseTab();`) and renders correctly — it does **not** depend on the buggy `download-tab.js` code path (see finding #2), so the tab itself renders its readiness checklist, status dropdown, notes textarea, and Finalise & Archive button without error.
-- **Bug found:** `done.finalise` and `done.harvest` both resolve to the same `postLayout` boolean (`web/workflow-steps.js:976-977`), so the moment a CV reaches `final_generation`/`refinement` phase, **both** `step-finalise` and `step-harvest` are marked `.completed` simultaneously, even though the user has visited neither. `handleStepClick()` (`web/workflow-steps.js:1213-1223`) treats any click on a `.completed` non-active step that has a downstream `.completed` step as **back-navigation**, and shows `_showReRunConfirmModal(step, 'back-nav', ...)` with the text *"You are navigating back past the following completed stages: Update Master CV"* (`web/workflow-steps.js:150-157`). Because `step-harvest` is downstream of `step-finalise` in `_STEP_ORDER` (`web/workflow-steps.js:33-36`) and is always simultaneously "completed," a first-time forward click on the Finalise pill incorrectly claims the user is navigating *backward past* an already-completed "Update Master CV" step they have never visited. This is a pre-existing pattern affecting the whole post-layout step cluster (any of download/cover_letter/screening/interview_prep/thank_you/finalise will trigger it against any other "completed" sibling), but the fix newly exposes it on the Finalise entry point specifically — the step this cycle was meant to make trustworthy as a "readiness checkpoint" (US-O1) now greets first-time visitors with an incorrect and confusing warning.
+- `confirmReRunPhase(step)` (`web/workflow-steps.js:191-199`) calls `_showReRunConfirmModal(step, 'rerun', () => reRunPhase(step))` — the callback is `reRunPhase`, not `backToPhase`/plain navigation.
+- `reRunPhase()` → `_executeReRunPhase()` (`web/workflow-steps.js:409-422`) issues `POST /api/re-run-phase` with `{phase: step}` — the real recompute endpoint.
+- Confirmed live wiring to this function from all expected call sites: the pill's "↻ Re-run" button (`web/workflow-steps.js:1041`, `onclick="...confirmReRunPhase('${step}')"`), the `Ctrl+Shift+R` keyboard shortcut (`web/keyboard-shortcuts.js:273-275`), `web/layout-instruction.js:697`, and `web/review-table-base.js:321`.
+- The in-code comment at `workflow-steps.js:192-197` explicitly documents the original bug (calling `backToPhase`, navigation-only) and why `reRunPhase` is correct — consistent with the modal copy's promise ("will see updated inputs and may show changed recommendations").
 
-**2. "Skip to Finalise" button on the File Review tab: DOES NOT WORK — dead code, unreachable in the normal flow.**
-- The button is added at `web/download-tab.js:521-524`, at the very end of `populateDownloadTab()`, after all other HTML has been assembled in a local `html` string.
-- `populateDownloadTab()` calls `_renderDownloadGrid(files, checks, summary, generatedAt, generationRun)` at `web/download-tab.js:509`, **before** the button HTML is built.
-- `_renderDownloadGrid()` (`web/download-tab.js:190-263`) references an **undeclared variable `blockingFails`** at line 259: `if (blockingFails.length > 0 && files.length) { ... }`. This identifier is never declared anywhere in that function or at module scope (confirmed via `grep -n "blockingFails" web/download-tab.js` — only 4 hits, all inside a *different* function, `_renderValidationSummary`, where it is correctly declared at line 110). Referencing it throws `ReferenceError: blockingFails is not defined` in strict-mode ES module code.
-- This line is only bypassed when `files.length === 0` (an early `return` exists for that case at line 212-216). In the realistic recruiter-ops scenario this review is meant to verify — a CV has already been through final generation and the File Review tab is showing generated PDF/DOCX/HTML — `files.length` is always > 0, so the `ReferenceError` **always fires**.
-- Reproduced the exact scoping bug in isolation (Node, ES module semantics): `ReferenceError: blockingFails is not defined` when `files.length > 0`.
-- **Confirmed this bug is also present in the built `web/bundle.js`** (not just uncompiled source) — `web/bundle.js:16951` contains the identical `if (blockingFails.length > 0 && files.length)` with no declaration anywhere in the surrounding minified function, so this is live in the deployed app, not a stale-source artifact.
-- Because `loadTabContent()` (`web/review-table-base.js:328-454`) wraps the entire tab-switch dispatch in a single `try { switch(tab) {...} } catch (error) { ... content.appendChild(errorMessage) ... }`, the thrown error is caught, logged, and rendered as a red error paragraph appended to whatever was already in `#document-content`. Since `populateDownloadTab()` only reassigns `content.innerHTML` with the *real* content at line 517 (after the crash point at line 509), the tab is left showing its early placeholder — `"Running ATS validation…"` (set at line 387) — plus an appended `Error loading content: blockingFails is not defined` message.
-- **Consequence:** the readiness chip, ATS report, generated-files grid, persuasion check, rewrite audit log, refinement panel, and — critically for this review — the newly-added **"✅ Skip to Finalise" and "📩 Proceed to Cover Letter →" buttons never reach the DOM**, because they are constructed after the crash point in the same synchronous function body. The File-Review-tab reachability path for Finalise described in the task brief does not function as claimed; it is unreachable in the one scenario that matters (post-generation, files present).
-- This is also a severe, independent finding against **US-O1** and **US-O3**: the File Review tab — the app's primary "is my package ready and are the file names sane" screen — is currently broken for any session that has generated output files, which is the normal case.
+### GAP-386 re-verification: Active-session notes editing
 
-**3. `finalise-action-btn` ("📦 Archive Application") visibility: technically correct but structurally inert as an entry point.**
-- `_STAGE_BUTTON_MAP.finalise = 'finalise-action-btn'` (`web/ui-helpers.js:156`) and `updateActionButtons(stage)` (`web/ui-helpers.js:163-170`) correctly shows only the button matching the active stage and hides the rest — so the button never appears while viewing an unrelated tab.
-- However, `activeStep`/`stage` is derived from the **backend phase**, not the currently-viewed tab, in the two places that drive this on a timer/event basis: `workflow-steps.js:986-997` (`phaseToStep` map, used by `updateWorkflowSteps()` on every `/api/status` fetch) and `state-manager.js:35-48` (`PHASE_TO_STEP`, backing `getWorkflowStepForPhase`). **Neither map has an entry for `'finalise'`** — there is no backend `Phase.FINALISE`; `final_generation`/`refinement` both map to `'download'`. Confirmed in the `PHASES` mirror in `state-manager.js:23-33` and in `generation_routes.py:2221` (`conversation.state['phase'] = Phase.REFINEMENT` after `/api/finalise` succeeds — never a distinct finalise phase).
-- Practical effect: `finalise-action-btn` only becomes visible via the **tab-driven** path (`switchTab()` → `getStageForTab(tab)` → `updateActionButtons('finalise')`, `web/review-table-base.js:222-229`) — i.e., only *after* the user is already on the Finalise tab. It can never serve as the forward-progression call-to-action that gets a user *to* the tab in the first place (unlike every other stage button, e.g. `final-generate-proceed-btn` = "Continue to File Review →"). Additionally, any subsequent `fetchStatus()` call while the user is sitting on the Finalise tab (e.g., triggered by an unrelated chat action) re-runs `updateWorkflowSteps()`, which recomputes `activeStep` from phase (→ `'download'`) and calls `updateActionButtons('download')` and `updateTabBarForStage('download')` — this **hides `finalise-action-btn` again and reverts the second-tier tab bar to the File-Review sub-tabs**, while the main content pane still shows Finalise content. This is a moderate-severity state-desync, not a hard reachability blocker (the step pill remains a working path), but it means the primary action-button/CTA row is not a reliable way to discover or stay oriented in the Finalise stage.
+**Status: RESOLVED, verified end-to-end (not just endpoint existence).**
 
-**Summary of the five explicit trace questions:**
-1. Pill → tab navigation and rendering: **Works**, but triggers a spurious/incorrect "navigating back past Update Master CV" confirmation dialog on first use (finding #1).
-2. `finalise-action-btn` scoping to the tab: **Correct while active**, but the button can only ever be reached circularly (must already be on the tab) and desyncs on the next status poll (finding #3).
-3. `done.finalise = postLayout` gating consistency: **Consistent** with the other post-layout steps (identical boolean, same unlock point) — this specific criterion passes cleanly.
-4. "Skip to Finalise" button on File Review tab: **Broken — never renders** due to an unrelated `ReferenceError` in `_renderDownloadGrid()` that crashes the whole File Review tab whenever generated files exist (finding #2).
-5. Other unreachability scenarios: the File Review tab crash (finding #2) is the most severe remaining gap — it breaks the tab's own core purpose (readiness chip, ATS report, downloads), independent of the Finalise fix.
+Backend:
+- `PATCH /api/sessions/active/notes` (`scripts/routes/session_routes.py:760-793`, handler `sessions_patch_active_notes`) resolves the session via `_get_session()`, validates ownership via `_validate_owner(entry)`, requires `notes` in the JSON body, writes into `metadata.json` under the session's `session_dir`, and returns `{ok: true, notes}`.
+- `_get_session()` (`scripts/web_app.py:710-745`) reads `session_id` from the JSON body for non-GET requests (confirmed it works for PATCH, not just POST/PUT/DELETE as its docstring lists — the actual check is `request.is_json`, method-agnostic).
+- `GET /api/sessions/active` (`scripts/routes/session_routes.py:795-833`) now includes a `notes` field per active session, read from the same `metadata.json` sidecar via helper `_active_notes()` (`:801-813`) — this is what makes existing notes visible in the Sessions modal for in-progress sessions in the first place.
+
+Frontend:
+- `web/session-switcher-ui.js:409` builds `notesKey = row.type === 'active' ? 'active-${sessionId}' : 'saved-${idx}'`, and renders a notes preview + inline edit widget (textarea, save/cancel buttons) for **both** active and saved rows (`:410-422`), with an "Edit notes" icon button always present regardless of row type (`:429`, unlike the status-edit button which is saved-only at `:425-427`).
+- Click dispatch (`_handleSessionModalClick`, `:546-548`) wires `edit-notes`/`submit-notes`/`cancel-notes` actions to `startSessionNotesEdit`/`submitSessionNotesEdit`/`cancelSessionNotesEdit`.
+- `submitSessionNotesEdit()` (`:746-778`) branches on `rowType === 'active'`: active rows PATCH `/api/sessions/active/notes` with `{session_id, notes, owner_token}` in the body; saved rows PATCH `/api/sessions/metadata` with `{path, notes}`. This matches the backend's expectation of `session_id` in the JSON body exactly.
+- On success, the preview span updates in place and the edit widget collapses; on failure, a toast is shown via `showToast`.
+
+This is a genuine, complete round trip: read (GET /api/sessions/active includes notes) → edit (inline widget, keyed correctly per row type) → write (correct endpoint/payload per row type) → persist (metadata.json) → re-render (preview updates). No broken links found in the chain.
+
+### GAP-388 re-verification: "Finalise" terminology
+
+**Status: PARTIAL.** The four surfaces the gap explicitly named are fixed; other in-flow surfaces still say "Archive."
+
+**Fixed (entry points):**
+- Workflow-step pill: `<div class="step" id="step-finalise" title="Finalise — mark the application ready to send and record its status" ...>✅ Finalise</div>` — `web/index.html:151`. No "Archive"/"Package" wording.
+- Tab label: `<div class="tab" id="tab-finalise" data-tab="finalise" ...>✅ Finalise</div>` — `web/index.html:235`.
+- Header/action button: `<button ... id="finalise-action-btn" ... title="Run the completeness checklist and finalise this application package">✅ Finalise Application</button>` — `web/index.html:205`. The stale "📦 Package Application Files" source text is gone; confirmed via `grep -i "package application"` across `web/index.html`, `web/app.js`, `web/finalise.js`, `web/ui-core.js`, `web/ui-helpers.js`, `web/workflow-steps.js` — zero hits, and zero `📦` hits.
+- Runtime JS patch removed: `web/app.js:156-159` now only does `finaliseBtn.addEventListener('click', () => switchTab('finalise'))` — no `.textContent =` rewrite of the button label remains (previously it rewrote the button text client-side to paper over the stale HTML). Confirmed absent from both source and the rebuilt `web/bundle.js` (`bundle.js:23883-23885` matches source exactly; `git log -1` shows `bundle.js` and `app.js` committed at the identical timestamp, so the bundle is not stale).
+
+**Not fixed (still "Archive" as a competing verb, inside the flow itself):**
+- Finalise-tab submit button: `✅ Finalise &amp; Archive` — `web/finalise.js:127` (also the interim/loading state at `:291,310,350`).
+- Finalise-tab description copy: "Archive this application to your CV history, update the response library…" — `web/finalise.js:81`.
+- Finalise-tab success banner: `✅ Application archived!` and the button relabels itself `✅ Archived` on success — `web/finalise.js:328,339`.
+- Contextual helper copy on two other tabs pointing at the same action: "...you can archive the application" — `web/download-tab.js:431`; "...lets you archive the application" — `web/final-generate.js:143`.
+
+**Verdict on the explicit charge ("is 'Finalise' now truly the ONLY verb used for this action anywhere in the UI?"):** No. The navigational entry points (what a user sees *before* acting) are now unambiguous, but the moment the user actually opens the Finalise tab and works through it, "Archive" reappears repeatedly as a synonym for the same action, including in the primary CTA button's own label. This is a narrower, but real, residual instance of the exact ambiguity GAP-388 was opened to close (a recruiter-ops user skimming the actual working screen, not just the tab bar, can still reasonably wonder if "Finalise" and "Archive" are the same step).
+
+### Carried-over findings from prior cycle (independently re-checked this cycle)
+
+1. **File Review tab crash — FIXED.** The previously-reported `ReferenceError: blockingFails is not defined` in `_renderDownloadGrid()` (`web/download-tab.js`, formerly line ~259) is resolved: the block now correctly references the function's own `blockDocx`/`blockHtml`/`blockPdf` flags (`web/download-tab.js:263`), with an explanatory comment (`:258-262`) noting the prior scoping bug. The "✅ Skip to Finalise →" button (`download-tab.js:527`) is therefore reachable again since the tab no longer crashes before rendering it.
+2. **Spurious "navigating back" warning on first Finalise-pill click — FIXED.** `handleStepClick()` (`web/workflow-steps.js:1217-1246`) now explicitly excludes the mutually-simultaneous post-layout "sibling" steps (`download, cover_letter, screening, interview_prep, thank_you, finalise, harvest` — the `_POST_LAYOUT_SIBLING_STEPS` set, `:1231-1233`) from counting each other as "downstream completed," with an in-code explanation of why (`:1220-1230`). First-time forward navigation to Finalise via the pill no longer triggers the incorrect back-navigation confirmation dialog.
+3. **`finalise-action-btn` circular reachability / poll-desync — STILL OPEN, not addressed this cycle.** `PHASE_TO_STEP` (`web/state-manager.js:35-45`) and `phaseToStep` (`web/workflow-steps.js:992-1002`) both still have no `'finalise'` entry — `final_generation`/`refinement` map to `'download'`. This means `finalise-action-btn` only becomes visible via the tab-driven path (already on the Finalise tab), and any subsequent `/api/status` poll while sitting on that tab still reverts `activeStep`/action buttons to `'download'`. Not one of the three gaps this cycle asked to re-verify, but still a real US-O1 concern (the button can't act as the forward call-to-action that gets a user *to* the tab) — carried forward, unresolved.
+4. **Default-selected "Ready to send" status — STILL OPEN.** `<option value="ready" selected>` — `web/finalise.js:105`. A user could archive without deliberately choosing a status. Carried forward as a minor US-O2 observation.
 
 ---
 
@@ -55,11 +73,11 @@ The gap-102/103 fix correctly removed the structural blockers that made the Fina
 
 | # | Criterion | Status | Notes / Evidence |
 |---|-----------|--------|-------------------|
-| 1 | Final outputs are clearly visible and distinguishable | ⚠️ Partial | The Finalise tab's own readiness checklist (`web/finalise.js:164-216`, `_renderReadinessChecklist`) clearly lists CV PDF/DOCX/HTML, cover letter, screening Q&A, ATS validation, and layout freshness with ✅/⚠/❌ icons — strong implementation. But the File Review tab (`populateDownloadTab`, the other place outputs are shown) currently crashes before rendering its file grid whenever files exist (see trace finding #2), so this criterion fails on that surface. |
-| 2 | UI makes clear which files are available and current | ⚠️ Partial | `finalise.js:76-91` lists generated files with the output directory; `download-tab.js:190-263` (`_renderDownloadGrid`) shows per-file "Generated {date}" timestamps and run numbers when reachable — but is currently non-functional (trace finding #2). |
-| 3 | Finalise/archive actions clearly separated from earlier preview steps | ⚠️ Partial | Visually and structurally separated (own tab, own pill, own action button) — but the first-time navigation experience via the pill shows an incorrect "back-navigation" warning (trace finding #1), undermining the intended "trustworthy checkpoint" framing. |
+| 1 | Final outputs clearly visible and distinguishable | ✅ Pass | Readiness checklist (`web/finalise.js:164-216` area, `_renderReadinessChecklist`) and the File Review grid (`download-tab.js:190-263`) both render now that the `blockingFails` crash is fixed. |
+| 2 | UI makes clear which files are available and current | ✅ Pass | `download-tab.js` shows per-file "Generated {date}" / run-number labels (`:205` area) once reachable; `finalise.js:76-91` lists generated files with output dir. |
+| 3 | Finalise/archive actions clearly separated from earlier preview steps | ⚠️ Partial | Structural separation and navigation are now clean (spurious back-nav warning fixed — see above). But the "Finalise" vs. "Archive" verb-blending inside the tab itself (GAP-388 partial, see above) undercuts the "trustworthy checkpoint" framing this criterion is meant to protect. |
 
-**Acceptance criteria:** "final-stage UI supports confident readiness determination" — ⚠️ Partial (readiness checklist itself is solid; but is only reachable via the pill, with a spurious warning, and the File Review tab's own readiness chip is broken). "User can identify current deliverables before finalising" — ⚠️ Partial, same caveats.
+**Acceptance criteria:** "Final-stage UI supports confident readiness determination" — ✅ Pass (both prior blockers fixed). "User can identify current deliverables before finalising" — ✅ Pass.
 
 ---
 
@@ -67,11 +85,11 @@ The gap-102/103 fix correctly removed the structural blockers that made the Fina
 
 | # | Criterion | Status | Notes / Evidence |
 |---|-----------|--------|-------------------|
-| 1 | Status values are understandable and actionable | ✅ Pass | 8-value enum (`queued, draft, ready, sent, interview, rejected, accepted, parked`) with plain-English labels — `web/finalise.js:103-111`. Backend validates the identical enum — `scripts/routes/generation_routes.py:2146`. Same enum reused consistently in the Sessions modal — `web/session-switcher-ui.js:376-378, 691-693`. |
-| 2 | Notes captured at point of finalisation | ✅ Pass | `#finalise-notes` textarea with a 2000-char counter — `web/finalise.js:114-122`; submitted via `POST /api/finalise` — `web/finalise.js:296-300`; persisted to `metadata.json` — `scripts/routes/generation_routes.py:2159`. |
-| 3 | Archive behaviour preserves context for later follow-up | ✅ Pass | `metadata.json` is written with `application_status`, `notes`, `finalised_at`, clarification answers, spell audit, layout instructions, validation results, and ATS score (`generation_routes.py:2158-2167`); a git commit is created for the output directory (`generation_routes.py:2196-2219`); status/notes remain editable after archiving via an update endpoint in `session_routes.py:722-749`, and are surfaced with inline edit controls in the Sessions modal (`web/session-switcher-ui.js:405-424, ~703, ~749`). |
+| 1 | Status values understandable and actionable | ✅ Pass | 8-value enum (`queued, draft, ready, sent, interview, rejected, accepted, parked`) — `web/finalise.js:103-111`; identical enum validated server-side — `scripts/routes/session_routes.py:734`; reused in Sessions modal — `web/session-switcher-ui.js:376-378`. |
+| 2 | Notes captured at point of finalisation | ✅ Pass | `#finalise-notes` textarea, 2000-char counter (`finalise.js:114-122`), submitted via `POST /api/finalise`. **Enhanced this cycle (GAP-386):** notes can now also be captured *before* finalisation, for an active in-progress session, via the Sessions modal's inline notes editor → `PATCH /api/sessions/active/notes` (see GAP-386 section above) — directly strengthens this criterion's intent ("notes captured... so tracking stays organized"). |
+| 3 | Archive behavior preserves context for later follow-up | ✅ Pass | `metadata.json` persists status/notes/timestamps (`session_routes.py:743-758`); both remain editable post-archive via `/api/sessions/metadata` and pre-archive via `/api/sessions/active/notes`, surfaced with inline edit controls in the Sessions modal for both row types (`session-switcher-ui.js:405-429`). |
 
-**Acceptance criteria:** Both criteria are well-supported by the backend and UI. One caveat: `GET /api/finalise-meta` (`generation_routes.py:2074-2095`) and `POST /api/finalise` (`:2097` on) both default `application_status` to `'ready'` rather than a neutral "unset" sentinel — a session that has never been finalised will show "Ready to send" pre-selected in the dropdown (`finalise.js:106`, `selected` attribute on the `ready` option), which could cause a user to archive without deliberately choosing a status. Minor, but worth flagging under Additional Issues below.
+**Acceptance criteria:** Both well-supported; GAP-386 closes a real prior gap (notes for active sessions). Minor open item: default-selected "ready" status (see carried-over finding #4).
 
 ---
 
@@ -79,44 +97,40 @@ The gap-102/103 fix correctly removed the structural blockers that made the Fina
 
 | # | Criterion | Status | Notes / Evidence |
 |---|-----------|--------|-------------------|
-| 1 | Generated files use job-relevant naming | ✅ Pass | `f'CV_{compact_company}_{compact_role}_{timestamp}.pdf'` / `.docx` / `.html`, `f'CV_{ats_company}_{ats_role}_{timestamp}_ATS.docx'` — `scripts/cv-preview.py:381-391`; `f'CoverLetter_{company}_{date_str}.docx'` — `scripts/cv-preview.py:348`; role/company slugging also present in `scripts/utils/cv_orchestrator.py:2085, 2332`. |
-| 2 | File Review surfaces present outputs manageably | ❌ Fail | Currently crashes before rendering (trace finding #2) whenever files exist — the manageable grid layout, icons, and descriptions in `download-tab.js:22-78, 190-263` never reach the DOM. |
-| 3 | Multiple generation passes do not obscure which output is current | ⚠️ Partial | `_renderDownloadGrid` design intent supports this via `generationRun`/`generatedAt` labels ("Run #2 — ..." at `download-tab.js:205`) — but again unreachable due to the crash. The Finalise tab's own file listing (`finalise.js:76-91`) has no run/generation-number indicator at all, so if a user regenerates and returns to Finalise, they cannot tell from that screen whether the listed files are from the latest run. |
+| 1 | Generated files use job-relevant naming | ✅ Pass | `f'CV_{compact_company}_{compact_role}_{timestamp}.pdf/.docx/.html'`, `f'CV_{ats_company}_{ats_role}_{timestamp}_ATS.docx'` — `scripts/cv-preview.py:388-391`. Unchanged and re-confirmed this cycle. |
+| 2 | File Review surfaces present outputs manageably | ✅ Pass | Was ❌ Fail last cycle due to the `blockingFails` crash; now fixed (see carried-over finding #1) — the grid, icons, and descriptions render normally. |
+| 3 | Multiple generation passes do not obscure which output is current | ⚠️ Partial | `download-tab.js` shows run/date labels once reachable (now it is). But the Finalise tab's own file listing (`finalise.js:76-91`) still has no run/generation-number indicator, so a user re-generating and returning to Finalise specifically cannot tell from that screen alone whether the listed files are current. Carried over from prior review, unresolved this cycle. |
 
 ---
 
 ## Generated Materials Evaluation
 
-Not applicable in depth for this cycle — this review focused on the application's Finalise/File-Review reachability per the task brief. File naming conventions were spot-checked above (US-O3 criterion 1, Pass) directly against the generation source, not a generated output sample.
+Not applicable in depth for this cycle — this review, per the task brief, focused on re-verifying GAP-378/386/388 and the application workflow surfaces. File naming conventions were spot-checked directly against generation source code (US-O3 criterion 1), not a generated output sample.
 
 ---
 
 ## Additional Story Gaps / Proposed Story Items
 
-- **Default-selected status risk (US-O2):** The `#finalise-status` dropdown defaults/pre-selects "Ready to send" (`web/finalise.js:106`, and the backend default in `generation_routes.py:2083, 2086, 2091, 2143`). A recruiter-ops user who clicks "Finalise & Archive" without consciously picking a status will silently record "ready" — recommend defaulting to a neutral state (e.g. `draft`) or requiring an explicit selection before enabling the archive button.
-- **No status-based filtering in the Sessions modal (US-O2 adjacent):** `web/session-switcher-ui.js` supports free-text search and column sorting (`_sortSessionRows`, `_SM_STORAGE_KEY`) but has no "filter by status" (e.g., show only `sent` or `interview`) control, despite surfacing `application_status` per row. For an operations-tracking persona managing many concurrent applications, a status filter/chip-group would be a natural, low-cost addition. Proposing this as a new acceptance criterion under US-O2 or a new US-O4 ("Cross-Session Status Filtering").
-- **No generation-run indicator on the Finalise tab's own file list** (see US-O3 #3 above) — the Finalise tab shows `generated.files` (`finalise.js:76-91`) with no timestamp/run number, unlike the File Review tab's design intent. Recommend surfacing `generation_run`/`generation_date` here too so the readiness checklist and the archive action always reflect an explicitly-dated snapshot.
-- **Terminology observation:** The raw HTML source labels the chat-panel CTA "📦 Package Application Files" (`web/index.html:205`), but `app.js:159` immediately rewrites it client-side to "📦 Archive Application" on every page load. A reviewer reading only `index.html` (as static markup, or via view-source) would see stale/incorrect copy; recommend updating the source string directly rather than relying on a JS rewrite, to avoid divergence and to keep grep/search of the HTML meaningful.
-- **Terminology observation:** "Finalise" (used throughout the UI, tab, and pill) vs. "Archive" (used in the button labels "Finalise & Archive", "Archive Application") vs. "Package" (original unused label) are used interchangeably for the same action across different surfaces. This is not incorrect, but a recruiter-ops user skimming quickly could reasonably wonder whether "Finalise," "Archive," and "Package" are three different steps. Suggest standardizing on one primary verb (e.g., "Archive") with "Finalise" only as a supporting/secondary descriptor, or vice versa, consistently across the tab label, pill label, and both buttons.
+- **GAP-388 residual scope (recommend a follow-up ticket):** Standardize "Finalise" as the *only* verb inside `web/finalise.js` itself (button label, description copy, success messaging) and in the cross-referencing helper text in `web/download-tab.js:431` and `web/final-generate.js:143`. Current state is a real, but narrower, instance of the original terminology-consistency problem — the fix addressed the navigational chrome but not the working screen's own copy.
+- **`finalise-action-btn` reachability (carried over):** Add a `'finalise'` entry to both `PHASE_TO_STEP` (`web/state-manager.js:35-45`) and `phaseToStep` (`web/workflow-steps.js:992-1002`) — ideally backed by a real backend phase — so the action button can serve as a forward call-to-action and doesn't desync on the next status poll while the user is on the tab.
+- **Default status pre-selection (carried over, US-O2):** `web/finalise.js:105` defaults to "Ready to send." Recommend a neutral default (e.g., `draft`) or requiring explicit selection, so status isn't recorded by omission.
+- **No run/generation indicator on the Finalise tab's own file list (carried over, US-O3 #3):** Recommend surfacing `generation_run`/`generation_date` in `finalise.js:76-91` to match `download-tab.js`'s design intent.
 
 ---
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, plus web/finalise.js, web/workflow-steps.js, web/download-tab.js, scripts/routes/session_routes.py, scripts/routes/generation_routes.py, web/session-switcher-ui.js, web/review-table-base.js, web/ui-helpers.js, web/bundle.js
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-switcher-ui.js, scripts/routes/session_routes.py, web/workflow-steps.js, plus web/finalise.js, web/download-tab.js, web/final-generate.js, web/keyboard-shortcuts.js, web/layout-instruction.js, web/review-table-base.js, web/ui-helpers.js, web/bundle.js, scripts/cv-preview.py
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-O1 | 0 | 3 | 0 | 0 | 0 |
+| Story | ✅ | ⚠️ | ❌ | 🔲 | — |
+|---|---|---|---|---|---|
+| US-O1 | 2 | 1 | 0 | 0 | 0 |
 | US-O2 | 3 | 0 | 0 | 0 | 0 |
-| US-O3 | 1 | 1 | 1 | 0 | 0 |
+| US-O3 | 2 | 1 | 0 | 0 | 0 |
 
 **Key evidence references:**
-- Central bug (File Review tab crash / dead "Skip to Finalise" button): `web/download-tab.js:259` (`blockingFails` undeclared) → `web/download-tab.js:509` (call site inside `populateDownloadTab`) → `web/review-table-base.js:445-453` (catch handler that masks the crash as an appended error line) → also present in built output at `web/bundle.js:16951`.
-- Spurious back-navigation warning on first Finalise-pill click: `web/workflow-steps.js:976-977` (`done.finalise`/`done.harvest` both = `postLayout`) → `web/workflow-steps.js:1213-1223` (`handleStepClick` back-nav detection) → `web/workflow-steps.js:139-189` (`_showReRunConfirmModal` copy).
-- `finalise-action-btn` circular-reachability / desync-on-poll: `web/ui-helpers.js:147-157` (`_STAGE_BUTTON_MAP`), `web/workflow-steps.js:986-997` (`phaseToStep`, no `'finalise'` key), `web/state-manager.js:35-48` (`PHASE_TO_STEP`, no `'finalise'` key), `web/api-client.js:211-226` (`fetchStatus` triggers `updateWorkflowSteps` on every call).
-- Reachability structural fix verified correct: `web/ui-core.js:358-372` (`STAGE_TABS.finalise`), `web/index.html:151, 235` (pill + tab, no `display:none`), `web/workflow-steps.js:33-36,49,926,955,1133,1200` (full `_STEP_ORDER`/`_STEP_DISPLAY`/`_STEP_FWD_PHASE_MIN`/`STEP_LABELS`/`stepToTab` wiring).
-- Status/notes tracking backend: `scripts/routes/generation_routes.py:2074-2249` (`/api/finalise-meta`, `/api/finalise`), `scripts/routes/session_routes.py:156-213, 722-749` (`/api/sessions`, status/notes patch endpoint).
-- File naming convention: `scripts/cv-preview.py:381-391`, `scripts/utils/cv_orchestrator.py:2085,2332`.
+- GAP-378 (re-run modal → real endpoint): `web/workflow-steps.js:191-199` (`confirmReRunPhase`) → `:409-422` (`reRunPhase`/`_executeReRunPhase`, `POST /api/re-run-phase`) → call sites `:1041`, `web/keyboard-shortcuts.js:273-275`, `web/layout-instruction.js:697`, `web/review-table-base.js:321`.
+- GAP-386 (active-session notes): `scripts/routes/session_routes.py:760-793` (`PATCH /api/sessions/active/notes`), `:795-833` (`GET /api/sessions/active` includes `notes`), `scripts/web_app.py:710-745` (`_get_session` reads JSON body); `web/session-switcher-ui.js:405-429` (notesKey/edit widget for active + saved rows), `:546-548` (dispatch), `:746-778` (`submitSessionNotesEdit`, correct endpoint/payload per row type).
+- GAP-388 (Finalise terminology): fixed — `web/index.html:151,205,235` (pill/button/tab all "Finalise", no "Package"/"Archive"); `web/app.js:156-159` (runtime patch removed); `web/bundle.js:23883-23885` (rebuilt, matches source). Not fixed — `web/finalise.js:81,127,291,310,328,339,350` ("Archive" as competing verb inside the tab); `web/download-tab.js:431`, `web/final-generate.js:143` (cross-tab "archive" copy).
+- Carried-over fixes verified: `web/download-tab.js:258-265` (`blockingFails` ReferenceError fixed); `web/workflow-steps.js:1217-1246` (`_POST_LAYOUT_SIBLING_STEPS` exclusion fixes spurious back-nav warning).
+- Carried-over open items: `web/state-manager.js:35-45`, `web/workflow-steps.js:992-1002` (no `'finalise'` phase mapping); `web/finalise.js:105` (default status); `web/finalise.js:76-91` (no run indicator).
 
-**Evidence standard:**
-- Every conclusion above is supported by a specific file path and line number, and the two central bugs (`blockingFails` ReferenceError, and the `postLayout`-driven simultaneous-completion false back-nav warning) were additionally reproduced/traced end-to-end (isolated Node repro for the ReferenceError; full call-chain trace for the back-nav warning) rather than inferred from comments or prior review artifacts.
-- Citations use repository-relative paths plus line numbers throughout.
+**Evidence standard:** Every conclusion above is supported by a specific file path and line number read directly from current source (not from `tasks/gaps.md` or `tasks/ui-review.md`). The GAP-378 and GAP-386 request/response chains were traced call-site to call-site rather than inferred from function names or comments alone.

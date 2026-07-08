@@ -6,7 +6,7 @@
 
 /**
  * web/finalise.js
- * Finalise & archive tab: finalise application, harvest candidates,
+ * Finalise tab: finalise application, harvest candidates,
  * apply selected updates to master CV data.
  *
  * Dependencies (resolved through globalThis at runtime):
@@ -78,7 +78,7 @@ async function populateFinaliseTab() {
   let html = `
     <h1>✅ Finalise Application</h1>
     <p style="color:#6b7280;margin-bottom:24px;">
-      Archive this application to your CV history, update the response library, and optionally
+      Finalise this application to your CV history, update the response library, and optionally
       write any improvements back to Master CV Data.
     </p>
 
@@ -124,7 +124,7 @@ async function populateFinaliseTab() {
       <button id="finalise-btn" onclick="finaliseApplication()"
         style="background:#059669;color:#fff;border:none;border-radius:6px;
                padding:10px 24px;font-size:1em;font-weight:600;cursor:pointer;">
-        ✅ Finalise &amp; Archive
+        ✅ Finalise Application
       </button>
     </div>
 
@@ -209,7 +209,7 @@ function _renderReadinessChecklist(files, statusData) {
       <h3 style="margin:0 0 12px;color:${headerColor};">📋 Submission Readiness</h3>
       ${rows}
       <p style="margin:10px 0 0;font-size:0.82em;color:#64748b;">
-        ⚠ items are optional — they warn but do not block archiving.
+        ⚠ items are optional — they warn but do not block finalising.
         ❌ items must be resolved before submitting.
       </p>
     </div>`;
@@ -307,7 +307,7 @@ async function finaliseApplication() {
         <strong>❌ Error:</strong> ${escapeHtml(data.error || 'Finalise failed')}
       </div>`;
       btn.disabled    = false;
-      btn.textContent = '✅ Finalise & Archive';
+      btn.textContent = '✅ Finalise Application';
       return;
     }
 
@@ -325,7 +325,7 @@ async function finaliseApplication() {
     result.style.display = 'block';
     result.innerHTML = `
       <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
-        <strong>✅ Application archived!</strong>
+        <strong>✅ Application finalised!</strong>
         <ul style="margin:8px 0 0;padding-left:20px;line-height:1.8;font-size:0.92em;">
           <li>Status: <strong>${escapeHtml(status)}</strong></li>
           <li>Approved rewrites: ${approvedCount}</li>
@@ -336,7 +336,7 @@ async function finaliseApplication() {
         ${gitWarn}
       </div>`;
 
-    btn.textContent = '✅ Archived';
+    btn.textContent = '✅ Finalised';
 
     // Show harvest section
     await showHarvestSection();
@@ -347,7 +347,7 @@ async function finaliseApplication() {
       <strong>❌ Network error:</strong> ${escapeHtml(err.message)}
     </div>`;
     btn.disabled    = false;
-    btn.textContent = '✅ Finalise & Archive';
+    btn.textContent = '✅ Finalise Application';
   }
 }
 

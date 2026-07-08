@@ -22,6 +22,7 @@ import {
   createNewSessionAndNavigate,
   onboardingCreateEmptyProfile,
   showOnboardingModal,
+  showWelcomeModal,
   maybeShowWelcomeModal,
   closeWelcomeModal,
   restoreSession,
@@ -644,6 +645,14 @@ describe('showOnboardingModal', () => {
     expect(document.getElementById('welcome-section-present').style.display).toBe('none')
     expect(document.getElementById('welcome-footer-missing').style.display).toBe('flex')
     expect(document.getElementById('welcome-footer-present').style.display).toBe('none')
+  })
+
+  it('pushes onto the shared focus stack when opened (GAP-384 cycle-105)', () => {
+    const pushMock = vi.fn()
+    vi.stubGlobal('pushFocusStack', pushMock)
+    showOnboardingModal('/home/user/CV/Master_CV_Data.json')
+    expect(pushMock).toHaveBeenCalledTimes(1)
+    vi.stubGlobal('pushFocusStack', undefined)
   })
 })
 

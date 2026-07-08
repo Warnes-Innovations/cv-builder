@@ -31,7 +31,7 @@ afterEach(() => {
 
 function setupFinaliseDOM() {
   document.body.innerHTML = `
-    <button id="finalise-btn">✅ Finalise &amp; Archive</button>
+    <button id="finalise-btn">✅ Finalise Application</button>
     <select id="finalise-status"><option value="ready" selected>Ready to send</option></select>
     <textarea id="finalise-notes">Some notes</textarea>
     <div id="finalise-result" style="display:none;"></div>
@@ -56,7 +56,16 @@ describe('finaliseApplication', () => {
     await finaliseApplication()
     const result = document.getElementById('finalise-result')
     expect(result.style.display).toBe('block')
-    expect(result.innerHTML).toContain('archived')
+    expect(result.innerHTML).toContain('finalised')
+  })
+
+  it('does not use "Archive"/"archived" as a competing verb for the same action (GAP-388)', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, summary: {}, commit_hash: 'abc123' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: false }) })
+    await finaliseApplication()
+    expect(document.getElementById('finalise-result').innerHTML).not.toMatch(/archiv/i)
+    expect(document.getElementById('finalise-btn').textContent).not.toMatch(/archiv/i)
   })
 
   it('renders ATS score reasoning when finalise returns cached ATS details', async () => {

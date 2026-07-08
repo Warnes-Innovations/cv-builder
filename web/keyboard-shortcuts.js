@@ -196,7 +196,7 @@ const _PANEL_ID = 'kb-shortcuts-panel';
 /** Toggle the keyboard shortcut help panel. */
 export function showKeyboardShortcutsPanel() {
   const existing = document.getElementById(_PANEL_ID);
-  if (existing) { existing.remove(); return; }
+  if (existing) { _closeKeyboardShortcutsPanel(existing); return; }
 
   const panel = document.createElement('div');
   panel.id = _PANEL_ID;
@@ -241,11 +241,24 @@ export function showKeyboardShortcutsPanel() {
     boxShadow:  '0 4px 20px rgba(0,0,0,0.5)',
   });
   document.body.appendChild(panel);
-  panel.querySelector('#kb-shortcuts-close').addEventListener('click', () => panel.remove());
+  // GAP-385/GAP-384 cycle-105: this panel declared role="dialog" aria-modal="true"
+  // and its own displayed text promised "Esc: Close modals / this panel", but had
+  // no focus trap, no initial focus, and no Escape handler at all — none of the
+  // shared modal-focus machinery used elsewhere in the app was wired up here.
+  if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
+  if (typeof setInitialFocus === 'function') setInitialFocus(_PANEL_ID);
+  if (typeof trapFocus === 'function') trapFocus(_PANEL_ID);
+  panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') _closeKeyboardShortcutsPanel(panel); });
+  panel.querySelector('#kb-shortcuts-close').addEventListener('click', () => _closeKeyboardShortcutsPanel(panel));
   panel.querySelector('#kb-shortcuts-getting-started').addEventListener('click', () => {
-    panel.remove();
+    _closeKeyboardShortcutsPanel(panel);
     if (typeof showWelcomeModal === 'function') showWelcomeModal();
   });
+}
+
+function _closeKeyboardShortcutsPanel(panel) {
+  panel.remove();
+  if (typeof restoreFocus === 'function') restoreFocus();
 }
 
 // ── Reset card focus when tab changes ────────────────────────────────────────

@@ -211,6 +211,7 @@ async function maybeShowWelcomeModal() {
 
 /** Wire focus trap and Escape handler for the onboarding overlay (WCAG 2.1.2). */
 function _openOnboardingFocusTrap(overlay) {
+  if (typeof globalThis.pushFocusStack === 'function') globalThis.pushFocusStack(document.activeElement);
   if (typeof globalThis.setInitialFocus === 'function') globalThis.setInitialFocus('onboarding-modal-overlay');
   if (typeof globalThis.trapFocus === 'function')       globalThis.trapFocus('onboarding-modal-overlay');
   if (!overlay._onboardingEscHandler) {

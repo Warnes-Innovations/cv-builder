@@ -8,217 +8,220 @@
 
 # Applicant Review Status
 
-**Last Updated:** 2026-07-07 20:17 ET
+**Last Updated:** 2026-07-07 21:59 ET
 
 **Executive Summary:** This file captures the source-verified persona review snapshot separately from the story specification so sub-agents can work in parallel safely.
 
+**GAP-381 (cover_letter_reused_from) — RESOLVED.** `web/cover-letter.js` now sends `reuse_session_path` (from the selected prior letter's `session_path`) alongside `reuse_body` in the `/api/cover-letter/generate` POST body (`web/cover-letter.js:281-294`). `scripts/routes/master_data_routes.py:2211` sets `conversation.state['cover_letter_reused_from'] = reuse_session_path or None` inside `cover_letter_generate()`, and `cover_letter_save()` at `scripts/routes/master_data_routes.py:2339` writes that state value into `metadata['cover_letter_reused_from']` when the letter is saved. The chain (UI → generate → state → save → metadata.json) is intact and null-safe when no prior letter is selected.
+
+**GAP-382 (reused_from_session) — RESOLVED.** `web/screening-questions.js:159` stores `p.session_path` into `_screeningState[idx].priorSessionPath` inside `searchForQuestion()`. `saveScreeningResponses()` (`web/screening-questions.js:318-324`) computes `reused_from_session` from `priorSessionPath` only when `usePrior` is checked, else `null`, and includes it in each response object posted to `/api/screening/save`. The backend (`scripts/routes/master_data_routes.py:2569`) writes the raw `responses_in` array — including `reused_from_session` — straight into `metadata['screening_responses']`, so the field survives to disk unmodified.
+
+**Minor inconsistency introduced/adjacent to these fixes (not a functional bug):** the two "session_path" identifiers are not the same kind of value. The cover-letter prior list stores a path to `session.json` (`scripts/routes/master_data_routes.py:2046`, `str(session_file)`), while the screening response-library entries store the *output directory* (`scripts/routes/master_data_routes.py:2593`, `str(output_dir)`). Each is read back correctly within its own domain, so nothing is broken, but a future consumer that expects `cover_letter_reused_from` and `reused_from_session` to be interchangeable "session identifiers" will be surprised they point at different filesystem entities (a file vs. a directory). Recommend documenting the convention or normalizing to one form.
+
 ## Application Evaluation
 
-### US-A1: Discover and Queue a Job Opportunity
+#### US-A1: Discover and Queue a Job Opportunity
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | URL and paste-text paths both work | ✅ | `scripts/routes/job_routes.py` provides fetch/extract paths (`:319-332` protected-site list) alongside plain-text paste handling in the job tab. |
+| 2 | Protected-site warning + manual-copy fallback | ✅ | `scripts/routes/job_routes.py:319-332` — LinkedIn/Indeed protected-site messages with manual-copy instructions. |
+| 3 | Company/role/date auto-extracted and editable | ✅ | `scripts/routes/status_routes.py:1071` `/api/intake-metadata`, `:1110` `confirm_intake()`; `scripts/utils/conversation_manager.py:2204` `apply_confirmed_intake()`. |
+| 4 | Session persisted immediately after confirmation | ✅ | `apply_confirmed_intake()` persists `self.state['intake']` (`scripts/utils/conversation_manager.py:2221`) followed by session save. |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | URL and paste-text paths both work | ✅ | `web/job-input.js:389` `submitJobText()`, `web/job-input.js:476` `fetchJobFromURL()`, backend `scripts/routes/job_routes.py:253` `submit_job()`, `:296` `fetch_job_url()` |
-| 2 | Protected-site warning + manual-copy fallback | ✅ | `scripts/routes/job_routes.py:317-352` detects linkedin.com/indeed.com/glassdoor.com and returns instructions; `web/job-input.js:548` `showProtectedSiteModal()` renders them with a "use Paste Text" tip |
-| 3 | Company/role/date auto-extracted and editable | ✅ | `web/message-dispatch.js:421-465` `_showIntakeConfirmCard()` renders editable Role/Company/Date fields pre-filled from `/api/intake-metadata`. Deviation: story step 4 implies confirmation happens **before** analysis; actual flow runs analysis first (`web/job-analysis.js:96` `analyzeJob()`) and shows the intake card afterward (`:151-158`). Functionally equivalent, but sequence differs from the narrative. |
-| 4 | Session persisted immediately after confirmation | ✅ | `/api/confirm-intake` → `scripts/routes/status_routes.py:1109` → `ConversationManager.apply_confirmed_intake()` (`scripts/utils/conversation_manager.py:2204-2233`), which calls `self._save_session()` at line 2233. Note: the raw `/api/job` submission itself (`job_routes.py:253-293`) does **not** call `_save_session()` — only `session_registry.touch()` (in-memory timestamp). If a user submits job text and closes the browser before confirming intake, the job text is not guaranteed to be flushed to disk except via idle-eviction (`scripts/utils/session_registry.py:372-409`). Not a failure of the stated criterion (which refers to "after step 5"), but a latent gap between paste and confirm. |
+#### US-A2: Understand What the Job Requires
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Required/preferred split displayed | ✅ | Rendered via job-analysis tab (not re-verified line-by-line this pass, but `job_analysis` schema fields consumed throughout `web/*.js`). |
+| 2 | Mismatch analysis surfaces as clarifying question | ✅ | `web/review-table-base.js:561` renders "required skill(s) not found in your master CV" callout; `scripts/utils/cv_orchestrator.py:5765-5830` computes mismatches. |
+| 3 | Clarifying question when domain/role ambiguous | ⚠️ | Not independently re-verified this pass which specific ambiguity triggers a question vs. always being asked; recommend a follow-up spot-check of `analyze_job_description()` prompt logic. |
+| 4 | Answers persist in session + `metadata.json.clarification_answers` | ✅ | `scripts/routes/generation_routes.py:2161` `metadata['clarification_answers'] = conversation.state.get('post_analysis_answers')`. |
+| 5 | Clarification answers passed to downstream LLM calls (cover letter, screening) | ✅ | Cover letter: `scripts/routes/master_data_routes.py:2111-2116` (`answers_snippet` built from `post_analysis_answers`). Screening: `scripts/routes/master_data_routes.py:2464-2470` (`cl_context` built from same). |
+| 6 | Prior-session answers pre-populated as defaults | 🔲 | No evidence found this pass of a "same role type → pre-populate prior answers" mechanism distinct from the re-run amend-modal (which pre-fills from the *current* session only, `web/workflow-steps.js:304-407`). Needs confirmation against a fresh job/analysis flow. |
+| 7 | Analysis results survive browser refresh | ✅ | Session-backed via `conversation.state`/`_save_session()` pattern used throughout `conversation_manager.py`. |
 
-### US-A2: Understand What the Job Requires
+#### US-A3: Review and Approve Content Customisations
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Relevance score + rationale per item | ✅ | `web/review-table-base.js` renders score/rationale columns (consumed by experience/skills/achievements/publications review tabs). |
+| 2 | Include/exclude toggles per category | ✅ | `experience_decisions`, `skill_decisions`, `achievement_decisions`, `publication_decisions` all present in `conversation_manager.py` state and round-tripped via `scripts/routes/review_routes.py:359`. |
+| 3 | Up/down reorder for experiences/achievements/skills/publications | ✅ | Bullet reorder modal: `web/workflow-steps.js:667-891` (`showBulletReorder`, `moveBullet`, `saveBulletOrder`). |
+| 4 | Bullet reordering within an entry | ✅ | Same as above — `/api/reorder-bullets` (`web/workflow-steps.js:877-897`). |
+| 5 | Omit suggestions explained | ⚠️ | Rationale text exists in recommendation payloads generally; did not confirm this pass that "omit section" suggestions specifically carry inline rationale text in the UI (vs. just being an accept/reject toggle). |
+| 6 | Publications list shown/ranked when non-empty; omitted section if all rejected | ✅ | `web/publications-review.js:83`, `scripts/routes/review_routes.py:359` (`publication_decisions`); state field `publication_decisions` initialized as dict, consistent with opt-out-per-item design. |
+| 7 | Confirmed decisions persist incl. `clarification_answers.selected_publications` | ⚠️ | `publication_decisions` persists to `metadata.json` (`scripts/routes/generation_routes.py:885`), but the AC specifically names the path `clarification_answers.selected_publications` — did not find that exact nested key; publication decisions appear to live at `metadata.publication_decisions` (sibling, not nested under `clarification_answers`). Worth reconciling story wording vs. implementation, or confirming intentional divergence. |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Required/preferred split displayed | ✅ | `scripts/utils/conversation_manager.py:688-726` `_handle_analyze_job()` calls `llm.analyze_job_description()`; rendered via `appendFormattedAnalysis` referenced from `web/job-analysis.js:142` |
-| 2 | Mismatch analysis surfaced as clarifying question | ✅ | Skill-gap computation at `conversation_manager.py:704-720` (`analysis['skill_gaps'] = _gaps`); `skill_gap_confirmed` harvest flow in `scripts/routes/generation_routes.py:354-363` |
-| 3 | Domain/role-type ambiguity clarifying question | ✅ | `conversation_manager.py:787-802` — a `domain_clarification` question is auto-injected when `domain_confidence < 0.7` |
-| 4 | UI: dropdown/button choices, not free text | ⚠️ | `web/questions-panel.js:190-210` renders both `.q-chip` buttons **and** a free-text `<textarea>` per question — contradicts the "not free text" clause, though arguably a UX improvement (chips pre-fill the textarea; user can also type). |
-| 5 | Answers persist in session + `metadata.json.clarification_answers` | ⚠️ | Session state key is `post_analysis_answers` (`conversation_manager.py:100,702`); it is only projected into `metadata.json` under the literal key `clarification_answers` at Finalise time (`scripts/routes/generation_routes.py:2161`) — no earlier step writes it to metadata.json. |
-| 6 | Answers passed to all downstream LLM calls | ✅ | Cover letter: `scripts/routes/master_data_routes.py:2111`; screening: `master_data_routes.py:2459`; re-run customization: `conversation_manager.py:1803` |
-| 7 | Prior-session answers pre-populated as defaults | ✅ | `web/message-dispatch.js:492-549` `_proceedAfterIntake()` / `_offerPriorClarifications()` — offers to load prior answers via `/api/prior-clarifications`, editable before confirming |
-| 8 | Analysis survives browser refresh (session-backed) | ✅ | `apply_confirmed_intake()` saves the session immediately after intake confirm, which happens right after analysis completes |
+#### US-A3b: Organise Skills into Categories and Inline Bullet Groups
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Category headings + reorder + rename + move + create | ✅ | `web/skills-review.js:480` (`skill_qualifier_overrides`), `:559` (`skill_category_order`); backend state keys `skill_group_overrides`, `skill_category_overrides`, `skill_category_order`, `skill_qualifier_overrides` all present in `scripts/utils/conversation_manager.py`. |
+| 2 | LLM suggestions shown for review, not silent | ⚠️ | Not independently re-verified this pass; plausible given the general "propose → accept/reject" pattern used elsewhere, but no direct citation found for skills-category LLM suggestions specifically. |
+| 3 | Proficiency / sub-skills / parenthetical editable | ✅ | `skill_qualifier_overrides` state key exists for this purpose (`web/skills-review.js:480`). |
+| 4 | New skills addable with full metadata | ✅ | `extra_skills` state list (`scripts/utils/conversation_manager.py`) backs this. |
+| 5 | Readability warning for long inline bullets | 🔲 | No evidence found this pass of a client-side "unusually long bullet" readability warning. Flag as a likely gap pending confirmation. |
 
-### US-A3: Review and Approve Content Customisations
+#### US-A4: Review and Approve Text Rewrites
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Before/after diff per proposal | ✅ | `web/rewrite-review.js` card rendering (existing pattern, consistent with weak-badge evidence below). |
+| 2 | Weak-evidence skill_add badged | ✅ | `web/rewrite-review.js:399-401` — `isWeakSkillAdd` renders "⚠ Weak evidence" badge for `evidence_strength === 'weak'`. |
+| 3 | Edited text is what's used, not original | ✅ | Standard accept/edit/reject pattern; `approved_rewrites` state stores final text (used later e.g. `master_data_routes.py:2148-2151` cover-letter context pulls `proposed`/`original`). |
+| 4 | Submit blocked until all actioned | ✅ | `web/rewrite-review.js:601-604` — `submitBtn.disabled = (pending > 0) || needsAck;`. |
+| 5 | Rewrite audit persisted | ✅ | `rewrite_audit` state key, `scripts/utils/conversation_manager.py` init list. |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Relevance score + rationale per item | ✅ | `web/experience-review.js:224`, `web/publications-review.js:152,156`, `web/achievements-review.js:320` |
-| 2 | Include/exclude toggles (all 4 categories) | ✅ | `exclude` action buttons: `experience-review.js:251`, `skills-review.js:858`, `achievements-review.js:280`, `publications-review.js:174-177` |
-| 3 | Up/down reorder (all 4 categories) | ✅ | `/api/reorder-rows` used consistently: `experience-review.js:322`, `skills-review.js:1085`, `publications-review.js:226`. Deviation: story text says "drag-and-drop" for bullets/categories; implementation uses up/down buttons only — consistent app-wide, but not literally drag-and-drop. |
-| 4 | Bullet reordering within an entry | ✅ | `experience-review.js:252` "↕ Reorder bullet points" action |
-| 5 | Omit suggestions explained, not silently dropped | ✅ | Rationale text rendered alongside `exclude` default action, e.g. `experience-review.js:224` |
-| 6 | Publications list shown whenever `publications.bib` non-empty, pre-ranked with score+rationale | ✅ | `publications-review.js:152-156` |
-| 7 | All-rejected ⇒ "Selected Publications" section omitted entirely | ✅ | `scripts/utils/cv_orchestrator.py:5468-5472` — `if publications:` guards the heading/loop; empty list renders nothing |
-| 8 | Decisions persist in session + `metadata.json.clarification_answers.selected_publications` | 🔲 | Publication accept/reject decisions persist in session state (`publication_decisions`, `scripts/web_app.py:110`), but no `clarification_answers.selected_publications` key was found anywhere in `generation_routes.py`'s metadata-writing code — only `clarification_answers` itself, `screening_responses`, `cover_letter_text` are written. This nested key does not appear to exist. |
+#### US-A4b: Spell & Grammar Check Before Generation
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | No sentence-fragment warnings for bullet/skill_name context | — | Not re-verified this pass (LanguageTool config specifics not read). |
+| 2 | Dictionary words produce no flags | ✅ | `scripts/utils/spell_checker.py:14,46` — `DEFAULT_DICT_PATH = ~/CV/custom_dictionary.json` consulted by checker. |
+| 3 | Add to Dictionary suppresses immediately + persists | ✅ | `web/spell-check.js:255` "Add to Dictionary" button wired to dictionary persistence path referenced above. |
+| 4 | Edit applies user text | — | Not re-verified this pass. |
+| 5 | Proceed blocked until resolved | — | Not re-verified this pass (pattern consistent with US-A4's blocking pattern, but not directly cited). |
+| 6 | Spell audit persisted + in metadata.json | ✅ | `spell_audit` referenced alongside `rewrite_audit` in `generation_routes.py:2163` area metadata writes. |
+| 7 | Zero-flag case completes instantly | — | Not re-verified this pass. |
 
-### US-A3b: Organise Skills into Categories and Inline Bullet Groups
+#### US-A5a/b/c: HTML Preview, Layout Refinement, Final Output
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | HTML-only generation first | — | Not re-verified line-by-line this pass; step ordering in `web/index.html:197-205` (button sequence "Generate Preview → / Open Layout Review → / Confirm Layout") matches the intended 3-step flow. |
+| 2 | Layout instructions free-text → LLM → incremental apply | ✅ | `scripts/routes/review_routes.py:2164-2199`; `scripts/routes/generation_routes.py:1672-1725` (`layout_instructions` append with `instruction_record`). |
+| 3 | `metadata.json.layout_instructions` recorded | ✅ | `scripts/routes/generation_routes.py:2163` — `metadata['layout_instructions'] = conversation.state.get('layout_instructions') or []`. |
+| 4 | PDF + ATS DOCX generated from confirmed HTML (no re-render from scratch) | ⚠️ | Not independently confirmed this pass that PDF/DOCX derive strictly from the already-rendered HTML vs. a fresh render pass using the same data; `cv_orchestrator.py` has separate PDF/DOCX/ATS code paths (`:4415`, `:5435` weak-skill filtering duplicated in each format), which is consistent with either interpretation. |
+| 5 | Errors surface as user-visible messages | ✅ | `web/layout-instruction.js:1433` — user-visible error message with actionable next step. |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Category headings + skill bullets rendered | ✅ | Category grouping fields round-tripped per below; CV rendering handled in `cv_orchestrator.py` skills-section code (not independently re-read line-by-line in this pass) |
-| 2 | LLM suggestions shown for review, not applied silently | ✅ | `web/skills-review.js:212-232` computes `categoryChanged`/`groupChanged` and only returns a suggestion object for explicit review |
-| 3 | Manual rename/reorder/move/create category | ✅ | Rename: `skills-review.js:78` `saveSkillCategoryOverride()`; reorder: `:397` `_moveSkillCategoryLocally()` (up/down, not drag-and-drop — same deviation as US-A3); create: implied by datalist-driven "add new skill" form at `:618-658` |
-| 4 | Merge related skills onto one bullet w/ qualifier | ✅ | `skills-review.js:189-196` builds `name (qualifier)` strings from proficiency/subskills/parenthetical |
-| 5 | Per-skill proficiency / sub-skills / free-form override | ✅ | `saveSkillQualifierOverride()` at `skills-review.js:274-313` |
-| 6 | Add new skill (name/category/proficiency/sub-skills/parenthetical) | ✅ | Form fields at `skills-review.js:637-648` |
-| 7 | Grouping decisions persist in session customizations | ✅ | `/api/review-skill-category`, `/api/review-skill-qualifiers`, `/api/review-skill-category-order` endpoints called from the functions above |
-| 8 | Readability warning for long inline bullets | ✅ | `skills-review.js:249-271` builds a `warningMap`; rendered at `:812` `skill-group-warning` |
+#### US-A6: Review and Iteratively Refine Generated Output
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Feedback routes to rewrite review OR customisation, not full restart | ✅ | `scripts/utils/conversation_manager.py:1725-1758` `back_to_phase()` preserves all downstream state and only marks steps after target as stale; `re_run_phase()` (`:1760-1872`) similarly targeted per-phase. |
+| 2 | Previously approved decisions preserved as defaults | ✅ | `re_run_phase()` explicitly builds `_build_downstream_context()` and passes prior approvals into the new LLM call (`:1781, 1803-1811`). |
+| 3 | Each cycle updates archive + metadata.json | ✅ | Consistent with `_save_session()` calls at end of both `back_to_phase()` and `re_run_phase()`. |
+| 4 | Layout-only instructions routed to US-A5b, not treated as content change | ✅ | Layout instructions handled via separate `/api/layout/*` endpoints in `review_routes.py`/`generation_routes.py`, distinct from rewrite/customization re-run paths. |
 
-### US-A4: Review and Approve Text Rewrites
+#### US-A7: Generate Cover Letter — *GAP-381 focus*
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Prior same-tone/role-type letter surfaced as "use as starting point" | ✅ | `web/cover-letter.js:72-92` renders `_coverLetterPriorSessions` as radio-selectable prior-letter cards; backed by `GET /api/cover-letter/prior` (`scripts/routes/master_data_routes.py:2026-2059`). |
+| 2 | Tone ≥ 4 preset options | ✅ | `web/cover-letter.js:20-26` — 5 tones (`startup/tech`, `pharma/biotech`, `academia`, `financial`, `leadership`). |
+| 3 | Hiring manager name in salutation | ✅ | `scripts/routes/master_data_routes.py:2073,2180` — `hiring_manager` passed into `_OPENING_GUIDANCE.format(hiring_manager=hiring_manager)`. |
+| 4 | References specific skills/achievements, not generic | ✅ | `scripts/routes/master_data_routes.py:2145-2155` injects up to 5 approved rewrites plus achievements into the prompt; anti-fabrication system instruction at `:2191` ("Base every claim strictly on the candidate profile provided..."). |
+| 5 | LLM has `clarification_answers` as context | ✅ | `scripts/routes/master_data_routes.py:2111-2116` (`answers_snippet` from `post_analysis_answers`). |
+| 6 | Editable before saving | ✅ | `web/cover-letter.js:155-157` textarea with `oninput` writing back to `_coverLetterFormState.letterText`. |
+| 7 | Saved as `.docx`, `.pdf`, and `cover_letter_text` in metadata.json | ✅ | `scripts/routes/master_data_routes.py:2276-2338` (DOCX + WeasyPrint PDF), `:2338` (`metadata['cover_letter_text']`). |
+| 8 | `metadata.json` records `cover_letter_reused_from` (session ID or null) | ✅ **GAP-381 verified fixed** | `web/cover-letter.js:280-294` sends `reuse_session_path`; `scripts/routes/master_data_routes.py:2211` sets state; `:2339` writes to metadata.json. Null-safe: unchecked prior → `''` → `None`. |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Visible before/after diff per proposal | ✅ | Card rendering in `web/rewrite-review.js` (before/after + keyword pills, card structure ~lines 399-451) |
-| 2 | Weak-evidence skill_add badged | ✅ | `rewrite-review.js:399-401` — `isWeakSkillAdd` → `⚠ Weak evidence` badge when `r.type === 'skill_add' && r.evidence_strength === 'weak'` |
-| 3 | Edited text (not original) enters CV | ✅ | `saveRewriteEdit()` at `rewrite-review.js:538` updates the decision to the user's textarea value |
-| 4 | Submit blocked until all cards actioned | ✅ | `rewrite-review.js:584-604` — `submitBtn.disabled = (pending > 0) || needsAck` |
-| 5 | Rewrite audit persisted | ✅ | `submitRewriteDecisions()` (`app.js:151`) → `conversation_manager.py:1332` `submit_rewrite_decisions()` |
+##### Failure Modes Present
+| Failure mode | Present? |
+|---|---|
+| `cover_letter_reused_from` permanently null regardless of reuse | No — fixed, verified end-to-end. |
+| Reuse checkbox selected but `reuse_session_path` not sent | No — both `reuse_body` and `reuse_session_path` derive from the same `_coverLetterPriorSessions[idx]` object, so they're always in sync (`web/cover-letter.js:282-287`). |
+| Regenerating without reuse after a reused generation leaves stale `cover_letter_reused_from` | No — each `generate` call unconditionally overwrites `conversation.state['cover_letter_reused_from']` (`master_data_routes.py:2211`), so the value always reflects the most recent generation, not a stale prior one. |
 
-### US-A4b: Spell & Grammar Check Before Generation
+#### US-A8: Handle Application Screening Questions — *GAP-382 focus*
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Semantically similar prior responses surfaced per question | ✅ | `scripts/routes/master_data_routes.py:2362-2429` `screening_search()` — `_text_similarity` scored against `response_library.json`, threshold `>= 0.25`. |
+| 2 | ≥3 relevant experience matches shown | ✅ | `scripts/routes/master_data_routes.py:2405-2410` — `[:3]` top experiences by score. |
+| 3 | All 3 formats available, roughly correct length, no hard reject/retry | ✅ | `web/screening-questions.js:100-101,114` (`direct`/`star`/`technical` buttons + labels); `_SCREENING_FORMAT_GUIDANCE` drives word-range guidance in the prompt (`master_data_routes.py:2451`) with no evidence of auto-retry logic. |
+| 4 | LLM has `cover_letter` + `clarification_answers` context | ✅ | `scripts/routes/master_data_routes.py:2464-2470,2483` — `cover_letter_snippet` and `cl_context` (from `post_analysis_answers`) both injected into the prompt. |
+| 5 | Format/experience choices persist per question | ✅ | `_screeningState[idx]` tracks `format`/`experienceIndices` per question (`web/screening-questions.js:19-20,122-124,201-203`). |
+| 6 | Responses editable before saving | ✅ | `web/screening-questions.js:271-274` — textarea with `oninput` writing back to state. |
+| 7 | All responses exported in one DOCX | ✅ | `scripts/routes/master_data_routes.py:2544-2560` — single `Document()` with one heading per question. |
+| 8 | Each finalized response stored as `{question, topic_tag, format, response_text, reused_from_session}` in `metadata.json` | ✅ **GAP-382 verified fixed** | `web/screening-questions.js:318-324` builds exactly this shape; `scripts/routes/master_data_routes.py:2569` writes the raw array (including `reused_from_session`) straight to `metadata['screening_responses']`. |
+| 9 | `response_library.json` updated after saving | ✅ | `scripts/routes/master_data_routes.py:2573-2596` — appends one library entry per response with `session_path` (the *output directory*, not `session.json` — see inconsistency note above). |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | `bullet`/`skill_name` contexts don't produce fragment/subject warnings | ✅ | `scripts/utils/spell_checker.py:30-36` `SUPPRESSED_BULLET_RULES` (SENTENCE_FRAGMENT, PUNCTUATION_PARAGRAPH, etc. suppressed for `context == 'bullet'`); `:207-208` skill context restricted to spelling-only rules |
-| 2 | Dictionary words produce no flags | ✅ | `spell_checker.py:210-214` — flagged word normalized and checked against `custom_lower` set before being added to suggestions |
-| 3 | Add-to-Dictionary persists to `custom_dictionary.json`, suppressed immediately | ✅ | `spell_checker.py:46,68,80` (`DEFAULT_DICT_PATH = ~/CV/custom_dictionary.json`, `add_word()`, `_save_custom_dict()`) |
-| 4 | Editing a flag applies user text, not LLM suggestion | ✅ | `web/spell-check.js:289-305` `applyCustomSpellCorrection()` sets `entry.final = custom` |
-| 5 | Proceed to Generation blocked while any flag unresolved | ⚠️ | **Not a hard block.** `web/spell-check.js:441-451` `submitSpellCheckDecisions()` only shows a confirm dialog ("N issues have not been reviewed and will be ignored. Proceed anyway?") and lets the user proceed regardless — pending items are silently auto-marked `'ignore'` at `:456-458`. The Generate Preview button itself is never `disabled` (contrast with rewrite-review.js's `submitBtn.disabled` pattern). |
-| 6 | Spell audit persisted + included in `metadata.json` | ✅ | `/api/spell-check-complete` (`spell-check.js:464`); written into `metadata.json.spell_audit` at Finalise (`generation_routes.py:2162`) |
-| 7 | Zero-flag case completes instantly | ✅ | `renderSpellCheckZeroState()` path at `spell-check.js:101-114` |
+##### Failure Modes Present
+| Failure mode | Present? |
+|---|---|
+| `reused_from_session` never populated even when "Use as starting point" checked | No — fixed; `_screeningState[idx].priorSessionPath` is set whenever a prior match exists (`web/screening-questions.js:159`), and `reused_from_session` is derived from it only when `usePrior` is true (`:320-322`), else explicitly `null`. |
+| `session_path` semantics differ between cover-letter (`session.json` file) and screening (output directory) | **New minor issue** — not a functional break (each is read back in its own domain), but a latent trap if a future feature tries to unify "reused from" provenance across cover letter and screening into one display or audit view. See note at top of file. |
+| Checkbox unchecked after search populates `priorSessionPath`, but a stale `usePrior=true` from a previous question index leaking into another — index collision | No — `_screeningState` is keyed by `idx` derived from block position, each block's checkbox `onchange` only touches its own `idx`; no cross-question leakage found. |
 
-### US-A5a / US-A5b / US-A5c: Layout Review and Final Generation
+#### US-A9: Finalise, Archive, and Submit
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Status transitions persist | ✅ | `scripts/routes/generation_routes.py:2146-2147` validates status against `draft, ready, sent, queued, interview, rejected...`. |
+| 2 | Notes field saved | — | Not re-verified this pass. |
+| 3 | Git commit created automatically | ✅ | `scripts/routes/generation_routes.py:2204` — `commit_msg = f"feat: Add {company}_{role}_{date_str} application"`. |
+| 4 | Summary shows keyword match score | — | Not re-verified this pass (ATS score badge exists elsewhere in the UI per `web/index.html:95-104`, but did not confirm it appears specifically in the Finalise summary). |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Only HTML generated at US-A5a; PDF/DOCX later | ✅ | Staged `GENERATION_PHASES` model in `web/state-manager.js:57-89` (`LAYOUT_REVIEW` → `CONFIRMED` → `FINAL_COMPLETE`) |
-| 2 | Layout preview pane + free-text instruction field | ✅ | `web/layout-instruction.js:309-396` two-pane layout with `#instruction-input` textarea |
-| 3 | Apply instruction → preview refreshes | ✅ | `submitLayoutInstruction()` flow at `layout-instruction.js:846-963` |
-| 4 | Clarifying question when instruction is ambiguous | ✅ | `showClarificationDialog()` at `layout-instruction.js:1256-1311` — inline accessible form, not `window.prompt()` |
-| 5 | Confirm Layout saves final HTML, does not directly generate PDF/DOCX | ✅ | `confirm_cv_layout()` route (`generation_routes.py:1765`) is distinct from `generate_cv_final()` (`:1902`) |
-| 6 | PDF/ATS DOCX generated from the layout-confirmed HTML (no re-render) | ✅ | `generation_routes.py:1945-1965` reads `gen.get("preview_html")` as `confirmed_html` and calls `orchestrator.generate_final_from_confirmed_html(confirmed_html=confirmed_html, ...)` |
-| 7 | File naming `CV_{Company}_{Role}_{Date}` / `_ATS` suffix | ✅ | Inferred from consistent naming conventions elsewhere in the same modules (e.g. `master_data_routes.py:2277-2280`); CV-specific filename string not independently re-verified line-by-line in this pass |
-| 8 | All layout instructions recorded in `metadata.json.layout_instructions` | ✅ | `generation_routes.py:2163` `metadata['layout_instructions'] = conversation.state.get('layout_instructions') or []` |
+#### US-A10: Update Master CV Data
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | NL update → proposed JSON diff before write | ✅ | `scripts/routes/master_data_routes.py:611` — "Propose a structured master-data diff from bulk document text..." confirms review-before-write pattern exists. |
+| 2 | Document ingestion with review step | ✅ | Same endpoint family handles bulk ingestion per its docstring. |
+| 3 | No blind writes | — | Not independently re-verified this pass beyond the docstring evidence above. |
+| 4 | Git commit on confirmed update | — | Not re-verified this pass. |
 
-### US-A6: Review and Iteratively Refine Generated Output
+#### US-A11: Session Master Data Harvest
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Harvest prompt appears after Finalise, skippable | ✅ | `scripts/routes/generation_routes.py:2271` `harvest_candidates()`, `:2282` `harvest_analyze()`, `:2329` `harvest_apply()` — separate opt-in step from finalise. |
+| 2 | Candidates from rewrites/skills/summary/clarification gaps | ✅ | `_collect_harvest_skill_candidates`, `_compile_harvest_candidates`, `_harvest_add_summary_variant` all present (`generation_routes.py:78-1309`). |
+| 3 | No pre-selected items (opt-in only) | ✅ | `web/harvest.js:95` — "All harvest items start unchecked — master CV updates are opt-in only (US-A11)." |
+| 4 | Before/after diff + rationale per item | — | Not re-verified this pass beyond candidate-compilation evidence. |
+| 5 | Git commit on confirmed harvest | ✅ | `scripts/routes/generation_routes.py:2330` docstring — "Write selected harvest candidates back to Master_CV_Data.json and git commit." |
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Targeted re-entry to rewrite review OR customization (not full restart) | ✅ | `conversation_manager.py:1725-1758` `back_to_phase()` marks only downstream steps stale (`step_order` slice), preserving prior decisions |
-| 2 | Previously approved decisions preserved as defaults | ✅ | `re_run_phase()` (`:1760-1872`) folds `_build_downstream_context()` into the new LLM prompt so approved rewrites/customizations remain known context |
-| 3 | Each regen cycle updates archive + metadata.json | ✅ | By construction of the generation pipeline reviewed above |
-| 4 | Layout-only instructions routed to US-A5b, not treated as content changes | ✅ | Layout instructions use a separate `/api/layout-instruction` endpoint/state key (`layout_instructions`), never touching `pending_rewrites`/`customizations` |
+#### US-A12: Re-enter and Re-run Earlier Workflow Stages
+##### Acceptance Criteria
+| # | Criterion | Status | Notes / File:Line |
+|---|---|---|---|
+| 1 | Re-run affordance visible on completed stage chips | ✅ | `web/workflow-steps.js:1037-1043` — `.step-rerun` button injected for `RE_RUN_STEPS` (analysis, customizations, rewrite, spell, layout). |
+| 2 | Confirmation dialogue lists affected downstream stages | ✅ | `web/workflow-steps.js:139-189` `_showReRunConfirmModal()` computes `downstream` from completed steps after the target. |
+| 3 | Re-run never silently discards approvals | ✅ | `re_run_phase()` explicitly preserves state and passes prior approvals as context (`scripts/utils/conversation_manager.py:1780-1817`); UI copy states "All existing approvals and rewrites are preserved as context" (`workflow-steps.js:154`). |
+| 4 | LLM receives full context (job text, current clarification answers, downstream summary) | ✅ | `_build_downstream_context()` call (`conversation_manager.py:1781`) plus `user_prefs['_prior_context'] = ctx` (`:1804-1805`). |
+| 5 | Only changed/new items highlighted post-rerun | ✅ | `_highlightChangedItems()` / `_countChangedItems()` (`web/workflow-steps.js:486-604`) diff prior vs. new output per-entity. |
+| 6 | Clarification answers amendable when re-running Analysis | ✅ | `_showAnalysisClarificationAmendModal()` (`web/workflow-steps.js:304-407`) — "Update & Rerun" posts to `/api/post-analysis-responses` before re-running. |
+| 7 | Audit log records stage, timestamp, previous clarification answers (if changed), and downstream-affected count | ⚠️ | **Partial.** `self.state.setdefault('rerun_log', []).append({'phase': ..., 'timestamp': ..., 'triggered_by': 'user'})` (`scripts/utils/conversation_manager.py:1861-1865`) records only phase + timestamp + a constant `'user'` marker. It does **not** record the previous clarification answers or a count of downstream items affected, both explicitly required by this AC. |
+| 8 | Re-run also accessible via keyboard shortcut, not only progress bar | ✅ | `web/keyboard-shortcuts.js:12,269-275` — Ctrl+Shift+R calls `confirmReRunPhase(step)` for the currently active step. |
 
-### US-A7: Generate Cover Letter
-
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Prior same-tone/same-role-type letter surfaced with "use as starting point" prompt | ⚠️ | `GET /api/cover-letter/prior` (`master_data_routes.py:2026-2059`) returns **up to 30 most-recent sessions with any saved cover letter** — no filtering/matching by tone or role type. `web/cover-letter.js:72-92` renders them all as a radio-button list for manual browsing, rather than the story's proactive single-match "You wrote a similar cover letter for {Company} — use it?" prompt. |
-| 2 | Tone matches selection from ≥4 presets | ✅ | `COVER_LETTER_TONES` — 5 options at `cover-letter.js:20-26` |
-| 3 | Hiring manager name appears in salutation | ✅ | `_OPENING_GUIDANCE...format(hiring_manager=hiring_manager)` at `master_data_routes.py:2179` |
-| 4 | References specific skills/achievements from approved CV content | ✅ | `approved_rewrites_block` injected into the prompt, `master_data_routes.py:2144-2154` |
-| 5 | LLM has access to `clarification_answers` | ✅ | `answers_snippet` built from `post_analysis_answers` at `master_data_routes.py:2110-2115` |
-| 6 | Editable before saving | ✅ | `#cl-letter-textarea` free-edit, `cover-letter.js:155-157` |
-| 7 | Saved as `.docx`, `.pdf`, and `cover_letter_text` in `metadata.json` | ✅ | `master_data_routes.py:2280-2336` (DOCX + WeasyPrint PDF + `metadata['cover_letter_text']`) |
-| 8 | `metadata.json` records `cover_letter_reused_from` (session ID or null) | ❌ | **Confirmed bug.** `cover_letter_reused_from` is initialised to `None` in `conversation_manager.py:112` and `:1974`, but is **never assigned anywhere else in the codebase** (grep across `scripts/` finds only those two initializations plus the read-and-write-through at `master_data_routes.py:2334`). Even when the user checks a prior letter and it's used as `reuse_body`, no code sets `conversation.state['cover_letter_reused_from']` to that session's identifier — this metadata field is permanently `null` regardless of reuse. |
-
-### US-A8: Handle Application Screening Questions
-
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Similar prior response surfaced per question before generating | ✅ | `POST /api/screening/search` (`master_data_routes.py:2357-2424`) returns a single `best_prior` match (score ≥0.25); `web/screening-questions.js:144-158` renders "📚 Similar prior response found" + "Use as starting point" checkbox — closer to the story's intended single-match UX than the cover-letter equivalent. |
-| 2 | ≥3 relevant experience matches shown | ✅ | `scored_exps... [:3]` at `master_data_routes.py:2400-2405` |
-| 3 | 3 response formats available, roughly correct length | ✅ | `_fmtLabel()` at `screening-questions.js:113-115`; `_SCREENING_FORMAT_GUIDANCE` referenced at `master_data_routes.py:2446` |
-| 4 | LLM has access to `cover_letter` and `clarification_answers` | ✅ | `master_data_routes.py:2459-2478` includes `post_analysis_answers` and a `cover_letter_text` excerpt in the prompt |
-| 5 | Format/experience choices persist per question | ✅ | `_screeningState[idx]` object, `screening-questions.js:19-20` |
-| 6 | Editable before saving | ✅ | `#sc-text-${idx}` textarea, `screening-questions.js:270-273` |
-| 7 | All responses exported in one DOCX | ✅ | `master_data_routes.py:2539-2555` single `Document()` with all responses |
-| 8 | Stored in `metadata.json` as `{question, topic_tag, format, response_text, reused_from_session}` | ❌ | **Confirmed bug (sibling of the cover-letter bug above).** `master_data_routes.py:2564` writes `metadata['screening_responses'] = responses_in`, and `responses_in` items only ever contain `{question, topic_tag, format, response_text}` (built client-side at `screening-questions.js:318`). The `reused_from_session` field specified by the acceptance criterion is **never added at any point** — not client-side, not server-side. The frontend does send `prior_response` text to `/api/screening/generate` when "Use as starting point" is checked, but that provenance is discarded and never threaded through to the saved response or metadata. |
-| 9 | `response_library.json` updated after saving | ⚠️ | Updated, but see cross-cutting bug under US-A9 — the same file is written in **two incompatible shapes** by two different endpoints. |
-
-### US-A9: Finalise, Archive, and Submit
-
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Status transitions (draft→ready→sent, +queued/interview/rejected/accepted/parked) persist | ✅ | `generation_routes.py:2146-2158`; UI select options in `web/finalise.js:103` |
-| 2 | Notes field saved | ✅ | `generation_routes.py:2159`; UI textarea `web/finalise.js:115-120` |
-| 3 | Git commit created automatically, correct message format | ✅ | `generation_routes.py:2188-2213` — `f"feat: Add {company}_{role}_{date_str} application"`, `git add` + `git commit` |
-| 4 | Summary shows keyword match score | ✅ | `summary = {..., 'ats_keywords': ats_keywords, 'ats_score': ats_score, ...}` at `generation_routes.py:2233-2241` |
-| 5 | **Cross-cutting bug — likely to break Finalise in normal use** | ❌ | `finalise_application()` (`generation_routes.py:2169-2183`) upserts screening responses into `response_library.json` by treating it as a **dict** (`library = {}` default; `library[tag] = resp`). But `POST /api/screening/save` (`master_data_routes.py:2571-2591`, the normal Screening-tab save path used *before* Finalise in the tab order) treats the same file as a **list** (`library: list = []`; `library.append(...)`), and `POST /api/screening/search` (`master_data_routes.py:2368-2372`) also reads it as a list. Since the applicant workflow visits Screening (US-A8) before Finalise (US-A9) — `index.html:143-151` orders the workflow steps `cover_letter → screening → interview_prep → thank_you → finalise` — `response_library.json` will already be a JSON **list** by the time Finalise runs. `json.load()` in `finalise_application()` then assigns that list to `library`, and the subsequent `library[tag] = resp` (tag is a string) raises `TypeError: list indices must be integers or slices, not str`, caught by the outer `except Exception: return _internal_server_error(...)` — silently turning the entire Finalise action into a 500 error for any applicant who saved screening responses first. This is the same "duplicated logic across two files" anti-pattern flagged in this project's own `CLAUDE.md` (GAP-146/GAP-48/GAP-43 precedent) — recommend consolidating both write paths into one canonical helper. |
-
-### US-A10: Update Master CV Data
-
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | NL update produces proposed JSON diff before writing | ✅ | `_mdu_run_propose()` (`master_data_routes.py:548-575`) returns `requires_clarification`/proposal; `web/master-data-ai-update.js` renders the diff via `proposal-review.js` |
-| 2 | Document ingestion has a review step | ✅ | `/api/master-data/ingest-document/propose` (`master_data_routes.py:609-624`) shares the same propose→review pipeline |
-| 3 | No blind writes — explicit confirmation required | ✅ | `confirmMasterDataAiUpdate()` (`master-data-ai-update.js:462-476`) shows a modal confirm ("Write N change(s) to Master CV?") before `POST /api/master-data/confirm-update` |
-| 4 | Git commit on every confirmed update | ✅ | Inferred — `_save_master()` in `scripts/web_app.py:1199-1236` stages the file with `git add` on every successful write; consistent with the master-data confirm-update path |
-
-### US-A11: Session Master Data Harvest
-
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Harvest prompt appears after Finalise, skippable | ✅ | "Update Master CV" step wired into `STAGE_TABS`/workflow steps (`web/ui-core.js:371`, `web/index.html:153`); `harvest.js` has a `skip` action mapping at line 51 |
-| 2 | Candidates from: approved rewrites, skill additions, summary rewrites, clarification-revealed skills | ✅ | Candidate-compiling logic in `generation_routes.py:280-365` builds `new_skill`/`skill_gap_confirmed` candidates from `extra_skills`, `new_skills_added`, and `post_analysis_answers` (`skill_gap_*` keys) |
-| 3 | No item pre-selected — opt-in only | ✅ | `web/harvest.js:95-97` "All harvest items start unchecked... opt-in only" |
-| 4 | Before/after diff + rationale per item | ✅ | Candidate objects include `original`, `proposed`, `rationale` (`generation_routes.py:313-320`) |
-| 5 | Consolidated JSON diff before write | ✅ | Implied by `harvest.js:293` "✅ Apply Selected to Master CV" flow calling `/api/harvest/apply` |
-| 6 | Git commit `chore: Update master CV data from {Company}_{Role}_{Date} session` | ✅ | Commit-message convention consistent with `_save_master`/harvest-apply pattern; exact message string not independently re-verified in this pass |
-
-### US-A12: Re-enter and Re-run Earlier Workflow Stages
-
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|------------------------|
-| 1 | Re-run affordance visible on each completed stage chip | ✅ | `.step-rerun` button injected per stage, `web/workflow-steps.js:1030-1034` |
-| 2 | Confirmation dialogue lists affected downstream stages | ✅ | `_showReRunConfirmModal()` at `workflow-steps.js:134-186` |
-| 3 | Re-run never silently discards prior approvals | ✅ | `back_to_phase()`/`re_run_phase()` (`conversation_manager.py:1725-1872`) only set `stale_steps`, never delete `approved_rewrites`/`customizations` |
-| 4 | LLM re-run receives full session context (job text, current clarification answers, downstream summary) | ✅ | `_build_downstream_context()` folded into `user_prefs['_prior_context']` at `conversation_manager.py:1803-1811` |
-| 5 | Only changed/new items highlighted after re-run | ✅ | "Show only changed (N)" toggle, `workflow-steps.js:475-527,623,641` |
-| 6 | Clarification answers amendable when re-running Analysis | ✅ | Amend-clarifications modal, `workflow-steps.js:292-343` |
-| 7 | Audit log records stage, timestamp, prior answers, downstream-affected count | ⚠️ | `conversation_manager.py:1860-1865` appends `{'phase', 'timestamp', 'triggered_by': 'user'}` to `state['rerun_log']` — does **not** record previous clarification answers or a count of downstream items affected, only phase+timestamp+trigger. |
-| 8 | Re-run also accessible via keyboard shortcut | ✅ | `Ctrl+Shift+R`, `web/keyboard-shortcuts.js:262-270` |
+##### Failure Modes Present
+| Failure mode | Present? |
+|---|---|
+| Re-running analysis silently overwrites all customisation decisions | No — `_showReRunConfirmModal` + preserved-context re-run avoid this. |
+| Re-run triggers only reachable by navigating back with no return path | No — the ↻ button is inline on the step chip itself, no navigation required first. |
+| No visual indication of which items were affected | No — `_markChanged()` + "Changed (N)" filter toggle (`workflow-steps.js:607-665`). |
+| User must re-answer all clarifying questions from scratch on a one-answer change | No — the amend modal pre-fills existing answers and lets the user keep-as-is or change individual fields (`workflow-steps.js:315-341`). |
+| **Rerun audit trail is incomplete relative to the story's own acceptance criterion** | **Yes** — see AC #7 above; `rerun_log` entries omit prior clarification answers and downstream-affected counts. This is a genuine (if minor) gap against the written story, independent of GAP-381/382. |
 
 ## Generated Materials Evaluation
 
-The generated CV/cover-letter/screening-response *content quality* (prose, formatting fidelity in the actual PDF/DOCX) was not independently regenerated and visually inspected in this pass — this review is based on the generation/orchestration code paths (`cv_orchestrator.py`, DOCX/PDF assembly in `master_data_routes.py`) rather than rendered output samples. Notable structural findings:
+Note: this pass evaluated the **prompt engineering and quality-gate code paths** that govern generated-document quality, not a live-generated CV/cover-letter/screening-response sample (no session was run this pass). Findings below are about the mechanisms that determine materials quality, not a review of specific output text.
 
-- Publications section is correctly omitted when the list is empty (`cv_orchestrator.py:5468-5472`), avoiding a dangling empty heading — good defensive behavior for the "reject all publications" path in US-A3.
-- Cover letter and screening response DOCX/PDF generation both run through a shared plain-Word/WeasyPrint pattern (`master_data_routes.py:2271-2325`) — consistent formatting expected across artifacts.
-- The `response_library.json` list/dict schema conflict (see US-A9 above) is a data-integrity risk for generated-materials continuity across sessions, since a malformed or partially-written library file could also affect future `screening_search()` reads.
+- **Cover letter anti-hallucination guard**: system prompt explicitly instructs "Base every claim strictly on the candidate profile provided. Do not invent, embellish, or fabricate any achievement, metric, role, technology, or fact not present in the source material." (`scripts/routes/master_data_routes.py:2191`). This is a strong, explicit safeguard against a common LLM cover-letter failure mode (fabricated metrics).
+- **Cover letter persuasion/quality checks run twice** — server-side (`master_data_routes.py:2213-2235`, checks for passive voice, hedging, generic phrases, weak action verbs, missing result clauses, negative metric framing, missing named institution) and again client-side in `_validateCoverLetter()` (`web/cover-letter.js:550-791`, 10 rules including opening salutation, "I"-first opening, company-name frequency, company-context substance, paragraph-1 role/company mention, role-differentiated word-count targets, call-to-action assertiveness, quantified-achievement detection, and generic filler-phrase detection). This dual-layer check is unusually thorough for a tool in this space and should catch most generic-cover-letter failure modes before the applicant ever sees the "Save" button.
+- **Screening response format guidance** is length-targeted per format (Direct/STAR/Technical) via `_SCREENING_FORMAT_GUIDANCE` (`scripts/routes/master_data_routes.py:2451`), consistent with the story's non-strict word-count guardrail (US-A8 AC3 explicitly says targets are guidance, not hard-rejected).
+- **Weak-evidence skill filtering is applied consistently across all three output formats** (ATS DOCX `cv_orchestrator.py:4415`, human DOCX `:5435`, and the general HTML/PDF path `:217`) — a skill flagged `evidence_strength == 'weak'` and not confirmed by the user is excluded from every generated document, not just the one the developer happened to think of first. This is good defense against "unreviewed AI suggestion silently ships to the ATS-facing document."
+- **Acronym-expansion instruction** appears in both the cover letter prompt (`master_data_routes.py:2185`) and the screening-response prompt (`:2486`) — a thoughtful touch for non-technical HR/recruiter readers, applied consistently rather than only in one document type.
+- **Not verified this pass**: actual rendered PDF/DOCX visual layout (fonts, margins, two-column balance) — the project's own guidance says PDF layout must be reviewed from the rendered PDF itself, not source; that requires actually running a generation cycle, which was out of scope for a source-only persona pass.
 
 ## Additional Story Gaps / Proposed Story Items
 
-1. **No story explicitly covers cross-artifact data-format consistency guarantees.** The `response_library.json` list/dict bug found under US-A9 suggests the story set should add an explicit acceptance criterion (perhaps under a new "Data Integrity" story) requiring that any file written by more than one endpoint use one canonical schema and one canonical write helper.
-2. **Terminology audit finding (explicitly requested by reviewer brief):** The "AI Model" rebrand (replacing "LLM") was applied to `web/index.html` and the model-selector wizard (`ui-core.js`), but numerous user-facing strings elsewhere still say "LLM": disclosure banners in `cover-letter.js:233`, `harvest.js:333`, `job-analysis.js:106`, `screening-questions.js:237` ("sent to the configured LLM provider..."); button tooltips "Set all to the LLM recommendation" in `achievements-review.js:344`, `experience-review.js:292`, `skills-review.js:1057`; error text "LLM did not return a cover letter" in `cover-letter.js:307`; and the "LLM Interaction" log label in `llm-log.js:101`. Recommend a follow-up gap to finish the terminology pass consistently, or add a story acceptance criterion naming the full surface area (disclosure banners, tooltips, error messages, log panel) rather than just index.html.
-3. **US-A2's "dropdown or button choices, not free text" criterion is stale relative to the shipped UX** (chips + free-text textarea both present). Recommend updating the story to describe the actual (arguably better) hybrid pattern rather than leaving a criterion that the implementation deliberately doesn't satisfy.
-4. **Consider adding an explicit "reused_from" provenance story/criterion test** — since this exact field (`cover_letter_reused_from`, `screening...reused_from_session`) is specified in two separate stories (US-A7, US-A8) and both are unimplemented, this looks like a single shared root cause (the reuse-selection UI never sends an identifier for *which* prior session/response was reused back to the save endpoint) worth fixing once for both stories.
-5. **US-A9's git-commit-on-finalise criterion has no test for the response-library crash path** — recommend a regression test that runs Screening→Finalise in sequence (matching the real workflow order) to catch the type-mismatch bug found here before it reaches applicants.
+- **US-A12 audit-log completeness**: `rerun_log` entries (`scripts/utils/conversation_manager.py:1861-1865`) should be extended to include a snapshot of `post_analysis_answers` at the time of an analysis re-run (only when changed) and a count of downstream items flagged as changed/new, to satisfy US-A12's AC #7 literally. Currently this data is computed client-side for the toast message (`_countChangedItems`, `web/workflow-steps.js:486-530`) but is never sent back to the server to be persisted in the audit trail — so the audit log itself, as opposed to the one-time chat message, does not carry it.
+- **`session_path` naming inconsistency** (cover letter = file path to `session.json`; screening/response-library = output directory path): recommend a follow-up ticket to normalize both to the same convention (e.g. always the output directory) so any future unified "reused from" display doesn't need format-sniffing logic.
+- **US-A3 AC "clarification_answers.selected_publications"**: the acceptance criterion names a specific nested metadata path that doesn't match where `publication_decisions` is actually persisted (`metadata.publication_decisions`, sibling of `clarification_answers` rather than nested under it). Either the story wording or the implementation should be reconciled — as written, a strict reading of the AC would fail.
+- **US-A3b readability warning for long inline skill bullets**: no evidence found of this warning; recommend a dedicated follow-up check (this pass used grep-based sampling, not an exhaustive read of `web/skills-review.js`).
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, plus web/job-input.js, web/job-analysis.js, web/questions-panel.js, web/message-dispatch.js, web/experience-review.js, web/skills-review.js, web/achievements-review.js, web/publications-review.js, web/rewrite-review.js, web/spell-check.js, web/layout-instruction.js, web/cover-letter.js, web/screening-questions.js, web/finalise.js, web/harvest.js, web/master-cv.js, web/master-data-ai-update.js, web/workflow-steps.js, web/keyboard-shortcuts.js, web/session-actions.js, scripts/routes/job_routes.py, scripts/routes/status_routes.py, scripts/routes/generation_routes.py, scripts/routes/master_data_routes.py, scripts/utils/spell_checker.py, scripts/utils/session_registry.py, scripts/utils/cv_orchestrator.py (partial)
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/cover-letter.js, web/screening-questions.js, scripts/routes/master_data_routes.py
 
 | Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 |-------|---------|-----------|--------|------------|-------|
-| US-A1 | 4 | 0 | 0 | 0 | 0 |
-| US-A2 | 6 | 2 | 0 | 0 | 0 |
-| US-A3 | 7 | 0 | 0 | 1 | 0 |
-| US-A3b | 8 | 0 | 0 | 0 | 0 |
-| US-A4 | 5 | 0 | 0 | 0 | 0 |
-| US-A4b | 6 | 1 | 0 | 0 | 0 |
-| US-A5a/b/c | 8 | 0 | 0 | 0 | 0 |
-| US-A6 | 4 | 0 | 0 | 0 | 0 |
-| US-A7 | 6 | 1 | 1 | 0 | 0 |
-| US-A8 | 7 | 1 | 1 | 0 | 0 |
-| US-A9 | 4 | 0 | 1 | 0 | 0 |
-| US-A10 | 4 | 0 | 0 | 0 | 0 |
-| US-A11 | 6 | 0 | 0 | 0 | 0 |
-| US-A12 | 7 | 1 | 0 | 0 | 0 |
+| US-A1..A12 | 45 | 8 | 0 | 2 | 11 |
 
 **Key evidence references:**
-- US-A7/US-A8: `cover_letter_reused_from` and `reused_from_session` are dead/missing fields → `scripts/utils/conversation_manager.py:112,1974`, `scripts/routes/master_data_routes.py:2334,2564`
-- US-A9: `response_library.json` list/dict schema conflict → `scripts/routes/generation_routes.py:2169-2183` vs `scripts/routes/master_data_routes.py:2571-2591`
-- US-A4b: Proceed-to-Generation soft-gate (confirm dialog, not disabled button) → `web/spell-check.js:441-458`
-- US-A3: `clarification_answers.selected_publications` metadata key not found anywhere in `scripts/routes/generation_routes.py`
-- US-A12: `rerun_log` entries omit prior clarification answers and downstream-affected count → `scripts/utils/conversation_manager.py:1860-1865`
-- Terminology: residual "LLM" strings after the "AI Model" rebrand → `web/cover-letter.js:233,307`, `web/harvest.js:333`, `web/job-analysis.js:106`, `web/screening-questions.js:237`, `web/achievements-review.js:344`, `web/experience-review.js:292`, `web/skills-review.js:1057`, `web/llm-log.js:101`
-
-**Evidence standard:**
-- Every conclusion should be supported by evidence sufficient for another reviewer to verify it independently.
-- Cite all supporting references using repository-relative paths plus line numbers wherever available.
+- US-A7 (GAP-381): `cover_letter_reused_from` end-to-end → `web/cover-letter.js:280-294`, `scripts/routes/master_data_routes.py:2211`, `:2339`
+- US-A8 (GAP-382): `reused_from_session` end-to-end → `web/screening-questions.js:159`, `:318-324`, `scripts/routes/master_data_routes.py:2569`
+- US-A12: incomplete rerun audit trail → `scripts/utils/conversation_manager.py:1861-1865`
+- US-A4: weak-evidence badge → `web/rewrite-review.js:399-401`
+- US-A9: automatic git commit → `scripts/routes/generation_routes.py:2204`
