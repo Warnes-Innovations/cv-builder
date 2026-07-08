@@ -207,7 +207,8 @@ class TestFinaliseEndpoint(unittest.TestCase):
             self.assertIn(res.status_code, (200,), msg=f"status={status} should return 200")
 
     def test_finalise_upserts_screening_into_response_library(self):
-        """Finalise with screening_responses writes them to response_library.json keyed by topic_tag."""
+        """Finalise with screening_responses appends them to response_library.json (a list, matching
+        the format master_data_routes.py's screening-save/search handlers already use)."""
         from pathlib import Path as _Path
         screening = [{'topic_tag': 'leadership', 'answer': 'I led a team of 5 engineers.'}]
         metadata_content = json.dumps({
@@ -232,11 +233,13 @@ class TestFinaliseEndpoint(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(len(dumped_calls) >= 1)
         library_dump = dumped_calls[0]
-        self.assertIn('leadership', library_dump)
-        self.assertEqual(library_dump['leadership']['answer'], 'I led a team of 5 engineers.')
+        self.assertIsInstance(library_dump, list)
+        self.assertEqual(len(library_dump), 1)
+        self.assertEqual(library_dump[0]['topic_tag'], 'leadership')
+        self.assertEqual(library_dump[0]['answer'], 'I led a team of 5 engineers.')
 
     def test_finalise_screening_uses_question_fallback_key(self):
-        """When topic_tag is absent, question[:40] is used as the response library key."""
+        """When topic_tag is absent, question[:40] is used as the dedup key for existing entries."""
         from pathlib import Path as _Path
         long_question = 'Tell me about yourself, what are your greatest strengths and weaknesses?'
         screening = [{'question': long_question, 'answer': 'I am highly motivated...'}]
@@ -262,9 +265,60 @@ class TestFinaliseEndpoint(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(len(dumped_calls) >= 1)
         library_dump = dumped_calls[0]
-        expected_key = long_question[:40]
-        self.assertIn(expected_key, library_dump)
-        self.assertEqual(library_dump[expected_key]['answer'], 'I am highly motivated...')
+        self.assertIsInstance(library_dump, list)
+        self.assertEqual(len(library_dump), 1)
+        self.assertEqual(library_dump[0]['question'], long_question)
+        self.assertEqual(library_dump[0]['answer'], 'I am highly motivated...')
+
+    def test_finalise_screening_library_survives_preexisting_list_format(self):
+        """Regression test: response_library.json is written as a list by the Screening tab's
+        save/search handlers (scripts/routes/master_data_routes.py). Finalise used to load an
+        existing file and immediately do `library[tag] = resp`, which raised TypeError whenever
+        the file already existed as a list -- i.e. whenever the user had saved screening responses
+        before finalising, the normal tab order. This must not crash, must preserve the existing
+        list entries, and must append the new one without duplicating an existing tag."""
+        from pathlib import Path as _Path
+        existing_entry = {
+            'topic_tag': 'availability', 'question': 'When can you start?',
+            'response_text': 'Immediately', 'format': 'short_answer',
+            'company': 'PriorCo', 'date': '2026-01-01', 'session_path': '/tmp/prior',
+        }
+        screening = [
+            {'topic_tag': 'availability', 'answer': 'Two weeks notice.'},  # duplicate tag, should be skipped
+            {'topic_tag': 'leadership', 'answer': 'I led a team of 5 engineers.'},  # new
+        ]
+        metadata_content = json.dumps({
+            'company': 'Acme', 'role': 'Engineer',
+            'screening_responses': screening,
+        })
+
+        app, _, _, sid, stack = _make_app()
+        dumped_calls = []
+
+        def fake_open(path, *args, **kwargs):
+            if 'response_library' in str(path) and 'r' in (args[0] if args else kwargs.get('mode', 'r')):
+                return mock_open(read_data=json.dumps([existing_entry]))()
+            return mock_open(read_data=metadata_content)()
+
+        with stack, app.test_client() as client, \
+             patch.object(_Path, 'exists', return_value=True), \
+             patch('pathlib.Path.mkdir'), \
+             patch('builtins.open', side_effect=fake_open), \
+             patch('json.dump', side_effect=lambda obj, f, **kw: dumped_calls.append(obj)), \
+             patch('subprocess.run', return_value=MagicMock(returncode=0, stdout='abc1234', stderr='')):
+            res = client.post('/api/finalise', json={'status': 'ready', 'session_id': sid})
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(len(dumped_calls) >= 1)
+        library_dump = dumped_calls[0]
+        self.assertIsInstance(library_dump, list)
+        tags = [e.get('topic_tag') for e in library_dump]
+        self.assertEqual(tags.count('availability'), 1)  # not duplicated
+        self.assertIn('leadership', tags)
+        # The pre-existing entry's original content is preserved, not overwritten by the
+        # duplicate-tag screening response.
+        availability_entry = next(e for e in library_dump if e.get('topic_tag') == 'availability')
+        self.assertEqual(availability_entry['response_text'], 'Immediately')
 
 
 # ---------------------------------------------------------------------------

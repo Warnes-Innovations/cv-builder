@@ -289,7 +289,7 @@ function _renderExperienceTable(container, recommendedSet, data, newRecommendedE
   expToolbar.id = 'exp-bulk-toolbar';
   expToolbar.innerHTML = `
     <span>Bulk:</span>
-    <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','experience')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
+    <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','experience')" title="Set all to the AI recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','experience')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','experience')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','experience')">${eyeSlashIcon()} Exclude All</button>

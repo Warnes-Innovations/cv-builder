@@ -189,7 +189,13 @@ function _showReRunConfirmModal(step, mode, onConfirm) {
 }
 
 function confirmReRunPhase(step) {
-  _showReRunConfirmModal(step, 'rerun', () => backToPhase(step));
+  // Bug fix: this previously called backToPhase(step), which only navigates
+  // (POST /api/back-to-phase) and never recomputes anything -- yet the modal's
+  // own copy explicitly promises a re-run ("The following stages will see
+  // updated inputs and may show changed recommendations"). reRunPhase(step)
+  // is the actual recompute path (POST /api/re-run-phase) and had zero UI
+  // callers before this fix, despite being fully implemented and tested.
+  _showReRunConfirmModal(step, 'rerun', () => reRunPhase(step));
 }
 
 // ── View-cursor indicator ─────────────────────────────────────────────────────
@@ -1210,9 +1216,26 @@ function handleStepClick(step) {
 
   // Show a downstream-awareness dialog when back-navigating to a completed step
   // that has downstream completed steps (not when the step is active).
+  //
+  // Excludes the post-layout "sibling" steps (download, cover_letter,
+  // screening, interview_prep, thank_you, finalise, harvest) from counting
+  // each other as "downstream": they all unlock simultaneously via the same
+  // `postLayout` boolean (see updateWorkflowSteps' `done{}`), so there is no
+  // real sequential relationship between them and no risk of "losing
+  // progress" by visiting one after another — unlike this warning's actual
+  // purpose, which is to catch back-navigating into an earlier phase-gated
+  // step (job/analysis/customizations/rewrite/spell/layout) after later
+  // sequential work has been done. Without this exclusion, clicking any
+  // sibling step whose siblings are already completed (the common case,
+  // since they all complete together) fired this warning spuriously.
+  const _POST_LAYOUT_SIBLING_STEPS = new Set([
+    'download', 'cover_letter', 'screening', 'interview_prep', 'thank_you', 'finalise', 'harvest',
+  ]);
   if (el.classList.contains('completed') && !el.classList.contains('active')) {
     const stepIdx = _STEP_ORDER.indexOf(step);
+    const isSibling = _POST_LAYOUT_SIBLING_STEPS.has(step);
     const hasDownstreamCompleted = _STEP_ORDER.slice(stepIdx + 1).some(s => {
+      if (isSibling && _POST_LAYOUT_SIBLING_STEPS.has(s)) return false;
       const downstream = document.getElementById(`step-${s}`);
       return downstream && downstream.classList.contains('completed');
     });

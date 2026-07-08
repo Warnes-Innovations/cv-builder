@@ -22,6 +22,7 @@ import {
   _updateBulletArrows,
   backToPhase,
   reRunPhase,
+  confirmReRunPhase,
   _getStepTooltip,
   _updateViewingIndicator,
 } from '../../web/workflow-steps.js'
@@ -459,6 +460,43 @@ describe('reRunPhase', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await reRunPhase('analysis')
     expect(globalThis.appendRetryMessage).toHaveBeenCalled()
+  })
+})
+
+// ── confirmReRunPhase ─────────────────────────────────────────────────────────
+//
+// Regression test (found during the cvUiReview committee pass, cycle 103):
+// confirmReRunPhase() showed a modal explicitly promising a re-run ("The
+// following stages will see updated inputs and may show changed
+// recommendations") but its Proceed button was wired to backToPhase(), which
+// only navigates (POST /api/back-to-phase) and never recomputes anything.
+// reRunPhase() -- the actual recompute path -- had zero UI callers before
+// this fix, despite being fully implemented and tested above.
+
+describe('confirmReRunPhase', () => {
+  it('proceeding calls the real recompute endpoint (/api/re-run-phase), not just back-to-phase navigation', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) })
+
+    confirmReRunPhase('analysis')
+
+    const proceedBtn = document.getElementById('rerun-proceed-btn')
+    expect(proceedBtn).not.toBeNull()
+    proceedBtn.click()
+    // confirmReRunPhase's callback is async and unawaited by the click handler;
+    // flush microtasks so the fetch call has happened before asserting.
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/re-run-phase', expect.objectContaining({
+      method: 'POST',
+    }))
+    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/back-to-phase', expect.anything())
+  })
+
+  it('shows modal copy that promises a re-run, not a plain navigation', () => {
+    confirmReRunPhase('analysis')
+    const title = document.getElementById('rerun-confirm-title')
+    expect(title.textContent).toContain('Re-run')
   })
 })
 

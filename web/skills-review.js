@@ -1054,7 +1054,7 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
   skillToolbar.id = 'skill-bulk-toolbar';
   skillToolbar.innerHTML = `
     <span>Bulk:</span>
-    <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','skill')" title="Set all to the LLM recommendation">✨ Accept All Recommended</button>
+    <button class="bulk-btn bulk-recommended" onclick="bulkAction('recommended','skill')" title="Set all to the AI recommendation">✨ Accept All Recommended</button>
     <button class="bulk-btn bulk-emphasize"   onclick="bulkAction('emphasize','skill')">➕ Emphasize All</button>
     <button class="bulk-btn bulk-include"     onclick="bulkAction('include','skill')">✓ Include All</button>
     <button class="bulk-btn bulk-exclude"     onclick="bulkAction('exclude','skill')">${eyeSlashIcon()} Exclude All</button>
@@ -1190,7 +1190,7 @@ async function submitSkillDecisions() {
     if (response.ok) {
       stateManager.markContentChanged();
       const extraNote = extraSkills.length > 0
-        ? ` (${extraSkills.length} new skill(s) added — available for write-back to master CV in the Harvest tab)`
+        ? ` (${extraSkills.length} new skill(s) added — available for write-back to master CV in the Update Master CV tab)`
         : '';
       showToast(`Skill decisions saved (${count} items)${extraNote}`);
       scheduleAtsRefresh();

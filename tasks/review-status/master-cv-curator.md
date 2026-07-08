@@ -6,138 +6,198 @@
   For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# Master CV Curator Review Status
+# Master-Cv-Curator Review Status
 
-**Last Updated:** 2026-07-06
+**Last Updated:** 2026-07-07 20:18 ET
 
-**Executive Summary:** Source-first review against the current `feature/multi-user-deployment` branch. The master CV curator story is substantially implemented: all four user stories have their core acceptance criteria met. Phase-locked master-data writes, explicit harvest confirmation, full publication CRUD with BibTeX import/convert, backup/restore, and governance banners are all present and correct. Three new gaps were found beyond the known GAP-309–312 set: (1) the publication edit modal silently drops standard BibTeX fields outside its hardcoded "known" set when a user saves an entry without preserving the extra-fields textarea — a round-trip fidelity risk; (2) the `domain_relevance` field for experience entries cannot be set or edited through the CRUD UI, leaving a useful AI-guidance field permanently invisible to curators; (3) professional summary variant keys use a code-style `lowercase_underscore` format as their only user-facing identifier, with no separate display-name field. Known tracked issues: GAP-309 (duplicate id on pub modal heading), GAP-310 (no experience bullet editor in Master CV tab), GAP-311 (no auto-refresh after backup restore), GAP-312 (raw "refinement" phase label in lock banner).
-
----
+**Executive Summary:** This file captures the source-verified persona review snapshot separately from the story specification so sub-agents can work in parallel safely.
 
 ## Application Evaluation
 
+### Verification of the 7 flagged recent changes (cycles 102/103) in `web/master-cv.js`
+
+#### 1. Duplicate `id` fix on publication modal heading — ✅ Pass
+
+`web/master-cv.js:354-361` now shows a single element id and a matching `aria-labelledby`:
+```
+354  <div id="master-pub-modal-overlay" ... aria-labelledby="pub-modal-title-heading" ...>
+358    <div class="modal-header">
+359      <h2 id="pub-modal-title-heading">Add Publication</h2>
+```
+No duplicate `id` attribute remains. Heading text is updated correctly by both entry points:
+- `showAddPublicationModal()` — `web/master-cv.js:1564`: `document.getElementById('pub-modal-title-heading').textContent = 'Add Publication';`
+- `editMasterPublication()` — `web/master-cv.js:1598`: `document.getElementById('pub-modal-title-heading').textContent = 'Edit Publication';`
+
+Confirmed working as intended.
+
+#### 2. Backup restore auto-refresh — ✅ Pass
+
+`restoreBackup()`, `web/master-cv.js:2710-2733`, calls `await populateMasterTab();` at line 2725 immediately after a successful `/api/master-data/restore` response, before showing the "Restored" alert. This replaces the older "please reload the tab" pattern — the visible data is refreshed in place. `undoMasterDataChange()` (line 2743-2777, calls `populateMasterTab()` at 2769) and `redoMasterDataChange()` (2779-2802, calls it at 2794) follow the same pattern.
+
+#### 3. Phase-lock banner label fix — ✅ Pass
+
+`web/master-cv.js:102-110`:
+```
+108  Master CV editing is only available before job analysis begins or during the
+     Refinement stage. The current stage is <strong>${escapeHtml((typeof SESSION_PHASE_LABELS !== 'undefined' && SESSION_PHASE_LABELS[currentPhase]) || currentPhase || 'unknown')}</strong>.
+```
+`SESSION_PHASE_LABELS` is defined at `web/utils.js:262-272` and maps `refinement` → `'Finalise'` (and all other phases to human labels, e.g. `job_analysis` → `'Job Analysis'`). The banner falls back to the raw phase value if the map lookup is falsy, and to `'unknown'` if `currentPhase` itself is empty — both fallbacks match the described behavior. Confirmed: a user mid-application will see "The current stage is **Finalise**", not the raw enum `refinement`.
+
+#### 4. `domain_relevance` field added to Experience modal — ✅ Pass
+
+- Field present in the modal markup: `web/master-cv.js:621-626` (`#exp-domain-relevance-input`, label "Domain Relevance (comma-separated)").
+- Populated on edit, mirroring `tags`: `web/master-cv.js:2134-2135`.
+- Cleared/reset in `showAddExperienceModal()`: `web/master-cv.js:2038`.
+- Parsed identically to `tags` on save (comma-split/trim/filter) in `saveMasterExperience()`: `web/master-cv.js:2159, 2170`.
+- Backend round-trip confirmed in `scripts/routes/master_data_routes.py`: accepted on `add` (line 1007: `'domain_relevance': exp_data.get('domain_relevance') or []`) and on `update` (lines 1032-1034, alongside `tags`).
+
+Full round trip (UI → POST `/api/master-data/experience` → JSON field → re-populated on next edit) verified end-to-end.
+
+#### 5. Multi-line BibTeX "extra field" fix + save-confirmation guard — ✅ Pass
+
+- Escaping on populate (`editMasterPublication()`, `web/master-cv.js:1585-1596`): embedded newlines in a field value are escaped to literal `\n` so each field renders as one line in the textarea, with an explicit comment explaining the original bug this fixes (GAP-347 reference in-code).
+- Unescaping on save (`saveMasterPublication()`, `web/master-cv.js:1630-1641`): `v.replace(/\\n/g, '\n')` reverses the escaping before writing to `fields[k]`.
+- Save-confirmation guard: `_pubModalOriginalExtraKeys` is captured at modal-open time (`showAddPublicationModal()` line 1552 → `[]`; `editMasterPublication()` line 1592 → keys of all non-hardcoded fields). On save, `droppedKeys` is computed as `_pubModalOriginalExtraKeys.filter((k) => !(k in fields))` (line 1646) — this only fires for keys that were present at open and are now **absent** from the final `fields` object. Purely additive edits (new fields only) or renames where the new key ends up present leave `droppedKeys` correctly reflecting only genuinely-missing original keys. Confirmed the guard triggers **only** when a previously-present key is now missing from the new fields dict; purely additive edits produce an empty `droppedKeys` array and skip the confirm dialog entirely (line 1647 `if (droppedKeys.length > 0)`).
+
+Backend `bibtex_parser.py` confirms fields legitimately round-trip: `_entry_to_publication()` (`scripts/utils/bibtex_parser.py:99-132`) denylists only `{"ID", "ENTRYTYPE"}` when building the `fields` dict (lines 103-107) — every other BibTeX field, known or custom, is preserved. `serialize_bibtex_entry()` (lines 500-536) writes `author`/`editor` first, then `_STANDARD_FIELD_ORDER` fields, then — critically — any remaining custom fields sorted alphabetically (lines 531-533). No field-name allowlist causes silent field loss anywhere in parse/serialize; the only thing `_append_field` drops is an **empty-valued** field (lines 539-543), which is expected/desirable BibTeX hygiene, not a data-loss bug.
+
+#### 6. Summary variant label title-casing — ✅ Pass
+
+`_renderSummariesList()`, `web/master-cv.js:1818-1846`: `prettyLabel` (line 1831) title-cases the key (e.g. `ml_engineering` → `Ml Engineering`) and is used as the primary heading (line 1835), with the raw key shown as a smaller parenthetical (`<span style="font-weight:400;color:#9ca3af;...">(${keyEsc})</span>`). In-code comment explicitly documents the intent and notes the deliberate absence of a separate display-name field (referencing GAP-371) pending a fuller fix.
+
+Minor note: "Ml Engineering" is a slightly awkward title-case artifact (naive `\b\w` capitalization does not special-case acronyms like "ML"). Not a functional bug, but worth flagging as a cosmetic follow-up — see Additional Issues below.
+
+#### 7. Achievement bullet editor in Experience modal — ✅ Pass (GAP-310's claim it doesn't exist is incorrect)
+
+Confirmed a complete, functional CRUD editor for achievements inside the Experience modal:
+- Container markup: `web/master-cv.js:627-636` (`#exp-achievements-editor-list`, add input, "+ Add" button).
+- Render: `_renderExpAchievementsEditor()` (`web/master-cv.js:2059-2074`) — renders each achievement as a text input plus ↑ / ↓ / 🗑️ controls, with boundary buttons correctly disabled at the first/last item (`idx === 0` / `idx === lastIdx`).
+- Add: `_addExpAchievement()` (2091-2099).
+- Reorder: `_moveExpAchievement()` (2101-2108) — uses splice to move an item by `delta`.
+- Delete: `_deleteExpAchievement()` (2110-2114).
+- Sync-before-mutate: `_syncExpAchievementsFromInputs()` (2079-2089) — reads any in-progress (un-blurred) text edits out of the DOM before any reorder/delete/save rebuilds the list, preventing silent loss of an uncommitted edit.
+- Populated from existing data on edit: `editMasterExperience()`, line 2138: `_masterExpModalAchievements = JSON.parse(JSON.stringify(exp.achievements || []));` (deep-copied working buffer, not a live reference).
+- Persisted on save: `saveMasterExperience()`, line 2171, includes `achievements: _masterExpModalAchievements` in the POST body; backend accepts and validates it (`scripts/routes/master_data_routes.py:961-966`: must be a list of strings/dicts) and persists on both `add` (line 1008) and `update` (lines 1030-1031).
+
+This is a real, working feature — the prior gap report (GAP-310) claiming it doesn't exist was incorrect, and this review independently re-confirms it functions end-to-end (render → add/reorder/delete → sync → save → backend validate/persist → repopulate on next edit).
+
+---
+
 ### US-M1: Session-Only Customization Boundary
 
-| Criterion | Status | Evidence |
-|-----------|--------|---------|
-| Workflow distinguishes session editing from master-data maintenance | ✅ Pass | `master-cv.js:110–115` — governance banner on Master CV tab: "Job-specific customisations (skills, experience picks, summaries) are stored exclusively in the active session and never written here automatically." Backend `_require_master_data_write_phase()` (`master_data_routes.py:164–177`) enforces writes only during `init` or `refinement` phases. |
-| UI does not imply temporary edits have already updated the master record | ✅ Pass | Customisation tabs (Skills, Experiences, Summary) write to session state in `conversation_manager.py`, never to `Master_CV_Data.json`. Master CV tab shown as a distinct section with its own tab (`index.html:228`) and a separate modal path. |
-| Durable write-back occurs only through an explicit user action | ✅ Pass | `harvest.js:499–565` — `applyHarvestSelections()` requires explicit checkbox selection, a confirm dialog ("This will permanently write changes to your Master_CV_Data.json. A backup will be created first."), and `shouldPreCheck()` always returns `false` so no item is pre-checked. |
-| Customisation stages behave as session-scoped editing surfaces | ✅ Pass | Phase lock banner (`master-cv.js:80–88`) disables all write controls outside `init`/`refinement`. Buttons are set to `disabled` + `opacity:0.45` with tooltip "Editing locked — complete the current stage to re-enable". |
-| Write-back to master data is explicit, staged, and user-controlled | ✅ Pass | Three separate explicit paths: (a) Master CV tab CRUD buttons (phase-locked), (b) Harvest Apply (requires selection + confirm), (c) Backup Restore (requires confirm). No silent write-back path found. |
+| # | Criterion (abbreviated) | Status | Notes / File:Line |
+|---|--------------------------|--------|--------------------|
+| 1 | Workflow distinguishes session editing from master-data maintenance | ✅ Pass | Architecturally real: `scripts/utils/session_data_view.py:7` docstring — "Read-only view that overlays session state onto master CV data." `conversation_manager.py:120-125` explicitly comments session-only state fields (`achievement_overrides`, `removed_achievement_ids`, `skill_group_overrides`, etc.). Enforced at the route layer via `_require_master_data_write_phase()` (`scripts/routes/master_data_routes.py:208-221`), gating all master-data writes to `init`/`refinement` phases only — 17+ call sites in that file. |
+| 2 | UI does not imply temporary edits already updated the master record | ⚠️ Partial | The one comprehensive, correctly-worded governance statement lives only on the Master CV tab (`master-cv.js:148-156`, "Persistent storage — this tab only..."). During the actual editing surfaces where session-only decisions are made — customization, rewrite_review (`web/rewrite-review.js:283-290` intro copy has no session-scope disclaimer at all) — there is **no reminder at the point of editing**. `web/skills-review.js:626-631,724,917` does carry good "Session-Only Skills" framing for one specific sub-feature (ad hoc skill add), but achievements/bullet rewrites/summary-variant choice carry no such copy in `app.js` or `ui-core.js` (confirmed zero grep hits for session/persistence boundary language in either file). A curator who never opens the Master CV tab could plausibly (and incorrectly) believe their in-session rewrite choices are already permanent. |
+| 3 | Durable write-back occurs only through explicit user action | ✅ Pass | Harvest apply (`scripts/routes/generation_routes.py:2315` `harvest_apply()`) requires an explicit POST with named `selected_ids` (line 2327-2336: empty selection → `written_count: 0`, no-op). Client additionally requires a confirm dialog before the POST fires (`web/harvest.js:482-489`). All Master CV tab structured edits are one-field-at-a-time explicit Save actions (per-modal `save*()` functions throughout `master-cv.js`). |
+
+**Failure Modes Present**
+
+| Failure mode | Present? |
+|--------------|----------|
+| Session edits silently promoted to master data | ✅ Not present — phase gate + explicit selected_ids requirement (see above) |
+| No reminder that in-session choices are non-durable, at the point of editing | ❌ Present — see criterion 2 above; this is a real, evidence-backed gap |
 
 ---
 
 ### US-M2: Harvest Review Quality
 
-| Criterion | Status | Evidence |
-|-----------|--------|---------|
-| Harvest candidates are presented in a reviewable form | ✅ Pass | `harvest.js:148–198` — `renderCandidateRow()` renders each candidate with type label, label text, "Before" and "After" blocks for `improved_bullet` and `summary_variant` types, recommendation badge, confidence badge, and optional collapsible reasoning block. |
-| Each candidate indicates what would be added or changed | ✅ Pass | Improved bullets show side-by-side "Before" / "After" blocks. Skills show the proposed skill name with "🆕 Added" or "✅ Confirmed" source badges. Provenance badges ("✏️ User-edited", "🤖 AI accepted") implemented in `harvest.js:140–146`. |
-| Applying harvested changes is optional and selective | ✅ Pass | `harvest.js:107–109` — `shouldPreCheck()` returns `false` for all candidates. User must actively check items and confirm before any write. Unchecked items are never written. |
-| Selective acceptance of durable updates is supported | ✅ Pass | Each candidate has an individual checkbox (`harvest-chk-${id}`). Only checked IDs are sent to `/api/harvest/apply`. Applied rows are visually dimmed and their checkboxes disabled post-apply. |
-| User can understand what is being promoted | ✅ Pass | Type sections with descriptions (`HARVEST_TYPE_DESCRIPTIONS`, `harvest.js:34–39`) explain the consequence of promoting each type. Confirmation dialog restates the write consequence before committing. |
+| # | Criterion (abbreviated) | Status | Notes / File:Line |
+|---|--------------------------|--------|--------------------|
+| 1 | Harvest candidates presented in reviewable form | ✅ Pass | `renderHarvestTabHtml()` (`web/harvest.js:262`) groups candidates by type → recommendation → confidence via `groupCandidates()` (line 72) and `HARVEST_TYPE_CONFIG` (line 28). |
+| 2 | Each candidate indicates what would be added/changed | ✅ Pass | `renderCandidateRow()` (`web/harvest.js:140`) delegates to `renderProposalRow()` (`web/proposal-review.js:62-117`), which renders explicit "Before" (`item.original`, lines 100-102) and "After" (`item.proposed`, lines 103-107) blocks — a genuine diff, not just a bare label. |
+| 3 | Applying harvested changes is optional and selective | ✅ Pass | `shouldPreCheck()` (`web/harvest.js:99`, comment at 95: "All harvest items start unchecked — master CV updates are opt-in only (US-A11)") always returns `false`. `applyHarvestSelections()` (line 471) only submits `input[data-harvest-id]:checked` (line 472) as `selected_ids`. Backend `harvest_apply()` only writes the named IDs (`generation_routes.py:2348-2380`). |
+
+**Failure Modes Present**
+
+| Failure mode | Present? |
+|--------------|----------|
+| All-or-nothing apply (no selective acceptance) | ✅ Not present — per-item checkbox + selected_ids POST |
+| Candidate shown with no preview of resulting change | ✅ Not present — Before/After rendered per item |
+
+**Terminology note:** the nav tab label reads "🌾 Update Master CV" (`index.html:241`) but the panel content itself is headed "🌾 Harvest Improvements" (`web/harvest.js:284`) — internal jargon ("harvest") leaks into user-visible copy inconsistently with the (better) nav label. See Additional Issues.
 
 ---
 
 ### US-M3: Boundary Clarity Across Final Stages
 
-| Criterion | Status | Evidence |
-|-----------|--------|---------|
-| Finalise/archive and harvest/apply appear as distinct steps with distinct consequences | ✅ Pass | Workflow nav (`index.html:136–147`) shows "File Review → Cover Letter → Screening → Interview Prep → Thank You → Harvest" as separate steps. Master CV tab is always accessible as a separate tab. |
-| Phase lock banner communicates the editing window clearly | ⚠️ Partial | `master-cv.js:80–88` — Banner says "during the Refinement stage. The current stage is **${currentPhase}**." Shows the raw internal phase code (e.g. `job_analysis`, `customization`) rather than a human-readable label. GAP-312 tracked. |
-| Backend error message terminology consistent with UI labels | ⚠️ Partial | `master_data_routes.py:171–175` — Error says "from the **Harvest Step**" but the allowed write phase is `refinement` (post-application stage), not the Harvest tab. A curator hitting the 409 error would be directed to the wrong step. Related to GAP-312 but a distinct message-level issue. |
+| # | Criterion | Status | Notes / File:Line |
+|---|-----------|--------|--------------------|
+| 1 | Finalise/archive and harvest/apply appear as distinct steps with distinct consequences | ⚠️ Partial | Distinct at the structural level: separate tabs (`index.html:151` `step-finalise` vs `:153` `step-harvest`), separate endpoints (`POST /api/finalise` in `finalise.js:296` vs `POST /api/harvest/apply` in `generation_routes.py:2315`), and separate phase gates (`_require_harvest_apply_phase()`, `generation_routes.py:1309-1318`, restricts to `refinement` only). **However**, `web/finalise.js` auto-invokes `showHarvestSection()` (line 342) immediately after a successful finalise, injecting a harvest-apply mini-panel into the *same* Finalise-tab view (`<div id="harvest-section">`, line 132) using the same `applyHarvestSelections()` machinery. This visually chains the two actions together on one screen even though they remain logically/API-wise distinct, which works against the acceptance criterion's intent that they be presented as clearly separate steps. |
+
+**Failure Modes Present**
+
+| Failure mode | Present? |
+|--------------|----------|
+| Finalise/archive silently also writes master data | ✅ Not present — separate endpoint, separate phase gate, requires its own selected_ids |
+| Two distinct actions visually merged into one confusing screen | ❌ Present — see above; Finalise tab auto-shows a harvest panel immediately after archiving |
+| Stale/ambiguous button label on the Finalise action | ❌ Present — `index.html:205` raw markup still reads "📦 Package Application Files"; only corrected at runtime to "📦 Archive Application" by `app.js:156-161` (a JS patch citing GAP-325, not a source-of-truth fix in the HTML itself) |
 
 ---
 
 ### US-M4: Maintain the Master Publications Bibliography
 
-| Criterion | Status | Evidence |
-|-----------|--------|---------|
-| Publication editing is presented as master-data maintenance | ✅ Pass | Publications section is within the Master CV tab, under the governance banner. Phase enforcement applies to all write endpoints. |
-| Structured CRUD view with ordering/grouping controls | ✅ Pass | `master-cv.js:1147–1222` — `_renderPublicationsCrudList()` provides Sort (year desc/asc, type A-Z/Z-A) and Group (none, by year, by type) dropdowns. Publications listed in a table with cite key, formatted citation preview, edit and delete buttons. |
-| Curator can add, edit, and delete publication entries | ✅ Pass | `showAddPublicationModal()`, `editMasterPublication()`, `deleteMasterPublication()` all implemented. Modal validates title, year, author/editor before save. Backend validates same fields at `master_data_routes.py:1375–1380`. |
-| Curator can import raw BibTeX entries | ✅ Pass | "⬆️ Import BibTeX" button opens paste textarea with overwrite checkbox and import status. `/api/master-data/publications/import` merges entries with per-entry validation; returns `added`, `updated`, `skipped`, and `invalid_keys`. |
-| Curator can paste citation text and review generated BibTeX | ✅ Pass | "🪄 Convert Text" button opens split input/output panes. LLM converts text; curator reviews preview before clicking "Import Preview". Convert endpoint is read-only; write phase guard only applies at import time. |
-| Workflow flags missing key fields | ✅ Pass | Frontend: `saveMasterPublication()` (`master-cv.js:1542–1549`) rejects empty title, year, or author/editor. Backend validates same fields. Import rejects incomplete entries and lists `invalid_keys` in the response. |
-| Writes to publications.bib only from explicit master-data write windows | ✅ Pass | PUT `/api/master-data/publications`, POST `/api/master-data/publication`, POST `/api/master-data/publications/import` all call `_require_master_data_write_phase()`. Convert endpoint is correctly exempt (no write). |
-| Round-trip editing preserves existing BibTeX information | ⚠️ Partial | Fields beyond the hardcoded "known" set (`author`, `editor`, `title`, `year`, `journal`, `booktitle`, `doi`) are preserved via an "Extra fields (key=value)" textarea (`master-cv.js:1519`). Standard unlisted fields (`volume`, `pages`, `publisher`, `number`, `series`, `isbn`) go to this textarea. If a curator saves without preserving that content, those fields are silently dropped. **NEW GAP — see GAP-MCC-01.** |
-| Raw BibTeX editor available with validate/reload/save | ✅ Pass | `togglePublicationsView()` switches between CRUD and raw views. Raw view has Validate, Reload, and Save buttons. Validate calls `/api/master-data/publications/validate` without writing. |
+| # | Acceptance Criterion | Status | Notes / File:Line |
+|---|-----------------------|--------|--------------------|
+| 1 | Reviewable list view with ordering/grouping controls | ✅ Pass | `_renderPublicationsCrudList()` (`web/master-cv.js:1213-1289`) provides Sort (`year_desc/asc`, `type_asc/desc` — `_comparePublications()`, lines 1182-1201) and Group (`none/year/type` — `_groupPublicationLabel()`, lines 1203-1211) controls, rendered as `<select>` dropdowns (lines 1220-1234). |
+| 2 | Add/edit/delete publication entries from Master CV surface | ✅ Pass | `showAddPublicationModal()` (1550), `editMasterPublication()` (1571), `saveMasterPublication()` (1610) → `POST /api/master-data/publication` (`master_data_routes.py:1826-1892`, action add/update); `deleteMasterPublication()` (1675) → same route, action=delete (routes.py:1856-1865). |
+| 3 | Import raw BibTeX + review validation errors | ✅ Pass | `showImportPublicationsModal()`/`importPublicationsBib()` (1367-1436) → `POST /api/master-data/publications/import` (`master_data_routes.py:1895-1994`); per-entry required-field validation with `invalid_keys`/`skipped_keys` surfaced back to the UI (routes.py:1930-1948; rendered in `web/master-cv.js:1413-1419`). Separate `POST /api/master-data/publications/validate` (routes.py:1797-1824) lets the curator validate raw BibTeX text without saving (`validatePublicationsBib()`, master-cv.js:1292-1323). |
+| 4 | Paste citation text (non-BibTeX), review generated BibTeX, decide to import | ✅ Pass | `showConvertPublicationsModal()`/`convertPublicationText()` (1438-1490) → `POST /api/master-data/publications/convert` (routes.py:1996-2020, LLM-driven, no persistence) producing a preview in `#master-pub-convert-output`; `importConvertedPublicationText()` (1492-1546) is a separate explicit action that imports the (possibly user-edited) preview via the same import endpoint used in criterion 3. |
+| 5 | Flags missing key fields (title/authors/year) instead of silently accepting | ✅ Pass | Single-entry add/update: `master_data_routes.py:1874-1879` — 400 error if `fields.title`, `fields.year`, or `fields.author`/`fields.editor` missing. Bulk import: per-entry `missing_fields` check (routes.py:1930-1948) rejects (does not silently accept) entries missing title/year/author-or-editor, reporting counts + `invalid_keys` back to the client. |
+| 6 | Writes to `publications.bib` only from `init`/`refinement` windows, never customization/generation | ✅ Pass | Phase gate present on all mutating routes: PUT `/api/master-data/publications` (routes.py:1752-1754), POST `/api/master-data/publication` (routes.py:1831-1833), POST `/api/master-data/publications/import` (routes.py:1900-1902) — all call `_require_master_data_write_phase()`. GET `/publications` and POST `/publications/validate` and `/publications/convert` correctly have **no** gate, but those three routes perform no writes to `publications.bib` or `orchestrator.publications` (confirmed by reading each route body — validate/convert only parse/LLM-transform text and return it; they never call `bib_path.write_text` or mutate `orchestrator.publications`). |
+| 7 | Round-trip editing preserves existing BibTeX info rather than dropping unrelated fields | ✅ Pass | See item 5 in the 7-point verification above: `_entry_to_publication()` denylists only bibtexparser's own `{"ID","ENTRYTYPE"}` keys (`bibtex_parser.py:103-107`); `serialize_bibtex_entry()` explicitly re-emits any field not in `_STANDARD_FIELD_ORDER` (lines 531-533, sorted alphabetically). No allowlist-driven field loss exists in parse/serialize. The historical multi-line-value truncation bug (item 5 above) is independently fixed at the UI layer (`master-cv.js` escape/unescape). |
 
----
+**Failure Modes Present**
 
-## Master CV Tab — General Usability
-
-| Criterion | Status | Evidence |
-|-----------|--------|---------|
-| Profile overview card with counts | ✅ Pass | `master-cv.js:120–131` — profile card shows name, headline, email, and stat badges for Experiences, Skills, Achievements, Summaries, Education, Publications. |
-| Personal info CRUD | ✅ Pass | "✏️ Edit" button opens modal with name, title, email, phone, LinkedIn, website, city, state. Backend validates email format and URL scheme. |
-| Work experience CRUD (role metadata) | ✅ Pass | Add/edit/delete with title, company, location, dates, employment type, importance, tags. Backend validates required fields and date ordering. |
-| Experience bullet editing from Master CV tab | ❌ Not Implemented | Experiences table shows a "Bullets" count column but clicking Edit only opens the role-level metadata modal. No UI to edit individual achievement bullets on this tab. GAP-310 tracked. |
-| Experience domain_relevance field editable | ❌ Not Implemented | Backend stores and updates `domain_relevance` (`master_data_routes.py:591,614`) but the add/edit experience modal (`master-cv.js:519–585`) exposes only title, company, city, state, dates, employment_type, importance, and tags. Curators cannot set domain relevance through the UI. **NEW GAP — see GAP-MCC-02.** |
-| Skills CRUD (flat and categorised) | ✅ Pass | Edit/delete chips with experience-link support. Category add/delete buttons. Handles both flat list and categorised-dict schema. |
-| Education CRUD | ✅ Pass | Add/edit/delete with degree, field, institution, location, years. |
-| Awards and certifications CRUD | ✅ Pass | Separate sections with full add/edit/delete modals. |
-| Achievements CRUD | ✅ Pass | Add/edit/delete with title, description, relevant_for, importance. Harvest note in section description. |
-| Professional summaries CRUD | ⚠️ Partial | Add/edit/delete with key and text fields. Key serves as the only user-facing identifier (shown in Summary Focus step) with no separate display-name field. Curators must use `lowercase_underscore` codes as their label. **NEW GAP — see GAP-MCC-03.** |
-| Backup history and restore | ✅ Pass | "🕐 Backups" button opens snapshot list with date, size, and Restore button. Safety backup created before restore. Both backup formats (routes-generated and web_app-generated) are accepted by the filename validator. |
-| Auto-refresh after backup restore | ❌ Not Implemented | `restoreBackup()` (`master-cv.js:2529`) shows "Reload the tab to see the updated data." but does not call `populateMasterTab()`. Backend does update in-memory `orchestrator.master_data` correctly. GAP-311 tracked. |
-| Export JSON | ✅ Pass | "⬇️ Export JSON" triggers file download of `Master_CV_Data.json`. Available in all phases (excluded from phase-lock button sweep). |
-| Persistent storage warning | ✅ Pass | `master-cv.js:110–115` — Amber governance banner on every tab load communicates that edits write directly to `Master_CV_Data.json` and are not session-scoped. |
+| Failure mode | Present? |
+|--------------|----------|
+| Publications section is presented ambiguously as per-application customization rather than master-data maintenance | ✅ Not present — lives entirely under the "📚 Master CV Profile" heading (`master-cv.js:112-114`), phase-gated identically to every other master-data section |
+| Round-trip editing silently drops unrelated BibTeX fields | ✅ Not present (now fixed) — see item 7 above |
+| Incomplete entries silently accepted | ✅ Not present — required-field validation on both single-entry and bulk-import paths |
 
 ---
 
 ## Generated Materials Evaluation
 
-Publications management is entirely within the Master CV tab and produces no generated document directly. The curator's impact on generated materials flows through the master data evaluated by other personas (hiring manager, recruiter, ATS). No direct generated-output evaluation applies to this persona beyond what is covered in application-workflow reviews.
+N/A — this persona's scope (Master CV data maintenance) does not produce generated CV/cover-letter output artifacts; those are evaluated by other personas. The one "generated material" in this persona's scope, converted BibTeX from citation text (`convertPublicationText()`), is reviewed as part of US-M4 criterion 4 above (it is explicitly presented as a preview requiring a separate import action, not auto-applied).
 
 ---
 
-## Known Tracked Issues (Not Re-Scored Here)
+## Additional Story Gaps / Proposed Story Items
 
-| Gap ID | Description |
-|--------|-------------|
-| GAP-309 | Duplicate `id` attribute on publication modal heading: `master-cv.js:316` has both `id="master-pub-modal-title-heading"` and `id="pub-modal-title-heading"` on the same element. |
-| GAP-310 | No experience bullet (achievement) editor in the Master CV tab. The experience edit modal covers role metadata only; bullets shown in count column are not editable here. |
-| GAP-311 | Backup restore success does not auto-refresh the Master CV tab. User instructed to "Reload the tab" manually even though the backend already updated in-memory state. |
-| GAP-312 | Phase lock banner exposes raw internal phase code (e.g. `job_analysis`) rather than a human-readable stage name. |
+1. **No point-of-editing session-scope reminder (US-M1 gap).** The excellent governance banner on the Master CV tab (`master-cv.js:148-156`) is not visible from the customization/rewrite_review/skills stages where the session-scoped decisions actually happen. A curator who works entirely within the customization flow and never opens the Master CV tab has no in-context signal that their choices are temporary. Propose a new/refined acceptance criterion under US-M1: "A brief, consistent session-scope reminder appears on every stage where session-only edits are made (customization, rewrite_review, skills selection), not only on the Master CV tab."
 
----
+2. **Finalise tab visually chains into Harvest (US-M3 partial).** `finalise.js`'s `showHarvestSection()` auto-appends a harvest-apply panel into the Finalise tab immediately after archiving. Recommend either: (a) explicitly document this as intended progressive-disclosure UX in the story (if so, US-M3's "distinct steps" language should be refined to say "distinct actions, which may be sequenced together on one screen" rather than implying separate screens), or (b) split them into a required navigation step (e.g., a "Continue to Update Master CV" button rather than auto-injection) if true separation is the intended design.
 
-## New Gaps Identified
+3. **Stale HTML label vs. runtime JS patch (US-M3).** `index.html:205` still hardcodes "📦 Package Application Files"; the clearer "📦 Archive Application" label only exists as a JS-applied override in `app.js:156-161`. This is fragile — recommend fixing the label at the HTML source of truth rather than relying on a JS patch, and add this "runtime-patched label instead of source-fixed label" pattern to the review checklist as a general anti-pattern (a JS load failure/race would silently regress the UX back to the confusing original label).
 
-### GAP-MCC-01: Publication edit modal silently drops non-hardcoded BibTeX fields on save (HIGH)
+4. **Terminology inconsistency: "Harvest" jargon leaks into user-visible copy** (US-M2). Nav label "Update Master CV" (clear) vs. in-panel heading "🌾 Harvest Improvements" (jargon) — recommend a consistent single term across nav and panel content. Suggest auditing all remaining user-visible "harvest" strings in `harvest.js` (e.g. lines 284, 309) for consistency with the nav label.
 
-**Story:** US-M4 — "Round-trip editing through the UI preserves existing BibTeX information rather than dropping unrelated fields."
+5. **Title-case artifact on summary variant labels** (cosmetic, item 6 above). `_renderSummariesList()`'s naive `\b\w` title-casing produces "Ml Engineering" for `ml_engineering` rather than "ML Engineering". Low priority, but a curator maintaining domain-specific summary variants (ML, AI, IT, HR, etc.) will see this regularly. Consider a small acronym exception list, or defer to the GAP-371 "add a display-name field" fix already referenced in-code, which would let the curator set the exact label they want.
 
-**Description:** The publication add/edit modal collects all BibTeX fields beyond a hardcoded "known" set (`author`, `editor`, `title`, `year`, `journal`, `booktitle`, `doi`) into an "Extra fields (key=value, one per line)" textarea (`master-cv.js:1519`). When a curator opens an existing publication to make a minor change, any standard unlisted fields (`volume`, `pages`, `publisher`, `number`, `series`, `isbn`, `issn`, `address`, `note`, `url`, `eprint`) are rendered as raw text in this textarea. If the curator saves without carefully preserving that content — or accidentally clears the textarea — those fields are silently dropped from `publications.bib`. There is no warning, no "content unchanged = safe" check, and no enumeration of which fields are present before editing.
-
-**Failure mode:** Curator edits a publication year, saves, and unknowingly drops `volume`, `pages`, and `publisher` fields.
-
-**Location:** `web/master-cv.js` lines 1519–1567 (`editMasterPublication`, `saveMasterPublication`).
-
-**Suggested fix:** (a) Enumerate extra fields above the textarea in a read-only list before editing so the curator can verify what is at risk, with an `onchange` warning if textarea content changes, or (b) promote the most common standard fields (`volume`, `pages`, `publisher`, `number`) to named input fields in the modal.
+6. **No explicit story criterion for the achievement-bullet editor** (item 7 above) even though it is a core structured-editing surface for this persona. Recommend adding an explicit US-M4 (or new US-M5) criterion: "The curator can add, reorder, and delete individual achievement bullets within a work-experience entry from the Master CV tab" — since this functionality exists and works, but currently has no acceptance criterion covering it, meaning a future regression here would not be caught by story-driven review.
 
 ---
 
-### GAP-MCC-02: Experience domain_relevance field has no UI in the CRUD modal (MEDIUM)
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/master-cv.js, scripts/routes/master_data_routes.py (plus, for cross-referenced evidence: web/harvest.js, web/proposal-review.js, web/finalise.js, web/skills-review.js, web/rewrite-review.js, web/utils.js, web/workflow-steps.js, scripts/routes/generation_routes.py, scripts/utils/bibtex_parser.py, scripts/utils/session_data_view.py)
 
-**Description:** Experience entries support a `domain_relevance` array field used by the AI to score experience relevance for domain-specific roles (e.g. `["pharma", "clinical"]`). The backend correctly reads and persists this field (`master_data_routes.py:591, 614`), but the experience add/edit modal in `master-cv.js:519–585` exposes only title, company, city, state, start_date, end_date, employment_type, importance, and tags. The `domain_relevance` field has no UI input. A curator who wants to improve AI recommendations for domain-specific applications has no way to set or update this field through the interface; they must edit `Master_CV_Data.json` directly.
+| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
+|-------|---------|-----------|--------|------------|-------|
+| US-M1 | 2 | 1 | 0 | 0 | 0 |
+| US-M2 | 3 | 0 | 0 | 0 | 0 |
+| US-M3 | 0 | 1 | 0 | 0 | 0 |
+| US-M4 | 7 | 0 | 0 | 0 | 0 |
 
-**Failure mode:** Curator adds a new pharma consulting role but cannot tag it with `["pharma", "biotech"]`; AI underweights this experience when recommending for life-sciences applications.
+**Key evidence references:**
+- US-M1: Session/master overlay architecture → scripts/utils/session_data_view.py:7; phase gate → scripts/routes/master_data_routes.py:208-221
+- US-M1: Missing point-of-editing session reminder → no hits in web/app.js, web/ui-core.js; web/rewrite-review.js:283-290 (no disclaimer)
+- US-M2: Per-item selective apply → web/harvest.js:95-99, 471-499; scripts/routes/generation_routes.py:2315-2380
+- US-M3: Finalise/Harvest structurally distinct but visually chained → web/finalise.js:296, 342, 132; scripts/routes/generation_routes.py:1309-1318
+- US-M3: Stale label → web/index.html:205 vs web/app.js:156-161
+- US-M4: Publications CRUD + sort/group → web/master-cv.js:1182-1289
+- US-M4: Field preservation on round-trip → scripts/utils/bibtex_parser.py:99-132, 500-536
+- Recent-fix verification 1–7: all confirmed ✅ Pass, see "Verification of the 7 flagged recent changes" section above with full file:line evidence.
 
-**Location:** `web/master-cv.js` lines 519–585 (experience modal HTML), 1976–2013 (`saveMasterExperience`).
-
-**Suggested fix:** Add a "Domain Relevance (comma-separated)" text input to the experience modal, analogous to the existing Tags field. Parse comma-separated input into an array before sending to the backend.
-
----
-
-### GAP-MCC-03: Professional summary variant key is the only user-facing label — no display-name field (LOW)
-
-**Description:** Professional summary variants are stored as `{ key: text }` pairs. The `key` must follow `lowercase_underscore` convention (enforced only by a UI hint, not a validator) because it is also shown as the label in the Summary Focus step during customisation. There is no separate display-name field. A curator wanting readable variant names like "Machine Learning Focus" or "VP / Executive" must either compromise the key format (making it verbose and potentially mishandled downstream) or accept that the Summary Focus step always shows technical-looking codes.
-
-**Failure mode:** Curator creates a summary with key `ml_engineering` and sees `ml_engineering` as the picker label during the application workflow rather than a human-readable description.
-
-**Location:** `web/master-cv.js:807–811` (summary modal key input and hint).
-
-**Suggested fix:** Add an optional `label` field per summary variant used as the display name in the Summary Focus step. The key remains the internal identifier; the label is what curators and the workflow surface to users. (Requires a schema change to `professional_summaries` and an orchestrator update to prefer `label` over `key` in the Summary Focus display.)
+**Evidence standard:**
+- Every conclusion above is supported by a repository-relative file path plus line number(s), independently re-derived by reading the current source (not by trusting prior gap/review documents, which were explicitly excluded from this review per instructions).
+- Cite all supporting references using repository-relative paths plus line numbers wherever available.

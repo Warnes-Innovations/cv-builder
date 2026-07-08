@@ -103,7 +103,7 @@ async function analyzeJob() {
   const _discKey = disclosureKey(_currentProvider);
   if (!localStorage.getItem(_discKey)) {
     const providerLabel = _currentProvider ? ` (${_currentProvider})` : '';
-    appendMessage('system', `ℹ️ Content you submit is sent to the configured LLM provider${providerLabel} for analysis. Review your provider's data policy for details.`);
+    appendMessage('system', `ℹ️ Content you submit is sent to the configured AI Model provider${providerLabel} for analysis. Review your provider's data policy for details.`);
     localStorage.setItem(_discKey, '1');
   }
 
