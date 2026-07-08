@@ -8,81 +8,58 @@ For commercial licensing, contact greg@warnes-innovations.com
 
 # Returning User Review Status
 
-**Last Updated:** 2026-07-07 09:15 ET
+**Last Updated:** 2026-07-07 23:16 ET
 
-**Executive Summary:** Both flagged regressions are RESOLVED, verified end-to-end against current source (not against prior audit summaries). GAP-378 (re-run confirmation wiring) remains correctly wired: `confirmReRunPhase()` → `reRunPhase()` → `POST /api/re-run-phase` → `ConversationManager.re_run_phase()`, which is architecturally distinct from `backToPhase()` → `POST /api/back-to-phase` → `ConversationManager.back_to_phase()` (pure navigation, no LLM call). GAP-386 (active-session notes) is RESOLVED and holds up under the specific edge cases requested: the frontend UI is reachable for both saved and active rows via a session-id-scoped DOM key (`notesKey`), the new `PATCH /api/sessions/active/notes` endpoint correctly resolves the target session from the request body's `session_id` (not from "whatever session the caller happens to be in"), and it defers to the existing `_validate_owner()` helper — an unclaimed active session accepts the edit from anyone, a claimed session rejects a mismatched `owner_token` with a clear 403 that surfaces as a toast, not a raw JSON-parse error (a global `HTTPException` → JSON error handler in `scripts/web_app.py:1139` prevents that failure mode). One real (non-blocking) UX gap found in this pass: the "Edit notes" icon is rendered on every active row regardless of ownership, so a user can open the notes editor for a session owned by another tab before being told, at submit time, that they don't own it.
+**Executive Summary:** **GAP-392 is RESOLVED.** I would sign off. Independently traced the full chain — client render logic, the ownership-metadata helper, and the server-side owner-validation the notes PATCH endpoint enforces — and they agree exactly: `getActiveSessionOwnershipMeta()` (`web/session-manager.js:81-101`) labels a row `'Owned by another tab'` if and only if `session.claimed` is true and `session.owned_by_requester` is false (and it isn't the tab's own current session). Server-side, `claimed` is `e.owner_token is not None` and `owned_by_requester` is `requester_token == e.owner_token` (`scripts/routes/session_routes.py:815-829`) — the identical predicate `_validate_owner()` (`scripts/web_app.py:747-770`) uses to 403 the PATCH. So the disable condition fires precisely when a Save attempt would otherwise 403, and does not fire for the current tab's own session, unclaimed sessions, sessions actually owned by the same tab, or saved sessions. The disabled button carries both a `title` and an `aria-label` explaining why ("Owned by another tab — notes cannot be edited here" / "Edit notes (unavailable — owned by another tab)"), and gets the existing `.sm-btn:disabled` dimmed/`not-allowed` styling, not a silently vanished affordance. A regression test exists and matches the fix. One thing worth flagging: I initially suspected the `owned_by_requester` computation could be starved because neither call site passes `owner_token` on the `/api/sessions/active` fetch — but the global `window.fetch = sessionAwareFetch` override in `web/api-client.js:151-152` auto-injects `owner_token` as a query param for any `/api/*` request not on the session-management exclusion list, so this isn't a live bug. No regression test explicitly pins down that a row labeled `'Current tab'` or `'Owned by this tab'` keeps a *working* (non-disabled) Edit notes button, which is a minor test-coverage gap given the condition is a simple string-equality check, not a logic gap.
 
 ## Application Evaluation
 
-### US-S1: Resume With Context
+### GAP-392 verification (Edit notes gated by ownership) — RESOLVED
 
-1. ✅ The restored session identifies the job/application context clearly. `web/session-manager.js:494-521` (`_appendRestoredDecisionsSummary`) appends `📋 Restored{for X} at stage: {phase} — {N} experiences recommended, {N} rewrites approved, ATS score {N}%.` after a successful restore, and `updatePositionTitle(statusData)` (`web/session-manager.js:736`) keeps the header title in sync.
-2. ✅ The UI indicates current stage and available next actions. `restoreBackendState()` resolves the phase via `_resolveRestoredPhase()` (guards against inconsistent phase/data combinations, `web/session-manager.js:439-460`) and calls `_restoreTabForPhase()` / `switchTab()` (`web/session-manager.js:731-733`) so the visible tab matches the true stage. Step pills reflect `active`/`completed`/`stale` state with descriptive tooltips (`_getStepTooltip`, `web/workflow-steps.js:222-231`).
-3. ✅ Previously completed work remains visible/discoverable. `_hydrateStatusTabState()` (`web/session-manager.js:637-652`) repopulates `analysis`/`customizations`/`cv` tab data from `/api/status`, and completed step pills are marked `.completed` + `.clickable` with a `↻` re-run affordance (`web/workflow-steps.js:1032-1043`).
-4. ✅ Single-active-session auto-resume (GAP-323) with an explicit explanation, not a silent jump: `ensureSessionContext()` (`web/session-manager.js:466-492`) posts `ℹ️ Only one active session found — auto-resumed. Open Sessions to switch or start a new one.`
+1. ✅ **Disable condition is scoped correctly (only active rows owned by another tab).** `web/session-switcher-ui.js:431`: `const notesOwnedByOther = row.type === 'active' && row.ownership?.label === 'Owned by another tab';`. This is a strict string-equality check against a label that `getActiveSessionOwnershipMeta()` can only ever set for the specific "claimed by someone else, not this tab, not the current session" case (`web/session-manager.js:88-100`):
+   - `isCurrentSession` (session_id matches the URL's current session) → `'Current tab'`, never disabled.
+   - `sameOwner` (`session.owned_by_requester`) → `'Owned by this tab'`, never disabled.
+   - `session.claimed` and neither of the above → `'Owned by another tab'`, disabled.
+   - otherwise → `'Unclaimed'`, never disabled.
+   Saved rows (`row.type === 'saved'`) never reach this branch at all since `row.ownership` is `null` for them (`_normalizeSessionsForTable`, `web/session-switcher-ui.js:274`) and the condition requires `row.type === 'active'`.
+2. ✅ **Disabled button has an accessible explanation, not a silently missing button.** `web/session-switcher-ui.js:432-434`:
 
-No failure modes from the story ("generic blank view", "decisions not surfaced") were reproduced in source.
+   ```html
+   <button class="sm-btn sm-btn-icon" disabled title="Owned by another tab — notes cannot be edited here" aria-label="Edit notes (unavailable — owned by another tab)"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i></button>
+   ```
 
-### US-S2: Safe Re-entry and Backtracking
+   Both `title` (mouse-hover tooltip) and `aria-label` (screen readers) are present and explanatory; the icon and position in the actions row are unchanged so the row layout doesn't visually shift. `web/styles.css` has a generic disabled-button rule (`opacity: 0.6/0.4/0.45; cursor: not-allowed;` variants, e.g. around lines 674/1429/1482) that applies to `.sm-btn[disabled]`, so it also reads as visually inactive, not just semantically.
+3. ✅ **`getActiveSessionOwnershipMeta()`'s `'Owned by another tab'` case is exactly the server's 403 condition — cross-checked field-by-field:**
+   - Client (`web/session-manager.js:97-99`): `if (session.claimed) return { label: 'Owned by another tab', ... }` (reached only when `!isCurrentSession && !session.owned_by_requester`).
+   - Server field source (`scripts/routes/session_routes.py:815-829`, `GET /api/sessions/active`): `"claimed": e.owner_token is not None` and `"owned_by_requester": bool(requester_token and e.owner_token and requester_token == e.owner_token)`.
+   - Server 403 source (`_validate_owner`, `scripts/web_app.py:747-770`): returns early (no 403) only `if entry.owner_token is None` (unclaimed); otherwise 403s unless the request's `owner_token` matches `entry.owner_token`.
+   These are the same two facts (is `owner_token` set; does it match the requester's token) computed from the same underlying `entry.owner_token`/session-registry state, so `'Owned by another tab'` is true exactly when `_validate_owner` would abort with 403 on the notes PATCH. I also confirmed the `owner_token` query param that makes `owned_by_requester` accurate is auto-attached to the `/api/sessions/active` fetch by the global `sessionAwareFetch` wrapper (`web/api-client.js:63-82,151-152`), which appends `owner_token` to every `/api/*` request except `/api/sessions/new|claim|takeover` — `/api/sessions/active` is not excluded, so the field is populated correctly in production despite neither call site passing it explicitly.
+4. ✅ **Regression test exists** in `tests/js/session-switcher-ui.test.js:479-489`, `'disables Edit notes for an active row owned by another tab, instead of letting Save fail after the fact (GAP-392)'`: stubs `getActiveSessionOwnershipMeta` to return the `'Owned by another tab'` label, opens the modal, and asserts (a) no `[data-sm-action="edit-notes"]` element exists, (b) a `.sm-btn-icon[disabled]` element does exist, and (c) its `title` contains `'Owned by another tab'`. This matches the actual implementation.
+5. ⚠️ Minor test-coverage gap: no test explicitly exercises a row where `getActiveSessionOwnershipMeta` returns `'Current tab'` or `'Owned by this tab'` and asserts the Edit notes button is still present/enabled — the file's other tests (`session-switcher-ui.test.js:47`, generic `'Other'` label; `:83`, `'Current'` label used for an unrelated assertion) happen to exercise a non-matching label, but not by design for this gap. Low risk given the condition is a single strict string comparison, but a `label !== 'Owned by another tab'` positive-path test would remove any doubt for future refactors of `getActiveSessionOwnershipMeta`'s label strings.
 
-1. ✅ Back-navigation is explicit about downstream consequences. `handleStepClick()` (`web/workflow-steps.js:1234-1246`) detects when a completed step has downstream completed steps and routes through `_showReRunConfirmModal(step, 'back-nav', doNavigate)` before navigating; `doNavigate` itself is pure `switchTab()` (`web/workflow-steps.js:1212-1215`), so no recompute happens on back-nav even after confirmation.
-2. ✅ Re-entry preserves prior context. Backend `back_to_phase()` (`scripts/utils/conversation_manager.py:1725-1758`) explicitly does not clear any decision/rewrite/customization state — it only marks downstream steps `stale` and sets `iterating`/`reentry_phase`.
-3. ✅ Re-run vs. back-navigation are visually and behaviorally distinct — this is GAP-378's fix, reverified:
-   - The step pill click itself (`handleStepClick`, `web/workflow-steps.js:1152`) only ever calls `switchTab()`.
-   - The dedicated `↻` button on completed steps (`web/workflow-steps.js:1041`, `onclick="confirmReRunPhase('${step}')"`) is the only path into `reRunPhase()`.
-   - `confirmReRunPhase()` (`web/workflow-steps.js:191-199`) carries an explicit code comment recording the original bug and confirms it now calls `reRunPhase(step)`, not `backToPhase(step)`.
-   - `reRunPhase()` → `_executeReRunPhase()` (`web/workflow-steps.js:409-476`) POSTs to `/api/re-run-phase` (`scripts/routes/job_routes.py:830-850`) → `ConversationManager.re_run_phase()` (`scripts/utils/conversation_manager.py:1760+`), which actually re-invokes the LLM (`self.llm.analyze_job_description(...)` / `recommend_customizations(...)` etc.) and returns `{prior_output, new_output}` for diffing — a materially different code path from `back_to_phase()`.
-   - Reachability confirmed from 4 independent call sites: the step-pill `↻` button, `Ctrl+Shift+R` (`web/keyboard-shortcuts.js:273-275`), `web/layout-instruction.js:697`, and `web/review-table-base.js:321`.
-   - Verdict: **GAP-378 is RESOLVED and has not regressed.**
-4. ⚠️ Minor: the confirmation modal's copy for `back-nav` mode ("You are navigating back past the following completed stages... All existing approvals and rewrites are preserved as context.") is accurate but the phrase "preserved as context" is slightly ambiguous — a first-time reader could interpret "context" as "informational only, not literally kept," when in fact the underlying data is fully retained. Consider "will not be lost" or "remain saved" for clarity. Not a functional gap.
+### Prior-cycle stories (US-S1/US-S2/US-S3) — spot-checked, unaffected by this change
 
-### US-S3: Trustworthy Session Continuity
-
-1. ✅ Saved decisions are re-observable when a stage is revisited. `_hydrateStatusDerivedState()` (`web/session-manager.js:590-635`) rehydrates `window._savedDecisions` (experience/skill/achievement/publication decisions, summary override, extra skills) from `/api/status` on every restore/load.
-2. ✅ Generated/previewed outputs stay logically connected to current session state via `contentRevision` / `lastPreviewContentRevision` / `lastFinalContentRevision` tracked in `web/state-manager.js:83-101` and surfaced as "Layout current" / "Layout outdated" / "Files outdated" chips (`getLayoutFreshnessFromState`, `web/state-manager.js:120-178`).
-3. ✅ Current-vs-earlier outputs are distinguishable across passes: `re_run_phase()` returns `prior_output`/`new_output`, and `_executeReRunPhase()` diffs them with `_countChangedItems`/`_highlightChangedItems` and reports "(N of M items changed)" (`web/workflow-steps.js:436-469`), plus marks downstream steps `stale` in the step pills.
-
-### GAP-386 deep-dive (session notes for active sessions)
-
-**Frontend reachability** (`web/session-switcher-ui.js`):
-
-- `_normalizeSessionsForTable()` (line 239) now includes `notes: s.notes || ''` for active rows (line 251), sourced from the backend's `/api/sessions/active` response, which itself now returns `notes` per session via `_active_notes(entry)` (`scripts/routes/session_routes.py:801-813`, reading `metadata.json` off `entry.manager.session_dir`).
-- Per-row `notesKey` (`web/session-switcher-ui.js:409`) is `active-${sessionId}` for active rows and `saved-${idx}` for saved rows — this correctly disambiguates DOM ids since active rows have no numeric `idx`.
-- The "Edit notes" icon button is appended unconditionally for both row types (line 429, outside the `row.type === 'saved'` gate that guards the separate status-edit button), so it is genuinely reachable for active rows, not just saved ones.
-- `submitSessionNotesEdit()` (line 746) branches on `rowType === 'active'` to hit `/api/sessions/active/notes` with `{session_id, notes, owner_token}` instead of `/api/sessions/metadata` with `{path, notes}` — matches the backend contract.
-
-**Backend correctness** (`scripts/routes/session_routes.py:760-793`, `sessions_patch_active_notes`):
-
-- Resolves the target session via `entry = _get_session()` (line 769). Traced `_get_session` to `scripts/web_app.py:710-745`: it reads `session_id` from the query string OR the JSON body (line 721-723) — i.e., it **does** honor the `session_id` the frontend explicitly puts in the PATCH body, not an ambient/"current tab" session. This matters because the sessions modal lists every active session, and a user could be editing notes for a row that is not the tab's own current session.
-- `_validate_owner(entry)` (line 770 → `scripts/web_app.py:747-770`): skips validation entirely when `entry.owner_token is None` (unclaimed — anyone may edit), otherwise requires the request's `owner_token` to match; mismatch → `abort(403, "Not the session owner")`.
-- Ownership-conflict handling verified end-to-end: a 403 on an `/api/` path is caught by the global `@app.errorhandler(HTTPException)` (`scripts/web_app.py:1139-1143`), which returns `{error, status}` as JSON — so `res.json()` in `submitSessionNotesEdit` does not throw, and the `else` branch correctly shows `showToast('Notes update failed: Not the session owner', 'error')` rather than a confusing JS parse-error message.
-- Edge case: a brand-new active session with no `session_dir` yet (never reached job intake) returns `400 {"error": "Session has no storage directory yet."}` — handled gracefully as a toast, though the message is somewhat technical for an end user.
-- **Verdict: GAP-386 is RESOLVED end-to-end** — frontend reachability, backend session resolution by `session_id` (not path), and the claimed/unclaimed/cross-tab ownership matrix all behave correctly.
-
-**⚠️ New minor finding (not a regression of GAP-386, but adjacent to what this review was asked to check):** `_renderSessionTableRow()` renders the "Edit notes" button identically for every active row regardless of `row.ownership.isCurrent` / `owned_by_requester` / `claimed`. A user browsing the Sessions modal can click "Edit notes" on a session row explicitly labeled "Owned by another tab," type a note, click Save, and only then learn (via toast) that the edit was rejected. Suggest either disabling/hiding the notes-edit affordance for sessions not owned by the current tab (mirroring how the "Open" vs. "Current" action link already reflects ownership), or at least keeping the typed draft so the user isn't forced to retype after switching to "Take over."
+These were fully verified in the previous review pass and this fix does not touch any of that code (`session-manager.js` restore/backend-state logic, `workflow-steps.js` re-run/back-nav gating). Re-reading `web/session-manager.js` in full for this pass did not surface any regression in `_appendRestoredDecisionsSummary`, `_resolveRestoredPhase`, `restoreBackendState`, or `ensureSessionContext` — all still match the previously-verified behavior (session restore summary text, phase-based tab routing, single-active-session auto-resume). Not re-scored here since GAP-392 is the only claimed fix this cycle; see the prior version of this file (git history) for the full US-S1/S2/S3 evidence trail.
 
 ## Generated Materials Evaluation
 
-Not applicable to this pass in a way that differs from the application evaluation above — the "generated materials" (CV/cover letter files) are unaffected by GAP-378/GAP-386; both fixes are pre-generation workflow/session-management concerns. Re-run diffing (`_highlightChangedItems`) does affect materials review by marking which generated recommendations changed after a re-run, which was verified above under US-S3.
+Not applicable — this fix is a pre-generation session-management/UI-affordance change (disabling one icon button under a specific ownership condition in the Sessions modal). It has no interaction with CV/cover-letter generation, rendering, or output formatting.
 
 ## Additional Story Gaps / Proposed Story Items
 
-- **Notes-edit affordance ignores ownership state** (see finding above) — propose as a follow-up: gate/disable the per-row "Edit notes" icon button for active sessions where `ownership.isCurrent` is false and `ownership.className !== 'session-status-unclaimed'`, or show an inline "owned by another tab" hint instead of allowing the click through to a failed submit.
-- **Application-status editing is saved-sessions-only**: `_normalizeSessionsForTable()` populates `applicationStatus` for active rows too (`web/session-switcher-ui.js:250`), but the "Update application status" button is only rendered `if (row.type === 'saved')` (line 424-427). This is consistent with the current PATCH `/api/sessions/metadata` being path-based only (no active-session equivalent exists, unlike notes), so it isn't a regression — but it's the same shape of gap GAP-386 just fixed for notes, and worth a matching follow-up if returning users want to mark an in-progress application's status before it's ever saved.
-- **Notes copy terminology**: the back-nav modal's "preserved as context" phrasing (`_showReRunConfirmModal`, `web/workflow-steps.js:154`) could read as "kept only as background info" rather than "your work is safe" — recommend rewording for a returning user under time pressure who needs an unambiguous answer to "will I lose anything?"
+- **Add a positive-path regression test** for `notesOwnedByOther` (see item 5 above): assert that a row with label `'Current tab'` or `'Owned by this tab'` still renders a clickable (non-`disabled`) `[data-sm-action="edit-notes"]` button. This would make the ownership-gating logic's correctness independently verifiable from tests alone, without needing to hand-trace the label enum as I did in this review.
+- **(Carried forward, now resolved)** The GAP-392 item itself — "Notes-edit affordance ignores ownership state" — proposed in the prior review pass is now closed by this fix; removing it from the open backlog.
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-switcher-ui.js, scripts/routes/session_routes.py, web/workflow-steps.js
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-switcher-ui.js, web/session-manager.js, scripts/routes/session_routes.py, tests/js/session-switcher-ui.test.js
 
-| Story | ✅ | ⚠️ | ❌ | 🔲 | — |
-| --- | --- | --- | --- | --- | --- |
-| US-S1 | 4 | 0 | 0 | 0 | 0 |
-| US-S2 | 3 | 1 | 0 | 0 | 0 |
-| US-S3 | 3 | 0 | 0 | 0 | 0 |
+| Story   | ✅ | ⚠️ | ❌ | 🔲 | — |
+|---------|----|----|----|----|----|
+| GAP-392 | 4  | 1  | 0  | 0  | 0  |
 
 **Key evidence references:**
-
-- GAP-378 (re-run wiring): `confirmReRunPhase` → `web/workflow-steps.js:191-199` calls `reRunPhase(step)`, not `backToPhase(step)`; `reRunPhase`/`_executeReRunPhase` → `web/workflow-steps.js:409-476` POST `/api/re-run-phase`; backend split confirmed at `scripts/routes/job_routes.py:804-850` and `scripts/utils/conversation_manager.py:1725-1838` (`back_to_phase` vs `re_run_phase`).
-- GAP-386 (active session notes): frontend `web/session-switcher-ui.js:239-282` (`_normalizeSessionsForTable`), `:405-422` (`notesKey`/widgets), `:746-779` (`submitSessionNotesEdit` endpoint branch); backend `scripts/routes/session_routes.py:760-793` (`sessions_patch_active_notes`), `:795-833` (`sessions_active` now returns `notes`); session resolution `scripts/web_app.py:710-745` (`_get_session` reads `session_id` from JSON body); ownership `scripts/web_app.py:747-770` (`_validate_owner`); JSON error handling `scripts/web_app.py:1139-1143`.
-- US-S1: `web/session-manager.js:439-521` (phase resolution + restored-decisions summary), `:637-652` (`_hydrateStatusTabState`), `:466-492` (`ensureSessionContext` auto-resume).
-- US-S2: `web/workflow-steps.js:1152-1249` (`handleStepClick` navigation vs re-run gating), `:139-198` (shared confirm modal for both modes).
-- US-S3: `web/state-manager.js:120-178` (`getLayoutFreshnessFromState`), `web/workflow-steps.js:436-469` (change diffing on re-run).
+- GAP-392: disable condition scope → `web/session-switcher-ui.js:431-434`
+- GAP-392: ownership label source → `web/session-manager.js:81-101`
+- GAP-392: server 403 predicate → `scripts/web_app.py:747-770`
+- GAP-392: server field source (claimed/owned_by_requester) → `scripts/routes/session_routes.py:815-829`
+- GAP-392: owner_token auto-injection making the field accurate → `web/api-client.js:63-82,138-153`
+- GAP-392: regression test → `tests/js/session-switcher-ui.test.js:479-489`

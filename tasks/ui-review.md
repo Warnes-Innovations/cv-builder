@@ -3,80 +3,73 @@ Copyright (C) 2026 Gregory R. Warnes
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# CV Builder UI Review — Cycle 105 (Targeted 9-Persona Re-Verification)
+# CV Builder UI Review — Cycle 107 (Committee Sign-Off Verification)
 
 **Generated:** 2026-07-07
-**Cycle:** 105 (independent re-verification of cycle 104's fixes for GAP-376 through GAP-389, not a fresh full-app sweep)
+**Cycle:** 107 (targeted re-verification of cycle 106's 6 fixes for GAP-390 through GAP-395, with an explicit sign-off verdict requested from each reviewer)
 **Branch:** `main`
-**Sources:** 9 persona sub-agents, filtered to those whose cycle-103 findings cycle 104 claimed to fix — applicant, accessibility-specialist, trust-compliance, returning-user, ux-expert, master-cv-curator, hiring-manager, recruiter-ops, resume-expert. Each read current source directly (source-first — none read `tasks/gaps.md` or this file as evidence) and was explicitly instructed not to trust the cycle-104 fix summary, only what they could independently verify.
-**New gaps discovered:** GAP-390 through GAP-395 (6 new entries, all left open — see below)
+**Sources:** 5 persona sub-agents, one per gap's originating persona — trust-compliance (GAP-390), hiring-manager (GAP-391), returning-user (GAP-392), applicant (GAP-393, GAP-395), master-cv-curator (GAP-394). Each read current source directly (source-first — none read `tasks/gaps.md` or this file as evidence) and was explicitly instructed not to trust the cycle-106 fix summary, and to state an explicit RESOLVED/PARTIAL/STILL BROKEN verdict with a sign-off yes/no.
 
 ---
 
 ## Why This Cycle Ran
 
-Cycle 103's full 15-persona committee pass found 14 gaps (GAP-376–389). Cycle 104 fixed 13 of them (1, GAP-387, was a claimed false positive). Rather than accept that self-report, this cycle re-ran the 9 relevant personas specifically to independently verify each fix against current source and flag anything the fix cycle missed or introduced. This is the second time this pattern has run this session (cycle 102→103 found regressions in cycle 102's own work; this cycle found the same class of issue in cycle 104's work) — confirming that independent re-verification catches real problems a fix cycle's own self-assessment does not.
+Cycle 105's committee review found 6 gaps (GAP-390–395) in cycle 104's own fixes. Cycle 106 fixed all 6. Rather than accept that as final, this cycle asked the exact personas who originally raised each gap to independently re-verify the fix and explicitly sign off — the same escalating-verification pattern used at cycles 103→104 (which caught 2 introduced regressions) and 105→106 (which caught cycle 104's incomplete GAP-388 fix). This pattern has now caught a real, unfixed issue on all three occasions it's been applied.
 
-**Verdict:** 7 of 9 targeted gaps were confirmed fully RESOLVED on first independent check with no issues. 1 (GAP-388) was found only partially fixed by two independent reviewers converging on the same gap (nav chrome fixed, the actual working screen's own copy — button text, intro paragraph, success banner — still said "Archive"). 1 (GAP-384) was found technically correct on its own narrow claim but undermined by three *adjacent* pre-existing bugs the fix cycle hadn't touched (a duplicate-push bug in `showAlertModal()` used ~100+ times app-wide, and three modals never wired to the shared focus stack at all). All findings from this cycle were fixed in the same cycle rather than deferred — see `tasks/gaps.md`'s Cycle 105 notes for full detail.
+**Verdict:** 5 of 6 gaps signed off as RESOLVED with no reservations. GAP-395 was found only PARTIAL — a sibling instance of the identical bug existed in an untouched CLI tool (`scripts/cv-preview.py`). Two personas also surfaced minor, non-blocking follow-up recommendations (a dead CSS rule, two test-coverage gaps). All findings from this cycle were fixed in this same cycle.
 
 ---
 
-## Per-Persona Verdicts
+## Per-Persona Sign-Off
 
-| Persona | Gaps re-verified | Verdict | New issues found (fixed same cycle unless noted) |
-|---|---|---|---|
-| applicant | GAP-381, GAP-382 | ✅ Both RESOLVED | 3 new low-priority findings — filed as GAP-393, GAP-395, plus a story/impl key-name mismatch (not filed, pre-existing) |
-| accessibility-specialist | GAP-384, GAP-385 | ⚠️ GAP-384 PARTIAL (see below), GAP-385 RESOLVED with caveat | `showAlertModal()` double-push; 3 master-cv.js modals + onboarding modal missing `pushFocusStack()`; keyboard-shortcuts panel had zero focus management despite its own text claiming Escape works — **all 4 fixed this cycle** |
-| trust-compliance | GAP-383 | ✅ RESOLVED (verified via live execution, not just source reading) | ATS DOCX filter missing `isinstance` guard (fixed, defense-in-depth); "confirm this skill" UI implies an action that doesn't exist anywhere (filed as GAP-390, HIGH) |
-| returning-user | GAP-378, GAP-386 | ✅ Both RESOLVED | "Edit notes" shown regardless of active-row ownership (filed as GAP-392) |
-| ux-expert | GAP-388, GAP-389 | ⚠️ GAP-388 PARTIAL (independently converging with recruiter-ops), GAP-389 RESOLVED | Assessed GAP-389's "link to dedicated tab" simplification as a genuine UX improvement, not a convenience regression |
-| master-cv-curator | GAP-384, GAP-389 | ✅ Both RESOLVED, no dead code left behind | Re-confirmed US-M1's missing session-scope reminder (filed as GAP-394) |
-| hiring-manager | GAP-383, GAP-388 | ✅ GAP-383 RESOLVED, ⚠️ GAP-388 PARTIAL | Publication venue-warning glyph baked into final delivered output (filed as GAP-391, MEDIUM) |
-| recruiter-ops | GAP-378, GAP-386, GAP-388 | ✅ GAP-378/386 RESOLVED, ⚠️ GAP-388 PARTIAL | Independently re-confirmed GAP-377/GAP-379 (prior cycle's fixes) still hold |
-| resume-expert | GAP-387 | ✅ CONFIRMED FALSE POSITIVE (independently re-traced all 3 claims) | `cover-letter.js` persuasion-label key mismatch (`generic_phrases` vs actual `generic_summary`) — fixed |
+| Gap | Persona | Verdict | Sign-off | Notes |
+|---|---|---|---|---|
+| GAP-390 | trust-compliance | RESOLVED | **YES** | Confirmed zero remaining "confirm this skill" implications anywhere, including the built bundle; confirmed the 3-format exclusion logic is consistent; ran the regression test directly. |
+| GAP-391 | hiring-manager | RESOLVED | **YES** | Confirmed all 3 output paths clean; confirmed the in-app editor warning was correctly left intact (not over-removed); ran both existing regression tests directly. Surfaced 2 follow-ups (fixed this cycle). |
+| GAP-392 | returning-user | RESOLVED | **YES** | Traced the full client/server chain — confirmed the client's "Owned by another tab" label is true exactly when the server's `_validate_owner` would 403, not just plausibly related. |
+| GAP-393 | applicant | RESOLVED | **YES** | Verified phase-string resolution consistency between `re_run_phase()` and `record_rerun_diff()`; verified repeated re-runs of the same phase attach correctly via the reverse-scan-for-first-undiffed-entry logic; noted one theoretical unreachable race (not a blocker). |
+| GAP-394 | master-cv-curator | RESOLVED | **YES** | Confirmed both notes render correctly and traced that they re-render on every tab visit (judged correct UX, not a defect); confirmed GAP-384/GAP-389 have not regressed. Surfaced 1 follow-up (fixed this cycle). |
+| GAP-395 | applicant | **PARTIAL → RESOLVED this cycle** | conditional → now yes | Found `scripts/cv-preview.py:518` had the identical unfixed bug — same field, same file, written into the same `metadata.json` shape, still a `session.json` file path instead of a directory. Fixed and tested in cycle 107. |
 
 ---
 
 ## Fixed This Cycle
 
-| Item | Severity | Summary |
+| Item | Source | Summary |
 |---|---|---|
-| GAP-388 (completion) | LOW | "Archive"/"archived" removed from `finalise.js`'s button/intro/success-banner copy and from `download-tab.js`/`final-generate.js` — cycle 104 only fixed nav chrome |
-| `showAlertModal()` double-push | Undermined GAP-384 | Removed a duplicate `pushFocusStack()` call (merge artifact) that leaked a stale stack entry on every one of this ~100+-call-site function's invocations |
-| 4 modals missing `pushFocusStack()` | Undermined GAP-384 | Backup History, Full Data Preview, Import Review (all `master-cv.js`), and the onboarding/welcome modal (`session-manager.js`) now correctly push before `trapFocus()` |
-| keyboard-shortcuts panel focus management | Adjacent to GAP-385 | Added push/trap/initial-focus on open and a real Escape handler; the panel's own displayed "Esc: Close" text now actually works |
-| `cover-letter.js` label key mismatch | Adjacent to GAP-387 | `generic_phrases` → `generic_summary` so the friendly label renders instead of the raw backend string |
-| ATS DOCX `isinstance` guard | Adjacent to GAP-383 | Matched the guard already present on the two sibling filters, for consistency (currently unreachable in production) |
-
-## New Gaps Filed, Left Open
-
-| Gap | Priority | Summary |
-|---|---|---|
-| GAP-390 | HIGH | Skills Review's "Include" affordance for weak-evidence skills implies a confirm action that doesn't exist anywhere — generation excludes the skill unconditionally regardless |
-| GAP-391 | MEDIUM | Publication venue-warning glyph (`⚠ [venue unavailable]`) is baked directly into final HTML/PDF/DOCX output instead of staying an editor-only warning |
-| GAP-392 | LOW | Active-session "Edit notes" button shown regardless of ownership — rejection only surfaces after clicking Save |
-| GAP-393 | LOW | Re-run audit trail records only phase/timestamp, not the diff data already computed client-side |
-| GAP-394 | LOW | No in-context reminder that Customisation/Rewrite-Review edits are session-only, not yet saved to Master Data |
-| GAP-395 | LOW | `cover_letter_reused_from`/`reused_from_session` use different session-identifier semantics (file path vs. directory) |
+| GAP-395 sibling bug | applicant | `scripts/cv-preview.py:518` now writes `str(session_file.parent)`, matching the web app's already-fixed format. New test: `tests/test_cv_preview_cli.py` asserts the metadata field is a directory. |
+| Dead CSS rule | hiring-manager | Removed the now-unreferenced `.pub-venue-warning` rule from `templates/cv-template.html`. |
+| HTML/PDF venue-warning test | hiring-manager | Added `tests/test_cv_template.py::test_venue_warning_does_not_leak_into_rendered_html` — previously only the 2 DOCX paths had coverage for GAP-391. |
+| review-table-base.js note test | master-cv-curator | Added `tests/js/review-table-base.test.js::populateReviewTab`, using the pre-existing global-stub pattern already established in that file (the "orchestration-heavy, not unit tested" framing in the cycle-106 fix summary was independently confirmed accurate, not an excuse, but a one-line assertion turned out to be cheap to add anyway). |
 
 ---
 
 ## Full Persona Reviews
 
-Refreshed this cycle (9 of the 14 persona files; the other 5 — first-time-user, power-user, hr-ats, persuasion-expert, graphical-designer — were not in scope for this targeted pass and retain their cycle-103 content):
+Rewritten in place this cycle (not appended to) — reflect this cycle's independent re-verification, replacing the cycle-105 content for these 5 personas:
 
 | Persona | Status file |
 |---|---|
-| applicant | `tasks/review-status/applicant.md` |
-| accessibility-specialist | `tasks/review-status/accessibility-specialist.md` |
 | trust-compliance | `tasks/review-status/trust-compliance.md` |
-| returning-user | `tasks/review-status/returning-user.md` |
-| ux-expert | `tasks/review-status/ux-expert.md` |
-| master-cv-curator | `tasks/review-status/master-cv-curator.md` |
 | hiring-manager | `tasks/review-status/hiring-manager.md` |
-| recruiter-ops | `tasks/review-status/recruiter-ops.md` |
-| resume-expert | `tasks/review-status/resume-expert.md` |
+| returning-user | `tasks/review-status/returning-user.md` |
+| applicant | `tasks/review-status/applicant.md` |
+| master-cv-curator | `tasks/review-status/master-cv-curator.md` |
+
+The other 9 persona files (ux-expert, resume-expert, accessibility-specialist, first-time-user, power-user, recruiter-ops, hr-ats, persuasion-expert, graphical-designer) were not in scope for this targeted pass and retain their most recent content from cycles 103/105.
 
 ---
 
-*Reviewed against: web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, plus persona-specific and gap-specific files (web/cover-letter.js, web/screening-questions.js, web/master-cv.js, web/workflow-steps.js, web/achievements-review.js, web/keyboard-shortcuts.js, web/session-manager.js, web/ui-helpers.js, web/session-switcher-ui.js, web/finalise.js, web/harvest.js, web/download-tab.js, web/final-generate.js, scripts/utils/cv_orchestrator.py, scripts/utils/llm_client.py, scripts/routes/master_data_routes.py, scripts/routes/session_routes.py).*
+## Cumulative Status: Cycles 103–107
+
+- Cycle 103: full 15-persona review found GAP-376–389 (14 gaps).
+- Cycle 104: fixed 13/14 (GAP-387 investigated and found to be a false positive).
+- Cycle 105: independent re-verification of cycle 104 found 2 fixes needed more work (GAP-388 partial, GAP-384 undermined by 4 adjacent bugs) and filed 6 new gaps (GAP-390–395); all fixed same-cycle.
+- Cycle 106: fixed all 6 of GAP-390–395.
+- Cycle 107 (this cycle): independent re-verification of cycle 106 signed off 5/6 immediately, found 1 partial (GAP-395's CLI sibling) and 2 minor follow-ups; all fixed same-cycle.
+
+As of this cycle, every gap from GAP-376 through GAP-395 is either RESOLVED (with at least one round of independent, source-first persona re-verification — several with an explicit sign-off statement) or FALSE POSITIVE (GAP-387, itself independently re-confirmed twice). None remain OPEN.
+
+---
+
+*Reviewed against: web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, plus gap-specific files: web/skills-review.js, scripts/utils/cv_orchestrator.py, templates/cv-template.html, web/publications-review.js, web/session-switcher-ui.js, web/session-manager.js, scripts/routes/session_routes.py, scripts/routes/job_routes.py, scripts/routes/master_data_routes.py, web/workflow-steps.js, web/cover-letter.js, scripts/cv-preview.py, web/review-table-base.js, web/rewrite-review.js, web/master-cv.js, web/harvest.js.*

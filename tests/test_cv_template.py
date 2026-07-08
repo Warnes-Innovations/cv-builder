@@ -241,6 +241,25 @@ class TestPublicationCitationFormatting(unittest.TestCase):
         )
         self.assertIn('<em>Journal of Tests, 12</em>', html)
 
+    def test_venue_warning_does_not_leak_into_rendered_html(self):
+        """GAP-391: venue_warning is an in-app editor data-quality flag
+        (web/publications-review.js) and must never appear in the HTML/PDF
+        a hiring manager could receive."""
+        html = _render(
+            publications=[
+                {
+                    'formatted_citation': 'Doe, J. (2024). Some Preprint Title.',
+                    'publication_url': '',
+                    'is_first_author': False,
+                    'venue_warning': 'No journal or conference name found in BibTeX entry',
+                }
+            ]
+        )
+        self.assertIn('Some Preprint Title', html)
+        self.assertNotIn('venue unavailable', html)
+        self.assertNotIn('pub-venue-warning', html)
+        self.assertNotIn('⚠', html)
+
 
 class TestPrintLayout(unittest.TestCase):
     """Print-mode layout tests for the CV template."""

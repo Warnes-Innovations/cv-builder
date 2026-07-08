@@ -515,7 +515,10 @@ def render_generated_assets(
                 if manager.state.get('cover_letter_text')
                 else 'deterministic-fallback'
             )
-            reused_from = str(session_file)
+            # GAP-395: use the containing directory, not the session.json file
+            # itself, matching the web app's cover_letter_reused_from/
+            # reused_from_session provenance-identifier format (both directory-based).
+            reused_from = str(session_file.parent)
         else:
             job_analysis = _load_optional_job_analysis(source_dir)
             preflight_collisions = _find_destination_collisions(
