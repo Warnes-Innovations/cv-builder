@@ -159,6 +159,22 @@ describe('_validateCoverLetter — call-to-action', () => {
   })
 })
 
+describe('_validateCoverLetter — backend persuasion warning labels (GAP-387 follow-up, cycle-105)', () => {
+  beforeEach(setupValidationDom)
+  afterEach(() => { _coverLetterFormState.persuasionWarnings = [] })
+
+  it('maps the generic_summary flag_type to a "Generic phrases" label instead of falling back to the raw string', () => {
+    _coverLetterFormState.persuasionWarnings = [
+      { flag_type: 'generic_summary', severity: 'warn', details: 'Found 3 generic filler phrases.' },
+    ]
+    const letter = 'Dear Dr. Smith,\n\nI am excited to apply.\n\nI look forward to an interview.'
+    _validateCoverLetter(letter)
+    const html = document.getElementById('cl-checks-container').innerHTML
+    expect(html).toContain('Generic phrases')
+    expect(html).not.toContain('generic_summary')
+  })
+})
+
 describe('_validateCoverLetter — does nothing on empty text', () => {
   it('returns early without throwing', () => {
     document.body.innerHTML = `

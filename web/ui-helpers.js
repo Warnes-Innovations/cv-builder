@@ -29,17 +29,18 @@ function _setModalText(el, message) {
 }
 
 function showAlertModal(title, message) {
-  // Push to shared focus stack so restoreFocus() works correctly when stacked with other modals (GAP-305).
-  if (typeof pushFocusStack === 'function') pushFocusStack();
   document.getElementById('alert-modal-title').textContent = title;
   _setModalText(document.getElementById('alert-modal-message'), message);
   document.getElementById('alert-modal-overlay').style.display = 'block';
-  // pushFocusStack (GAP-197) pairs with trapFocus/restoreFocus below — using
+  // pushFocusStack (GAP-197/GAP-305) pairs with trapFocus/restoreFocus below — using
   // the shared focus-stack mechanism, not a local variable, so closeAlertModal
   // also pops the keydown listener trapFocus registers on document. A prior
   // version tracked its own `_alertPreviousFocus` and never called
   // restoreFocus(), which left that trapFocus listener permanently attached
-  // after every alert modal close.
+  // after every alert modal close. (GAP-384 cycle-105: this used to call
+  // pushFocusStack() a second time here, a merge artifact that pushed the
+  // same element twice per open while closeAlertModal() only ever popped
+  // once, corrupting the shared stack for whatever modal closed next.)
   if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
   if (typeof setInitialFocus === 'function') setInitialFocus('alert-modal-overlay');
   if (typeof trapFocus === 'function') trapFocus('alert-modal-overlay');

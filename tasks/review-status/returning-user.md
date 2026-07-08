@@ -6,102 +6,83 @@ This file is part of CV-Builder.
 For commercial licensing, contact greg@warnes-innovations.com
 -->
 
-# Returning-User Review Status
+# Returning User Review Status
 
-**Last Updated:** 2026-07-07 20:23 ET
+**Last Updated:** 2026-07-07 09:15 ET
 
-**Executive Summary:** This file captures the source-verified persona review snapshot separately from the story specification so sub-agents can work in parallel safely.
+**Executive Summary:** Both flagged regressions are RESOLVED, verified end-to-end against current source (not against prior audit summaries). GAP-378 (re-run confirmation wiring) remains correctly wired: `confirmReRunPhase()` → `reRunPhase()` → `POST /api/re-run-phase` → `ConversationManager.re_run_phase()`, which is architecturally distinct from `backToPhase()` → `POST /api/back-to-phase` → `ConversationManager.back_to_phase()` (pure navigation, no LLM call). GAP-386 (active-session notes) is RESOLVED and holds up under the specific edge cases requested: the frontend UI is reachable for both saved and active rows via a session-id-scoped DOM key (`notesKey`), the new `PATCH /api/sessions/active/notes` endpoint correctly resolves the target session from the request body's `session_id` (not from "whatever session the caller happens to be in"), and it defers to the existing `_validate_owner()` helper — an unclaimed active session accepts the edit from anyone, a claimed session rejects a mismatched `owner_token` with a clear 403 that surfaces as a toast, not a raw JSON-parse error (a global `HTTPException` → JSON error handler in `scripts/web_app.py:1139` prevents that failure mode). One real (non-blocking) UX gap found in this pass: the "Edit notes" icon is rendered on every active row regardless of ownership, so a user can open the notes editor for a session owned by another tab before being told, at submit time, that they don't own it.
 
 ## Application Evaluation
 
 ### US-S1: Resume With Context
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|-------------------------|
-| 1 | Restored session identifies job/application context clearly | ✅ Pass | `updatePositionTitle()` sets `#position-title` and `#position-company` (name · date) from `status.position_name`/`job_analysis`/intake — `web/session-actions.js:159-199`. Called on full restore in `restoreBackendState()` — `web/session-manager.js:736`. |
-| 2 | UI indicates current stage and available next actions | ✅ Pass | Workflow step bar marks `active`/`completed`/`forward-skip` classes and swaps visible action buttons per phase (`updateActionButtons`, referenced `web/workflow-steps.js`); phase→tab mapping in `web/state-manager.js:35-49` (`PHASE_TO_STEP`) and `web/session-manager.js:418-437` (`_restoreTabForPhase`). |
-| 3 | Previously completed work remains visible/discoverable without hunting | ✅ Pass | Completed steps stay clickable (`handleStepClick`, `web/workflow-steps.js:1146-1226`); experience/skill/rewrite decisions are re-hydrated from `window._savedDecisions` populated in `_hydrateStatusDerivedState()` (`web/session-manager.js:590-635`) and consumed by `web/experience-review.js:164`, `web/skills-review.js:581`, and `web/rewrite-review.js:61-102` (`_restoreDecisions`, with a cold-restore fallback from `rewrite_audit` and a "previous decisions restored" toast). |
+1. ✅ The restored session identifies the job/application context clearly. `web/session-manager.js:494-521` (`_appendRestoredDecisionsSummary`) appends `📋 Restored{for X} at stage: {phase} — {N} experiences recommended, {N} rewrites approved, ATS score {N}%.` after a successful restore, and `updatePositionTitle(statusData)` (`web/session-manager.js:736`) keeps the header title in sync.
+2. ✅ The UI indicates current stage and available next actions. `restoreBackendState()` resolves the phase via `_resolveRestoredPhase()` (guards against inconsistent phase/data combinations, `web/session-manager.js:439-460`) and calls `_restoreTabForPhase()` / `switchTab()` (`web/session-manager.js:731-733`) so the visible tab matches the true stage. Step pills reflect `active`/`completed`/`stale` state with descriptive tooltips (`_getStepTooltip`, `web/workflow-steps.js:222-231`).
+3. ✅ Previously completed work remains visible/discoverable. `_hydrateStatusTabState()` (`web/session-manager.js:637-652`) repopulates `analysis`/`customizations`/`cv` tab data from `/api/status`, and completed step pills are marked `.completed` + `.clickable` with a `↻` re-run affordance (`web/workflow-steps.js:1032-1043`).
+4. ✅ Single-active-session auto-resume (GAP-323) with an explicit explanation, not a silent jump: `ensureSessionContext()` (`web/session-manager.js:466-492`) posts `ℹ️ Only one active session found — auto-resumed. Open Sessions to switch or start a new one.`
 
-**Failure Modes:**
-
-| Failure mode | Present? |
-|--------------|----------|
-| Generic blank/default view on return | ✅ Not present — position bar and step bar populate from `/api/status` on load (`web/app.js:41-74`, `web/session-manager.js:654-758`). Minor edge case: the internal fallback branch of `loadSessionFile()` that runs when `redirectOnMismatch:false` and no redirect occurs (`web/session-manager.js:765-814`) calls `fetchStatus()` but never `updatePositionTitle()`; this path is only reachable from `restoreBackendState()`'s own same-session recovery call (line 753) and from `ensureSessionContext()` (line 476), both of which run before/inside the outer restore flow that does call `updatePositionTitle`, so no user-visible blank state was found in the normal flow. |
-| Prior decisions existing in state but not surfaced | ✅ Not present — see US-S1 criterion 3 evidence. |
-
----
+No failure modes from the story ("generic blank view", "decisions not surfaced") were reproduced in source.
 
 ### US-S2: Safe Re-entry and Backtracking
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|-------------------------|
-| 1 | Back-navigation behavior explicit about downstream consequences | ✅ Pass | `_showReRunConfirmModal(step, mode, onConfirm)` lists every downstream *completed* stage and states "All existing approvals and rewrites are preserved as context" before either back-nav or re-run proceeds — `web/workflow-steps.js:139-189`. Triggered from `handleStepClick()` whenever back-navigating to a completed step that has completed downstream steps — `web/workflow-steps.js:1211-1223`. |
-| 2 | Re-entry preserves prior context where intended | ✅ Pass | Server-side `back_to_phase()` explicitly preserves all decisions/rewrites/customisations and only marks downstream `stale_steps` — `scripts/utils/conversation_manager.py:1725-1758` ("without clearing downstream state"). |
-| 3 | UI distinguishes re-entry (navigation) from rerunning/recomputing | ❌ Fail | The step-pill "↻ Re-run" affordance (`confirmReRunPhase()`, `web/workflow-steps.js:191-193`) shows a modal titled "↻ Re-run {step}?" but on confirmation calls `backToPhase(step)` (line 192), i.e. `POST /api/back-to-phase` → `conversation.back_to_phase()` — which does **not** invoke the LLM, it only moves the phase pointer and marks downstream steps stale (`scripts/utils/conversation_manager.py:1725-1758`). The function that actually re-invokes the LLM and diffs prior vs. new output, `reRunPhase()` → `POST /api/re-run-phase` → `conversation.re_run_phase()` (`web/workflow-steps.js:403-472`, `scripts/utils/conversation_manager.py:1760-1830+`), has **zero UI call sites** — confirmed with `grep -F "reRunPhase(" web/*.js` (excluding `bundle.js`), which returns only the function's own definition and its internal retry-callback references. So the labeled "re-run" control performs the same backend action as plain back-navigation, and the real recompute path is currently unreachable from the UI. |
-
-**Failure Modes:**
-
-| Failure mode | Present? |
-|--------------|----------|
-| Users unintentionally overwriting downstream work by revisiting a stage | ✅ Not present — `back_to_phase()` never deletes state, only flags `stale_steps` (`scripts/utils/conversation_manager.py:1747`). |
-| Re-run visually indistinguishable from simple navigation | ⚠️ Partially present in a different form — visually *distinguishable* (separate ↻ icon, separate modal title/copy) but functionally *identical* to back-navigation because of the wiring bug above. This is arguably worse than the literal failure mode described (a mislabeled control rather than an ambiguous one) and should be added as an explicit new failure mode for future story revisions. |
-
----
+1. ✅ Back-navigation is explicit about downstream consequences. `handleStepClick()` (`web/workflow-steps.js:1234-1246`) detects when a completed step has downstream completed steps and routes through `_showReRunConfirmModal(step, 'back-nav', doNavigate)` before navigating; `doNavigate` itself is pure `switchTab()` (`web/workflow-steps.js:1212-1215`), so no recompute happens on back-nav even after confirmation.
+2. ✅ Re-entry preserves prior context. Backend `back_to_phase()` (`scripts/utils/conversation_manager.py:1725-1758`) explicitly does not clear any decision/rewrite/customization state — it only marks downstream steps `stale` and sets `iterating`/`reentry_phase`.
+3. ✅ Re-run vs. back-navigation are visually and behaviorally distinct — this is GAP-378's fix, reverified:
+   - The step pill click itself (`handleStepClick`, `web/workflow-steps.js:1152`) only ever calls `switchTab()`.
+   - The dedicated `↻` button on completed steps (`web/workflow-steps.js:1041`, `onclick="confirmReRunPhase('${step}')"`) is the only path into `reRunPhase()`.
+   - `confirmReRunPhase()` (`web/workflow-steps.js:191-199`) carries an explicit code comment recording the original bug and confirms it now calls `reRunPhase(step)`, not `backToPhase(step)`.
+   - `reRunPhase()` → `_executeReRunPhase()` (`web/workflow-steps.js:409-476`) POSTs to `/api/re-run-phase` (`scripts/routes/job_routes.py:830-850`) → `ConversationManager.re_run_phase()` (`scripts/utils/conversation_manager.py:1760+`), which actually re-invokes the LLM (`self.llm.analyze_job_description(...)` / `recommend_customizations(...)` etc.) and returns `{prior_output, new_output}` for diffing — a materially different code path from `back_to_phase()`.
+   - Reachability confirmed from 4 independent call sites: the step-pill `↻` button, `Ctrl+Shift+R` (`web/keyboard-shortcuts.js:273-275`), `web/layout-instruction.js:697`, and `web/review-table-base.js:321`.
+   - Verdict: **GAP-378 is RESOLVED and has not regressed.**
+4. ⚠️ Minor: the confirmation modal's copy for `back-nav` mode ("You are navigating back past the following completed stages... All existing approvals and rewrites are preserved as context.") is accurate but the phrase "preserved as context" is slightly ambiguous — a first-time reader could interpret "context" as "informational only, not literally kept," when in fact the underlying data is fully retained. Consider "will not be lost" or "remain saved" for clarity. Not a functional gap.
 
 ### US-S3: Trustworthy Session Continuity
 
-| # | Criterion | Status | Notes / File:Line refs |
-|---|-----------|--------|-------------------------|
-| 1 | Saved decisions can be re-observed when their stage is revisited | ✅ Pass | See US-S1 #3 evidence (experience/skill/rewrite decisions). Rewrite decisions additionally persist per-session in `localStorage` (`web/rewrite-review.js:45-56`, keyed by session id) with a cold-restore fallback from backend `rewrite_audit` for a different device/incognito (`web/rewrite-review.js:80-101`) and a toast confirming restoration. |
-| 2 | Generated/previewed outputs remain logically connected to current session state | ✅ Pass | `generationState.contentRevision` / `lastPreviewContentRevision` / `lastFinalContentRevision` tracked client-side (`web/state-manager.js:66-178`) and rehydrated server-side via `GET /api/cv/generation-state` on restore (`web/session-manager.js:679-727`). |
-| 3 | Session restoration does not mislead about what version is current | ✅ Pass | Layout-freshness chip renders "Files outdated" / "Layout outdated" / "Layout current" based on comparing `contentRevision` to last-rendered revision (`web/state-manager.js:120-178`, `getLayoutFreshnessFromState`). Download tab labels regenerated files "Run #N — {timestamp}" and tags preview-format files "Working file — not for submission" (`web/download-tab.js:197-234`). |
+1. ✅ Saved decisions are re-observable when a stage is revisited. `_hydrateStatusDerivedState()` (`web/session-manager.js:590-635`) rehydrates `window._savedDecisions` (experience/skill/achievement/publication decisions, summary override, extra skills) from `/api/status` on every restore/load.
+2. ✅ Generated/previewed outputs stay logically connected to current session state via `contentRevision` / `lastPreviewContentRevision` / `lastFinalContentRevision` tracked in `web/state-manager.js:83-101` and surfaced as "Layout current" / "Layout outdated" / "Files outdated" chips (`getLayoutFreshnessFromState`, `web/state-manager.js:120-178`).
+3. ✅ Current-vs-earlier outputs are distinguishable across passes: `re_run_phase()` returns `prior_output`/`new_output`, and `_executeReRunPhase()` diffs them with `_countChangedItems`/`_highlightChangedItems` and reports "(N of M items changed)" (`web/workflow-steps.js:436-469`), plus marks downstream steps `stale` in the step pills.
 
-**Failure Modes:** none of the story's explicit failure modes were found present; see Additional Issues below for problems outside the story's stated criteria.
+### GAP-386 deep-dive (session notes for active sessions)
 
----
+**Frontend reachability** (`web/session-switcher-ui.js`):
 
-### Additional Issues — Session Notes Indicator (Cycles 102–103 / GAP-352 re-verification)
+- `_normalizeSessionsForTable()` (line 239) now includes `notes: s.notes || ''` for active rows (line 251), sourced from the backend's `/api/sessions/active` response, which itself now returns `notes` per session via `_active_notes(entry)` (`scripts/routes/session_routes.py:801-813`, reading `metadata.json` off `entry.manager.session_dir`).
+- Per-row `notesKey` (`web/session-switcher-ui.js:409`) is `active-${sessionId}` for active rows and `saved-${idx}` for saved rows — this correctly disambiguates DOM ids since active rows have no numeric `idx`.
+- The "Edit notes" icon button is appended unconditionally for both row types (line 429, outside the `row.type === 'saved'` gate that guards the separate status-edit button), so it is genuinely reachable for active rows, not just saved ones.
+- `submitSessionNotesEdit()` (line 746) branches on `rowType === 'active'` to hit `/api/sessions/active/notes` with `{session_id, notes, owner_token}` instead of `/api/sessions/metadata` with `{path, notes}` — matches the backend contract.
 
-The task specifically asked for end-to-end verification of the new session-notes indicator. Findings:
+**Backend correctness** (`scripts/routes/session_routes.py:760-793`, `sessions_patch_active_notes`):
 
-1. **Show/hide correctness — ✅ Pass.** `GET /api/status` reads `notes` from the session's `metadata.json` sidecar (`scripts/routes/status_routes.py:679-691, 788`). `updatePositionTitle()` sets `#position-notes-text` and toggles `#position-notes-indicator` display based on truthiness of `status.notes` — `web/session-actions.js:204-214`.
-2. **Full text on visual truncation — ✅ Pass (with an accessibility caveat).** The indicator uses `white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:420px` (`web/index.html:87`) and the full note is set as the element's `title` attribute (`web/session-actions.js:212`), giving a native hover tooltip. This is hover-only — not reliably discoverable via touch or keyboard-only navigation. Also, `web/index.html:87` uses `role="note"`, which is **not a standard ARIA role** (no such role exists in the WAI-ARIA spec); assistive technology will not announce it as intended.
-3. **Updates when switching sessions — ✅ Pass, but not for the reason the task description implies.** `updatePositionTitle()` is **not** called on every `fetchStatus()` refresh — `fetchStatus()` itself (`web/api-client.js:211-229`) only updates the auth badge and workflow-step bar. Grepping every non-bundle call site of `fetchStatus(` (app.js:70, message-dispatch.js:334, session-actions.js:108, workflow-steps.js:114/437, spell-check.js, ui-core.js:210, session-switcher-ui.js:663) shows none of them re-run `updatePositionTitle()`. The indicator only actually refreshes via two paths: (a) `restoreBackendState()` after a full page load (`web/session-manager.js:736`), and (b) after job analysis completes (`web/job-analysis.js:174-176`). Switching to a **different** saved session from the Sessions modal (`loadSessionAndCloseModal` → `loadSessionFile`, `web/session-switcher-ui.js:618-625`) works correctly only because `/api/load-session` returns a `redirect_url` whenever the target session id differs from the current URL's session id (`scripts/routes/session_routes.py` load-session handler, `redirect_url: f"/?session={sid}"`), which forces a full browser navigation (`window.location.assign`, `web/session-manager.js:792`) — re-running `init()` → `restoreSession()` → `restoreBackendState()` and correctly re-populating the indicator. So the *practical* switch-session flow works, but the claim that the indicator "populates whenever status refreshes" is not accurate — it is a page-reload-driven refresh, not a live one.
-4. **Editing a note for the *currently active* session — ❌ Fail (real functional gap).** The Sessions modal's row builder, `_normalizeSessionsForTable()`, populates `notes: s.notes || ''` for saved-session rows only (`web/session-switcher-ui.js:269`); the loop for `type: 'active'` rows never copies `s.notes` (lines 243-259), even though the backend's `GET /api/sessions/active` now returns a `notes` field per active session (`scripts/routes/session_routes.py:766-794`, added alongside this feature). Additionally, the notes-preview/edit UI is rendered only `if (row.type === 'saved')` (`web/session-switcher-ui.js:405-424`), and the "edit notes" action button is likewise gated on `row.type === 'saved'` (lines 420-424). **Net effect: a user cannot view or edit notes for their own open/active session anywhere in the Sessions modal.** The only in-workspace way to set a note on the active session is the `#finalise-notes` textarea (`web/finalise.js:116-121, 288`) submitted via `POST /api/finalise` (`scripts/routes/generation_routes.py:2144, 2159`) — which is gated behind having already generated CV files (`generated['output_dir']` must exist, `scripts/routes/generation_routes.py:2138-2139`). A user in Job/Analysis/Customize/Rewrite/Spell/Layout stages has **no way at all** to attach a note to their own active session — they would have to evict/close the session (turning it into a "saved" row with a notes-edit affordance) and then reopen it, defeating the purpose of "leaving myself a note without losing my place."
+- Resolves the target session via `entry = _get_session()` (line 769). Traced `_get_session` to `scripts/web_app.py:710-745`: it reads `session_id` from the query string OR the JSON body (line 721-723) — i.e., it **does** honor the `session_id` the frontend explicitly puts in the PATCH body, not an ambient/"current tab" session. This matters because the sessions modal lists every active session, and a user could be editing notes for a row that is not the tab's own current session.
+- `_validate_owner(entry)` (line 770 → `scripts/web_app.py:747-770`): skips validation entirely when `entry.owner_token is None` (unclaimed — anyone may edit), otherwise requires the request's `owner_token` to match; mismatch → `abort(403, "Not the session owner")`.
+- Ownership-conflict handling verified end-to-end: a 403 on an `/api/` path is caught by the global `@app.errorhandler(HTTPException)` (`scripts/web_app.py:1139-1143`), which returns `{error, status}` as JSON — so `res.json()` in `submitSessionNotesEdit` does not throw, and the `else` branch correctly shows `showToast('Notes update failed: Not the session owner', 'error')` rather than a confusing JS parse-error message.
+- Edge case: a brand-new active session with no `session_dir` yet (never reached job intake) returns `400 {"error": "Session has no storage directory yet."}` — handled gracefully as a toast, though the message is somewhat technical for an end user.
+- **Verdict: GAP-386 is RESOLVED end-to-end** — frontend reachability, backend session resolution by `session_id` (not path), and the claimed/unclaimed/cross-tab ownership matrix all behave correctly.
 
----
+**⚠️ New minor finding (not a regression of GAP-386, but adjacent to what this review was asked to check):** `_renderSessionTableRow()` renders the "Edit notes" button identically for every active row regardless of `row.ownership.isCurrent` / `owned_by_requester` / `claimed`. A user browsing the Sessions modal can click "Edit notes" on a session row explicitly labeled "Owned by another tab," type a note, click Save, and only then learn (via toast) that the edit was rejected. Suggest either disabling/hiding the notes-edit affordance for sessions not owned by the current tab (mirroring how the "Open" vs. "Current" action link already reflects ownership), or at least keeping the typed draft so the user isn't forced to retype after switching to "Take over."
 
 ## Generated Materials Evaluation
 
-Not the primary focus of this persona (session/state continuity), but one relevant finding: generated output files are versioned and distinguishable across multiple workflow passes — Download tab labels regenerated files `Run #N — {timestamp}` and separately tags preview-format files "Working file — not for submission" (`web/download-tab.js:197-234`), which directly supports US-S3 criterion 3.
+Not applicable to this pass in a way that differs from the application evaluation above — the "generated materials" (CV/cover letter files) are unaffected by GAP-378/GAP-386; both fixes are pre-generation workflow/session-management concerns. Re-run diffing (`_highlightChangedItems`) does affect materials review by marking which generated recommendations changed after a re-run, which was verified above under US-S3.
 
 ## Additional Story Gaps / Proposed Story Items
 
-- **Propose a new acceptance criterion under US-S2:** "A control labeled 're-run' or displaying a recompute icon (↻) must actually trigger recomputation of that phase's output, not merely navigate to it." The current story only asks that re-run be *visually* distinguishable from navigation; it doesn't test that the control's *behavior* matches its label, which is exactly the bug found above.
-- **Propose a new story item (or criterion under US-S1/US-S3): "Session notes remain attachable and editable throughout the session's active life."** Currently notes can only be set once a session is archived/saved (via the Sessions modal) or once CV files have already been generated (via Finalise) — never during the early-to-mid workflow while the session is open, even though the header indicator implies notes are a general-purpose sticky-note feature that "follows the user into the active workspace."
-- **Consider adding a story item for concurrent-tab / ownership-conflict re-entry** — `#ownership-conflict-overlay` in `web/index.html:426-440` ("Session already open in another browser tab", with Load Different / New Session / Take Over actions) is a returning-user scenario (reopening a stale tab, or opening the same session in two tabs) not covered by any of the three existing US-S* stories, despite being a real corner of "returning after interruption."
-- **Terminology note:** `role="note"` on the notes indicator (`web/index.html:87`) is not a valid ARIA role — should be removed or replaced with a supported role/pattern (e.g., a plain `<div>` with `aria-label`, or `role="status"` if live-announcement is desired).
+- **Notes-edit affordance ignores ownership state** (see finding above) — propose as a follow-up: gate/disable the per-row "Edit notes" icon button for active sessions where `ownership.isCurrent` is false and `ownership.className !== 'session-status-unclaimed'`, or show an inline "owned by another tab" hint instead of allowing the click through to a failed submit.
+- **Application-status editing is saved-sessions-only**: `_normalizeSessionsForTable()` populates `applicationStatus` for active rows too (`web/session-switcher-ui.js:250`), but the "Update application status" button is only rendered `if (row.type === 'saved')` (line 424-427). This is consistent with the current PATCH `/api/sessions/metadata` being path-based only (no active-session equivalent exists, unlike notes), so it isn't a regression — but it's the same shape of gap GAP-386 just fixed for notes, and worth a matching follow-up if returning users want to mark an in-progress application's status before it's ever saved.
+- **Notes copy terminology**: the back-nav modal's "preserved as context" phrasing (`_showReRunConfirmModal`, `web/workflow-steps.js:154`) could read as "kept only as background info" rather than "your work is safe" — recommend rewording for a returning user under time pressure who needs an unambiguous answer to "will I lose anything?"
 
-**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, plus web/session-manager.js, web/session-actions.js, web/session-switcher-ui.js, web/workflow-steps.js, web/rewrite-review.js, web/experience-review.js, web/skills-review.js, web/finalise.js, web/download-tab.js, web/job-analysis.js, scripts/routes/status_routes.py, scripts/routes/session_routes.py, scripts/routes/job_routes.py, scripts/routes/generation_routes.py
+**Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, web/session-switcher-ui.js, scripts/routes/session_routes.py, web/workflow-steps.js
 
-| Story | ✅ Pass | ⚠️ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
-|-------|---------|-----------|--------|------------|-------|
-| US-S1 | 3 | 0 | 0 | 0 | 0 |
-| US-S2 | 2 | 0 | 1 | 0 | 0 |
+| Story | ✅ | ⚠️ | ❌ | 🔲 | — |
+| --- | --- | --- | --- | --- | --- |
+| US-S1 | 4 | 0 | 0 | 0 | 0 |
+| US-S2 | 3 | 1 | 0 | 0 | 0 |
 | US-S3 | 3 | 0 | 0 | 0 | 0 |
 
 **Key evidence references:**
-- US-S1: `updatePositionTitle()` → `web/session-actions.js:159-232`; phase→step/tab mapping → `web/state-manager.js:35-49`, `web/session-manager.js:418-437`
-- US-S1: decision re-hydration → `web/session-manager.js:590-635` (`_hydrateStatusDerivedState`), `web/experience-review.js:164`, `web/skills-review.js:581`, `web/rewrite-review.js:61-102`
-- US-S2: downstream-aware confirm modal → `web/workflow-steps.js:139-189`
-- US-S2: back_to_phase preserves state → `scripts/utils/conversation_manager.py:1725-1758`
-- US-S2 (fail): mislabeled re-run control → `web/workflow-steps.js:191-193` (calls `backToPhase`, not `reRunPhase`); real recompute unreachable → `web/workflow-steps.js:403-472` (no call sites outside itself)
-- US-S3: generation-state/content-revision restore → `web/state-manager.js:66-178`, `web/session-manager.js:679-727`
-- US-S3: layout freshness / run labeling → `web/state-manager.js:120-178`, `web/download-tab.js:197-234`
-- Notes indicator (GAP-352): backend field → `scripts/routes/status_routes.py:679-691,788`; frontend render → `web/session-actions.js:204-214`
-- Notes indicator gap: active-session notes dropped in modal → `web/session-switcher-ui.js:243-259` (missing `notes` field) vs. `web/session-switcher-ui.js:269` (saved rows have it); backend already returns it → `scripts/routes/session_routes.py:766-794`
-- Notes editing for active session limited to Finalise tab, gated on generated files → `web/finalise.js:116-121,288`, `scripts/routes/generation_routes.py:2138-2139,2144,2159`
 
-**Evidence standard:**
-- Every conclusion should be supported by evidence sufficient for another reviewer to verify it independently.
-- Cite all supporting references using repository-relative paths plus line numbers wherever available.
+- GAP-378 (re-run wiring): `confirmReRunPhase` → `web/workflow-steps.js:191-199` calls `reRunPhase(step)`, not `backToPhase(step)`; `reRunPhase`/`_executeReRunPhase` → `web/workflow-steps.js:409-476` POST `/api/re-run-phase`; backend split confirmed at `scripts/routes/job_routes.py:804-850` and `scripts/utils/conversation_manager.py:1725-1838` (`back_to_phase` vs `re_run_phase`).
+- GAP-386 (active session notes): frontend `web/session-switcher-ui.js:239-282` (`_normalizeSessionsForTable`), `:405-422` (`notesKey`/widgets), `:746-779` (`submitSessionNotesEdit` endpoint branch); backend `scripts/routes/session_routes.py:760-793` (`sessions_patch_active_notes`), `:795-833` (`sessions_active` now returns `notes`); session resolution `scripts/web_app.py:710-745` (`_get_session` reads `session_id` from JSON body); ownership `scripts/web_app.py:747-770` (`_validate_owner`); JSON error handling `scripts/web_app.py:1139-1143`.
+- US-S1: `web/session-manager.js:439-521` (phase resolution + restored-decisions summary), `:637-652` (`_hydrateStatusTabState`), `:466-492` (`ensureSessionContext` auto-resume).
+- US-S2: `web/workflow-steps.js:1152-1249` (`handleStepClick` navigation vs re-run gating), `:139-198` (shared confirm modal for both modes).
+- US-S3: `web/state-manager.js:120-178` (`getLayoutFreshnessFromState`), `web/workflow-steps.js:436-469` (change diffing on re-run).

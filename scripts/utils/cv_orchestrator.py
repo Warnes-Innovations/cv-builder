@@ -4413,7 +4413,10 @@ Include one entry per candidate. Do not omit any candidate."""
         # _optimize_skills_for_ats returns names in priority order; type inferred
         # per skill via _classify_skill_type.
         # Filter weak-evidence (candidate_to_confirm) skills from ATS DOCX (GAP-326).
-        ats_skills = [s for s in content['skills'] if not s.get('candidate_to_confirm')]
+        ats_skills = [
+            s for s in content['skills']
+            if not (isinstance(s, dict) and s.get('candidate_to_confirm'))
+        ]
         ats_skill_names = self._optimize_skills_for_ats(ats_skills, job_analysis)
         skill_map = {s.get('name', ''): s for s in ats_skills}
         hard_skills = [n for n in ats_skill_names

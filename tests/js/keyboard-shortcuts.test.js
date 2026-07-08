@@ -127,3 +127,57 @@ describe('showKeyboardShortcutsPanel Getting Started entry point (GAP-385)', () 
     expect(document.getElementById('kb-shortcuts-panel')).toBeNull()
   })
 })
+
+describe('showKeyboardShortcutsPanel focus management (GAP-384/385 cycle-105)', () => {
+  let pushMock, trapMock, initMock, restoreMock
+
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    pushMock    = vi.fn()
+    trapMock    = vi.fn()
+    initMock    = vi.fn()
+    restoreMock = vi.fn()
+    vi.stubGlobal('pushFocusStack', pushMock)
+    vi.stubGlobal('trapFocus', trapMock)
+    vi.stubGlobal('setInitialFocus', initMock)
+    vi.stubGlobal('restoreFocus', restoreMock)
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.stubGlobal('pushFocusStack', undefined)
+    vi.stubGlobal('trapFocus', undefined)
+    vi.stubGlobal('setInitialFocus', undefined)
+    vi.stubGlobal('restoreFocus', undefined)
+  })
+
+  it('pushes onto the shared focus stack and traps focus when opened', () => {
+    showKeyboardShortcutsPanel()
+    expect(pushMock).toHaveBeenCalledTimes(1)
+    expect(initMock).toHaveBeenCalledWith('kb-shortcuts-panel')
+    expect(trapMock).toHaveBeenCalledWith('kb-shortcuts-panel')
+    showKeyboardShortcutsPanel() // close it (toggle) to avoid leaking into other tests
+  })
+
+  it('restores focus when closed via the ✕ button', () => {
+    showKeyboardShortcutsPanel()
+    document.getElementById('kb-shortcuts-close').click()
+    expect(restoreMock).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('kb-shortcuts-panel')).toBeNull()
+  })
+
+  it('restores focus and closes when Escape is pressed, despite the panel\'s own text promising it', () => {
+    showKeyboardShortcutsPanel()
+    const panel = document.getElementById('kb-shortcuts-panel')
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(restoreMock).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('kb-shortcuts-panel')).toBeNull()
+  })
+
+  it('restores focus when toggled closed via a second call (the ? shortcut path)', () => {
+    showKeyboardShortcutsPanel()
+    showKeyboardShortcutsPanel()
+    expect(restoreMock).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('kb-shortcuts-panel')).toBeNull()
+  })
+})

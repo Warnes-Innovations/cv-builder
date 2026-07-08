@@ -1,6 +1,6 @@
 # Gaps Analysis: Source-Verified UI Review Findings
 
-**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 104)
+**Generated:** 2026-03-06 | **Last updated:** 2026-07-07 (cycle 105)
 **Sources:**
 
 - prior backlog in `tasks/gaps.md`
@@ -9,6 +9,20 @@
 - aggregate synthesis in `tasks/ui-review.md`
 
 This document tracks the gaps that still remain after reconciling the refreshed full 15-persona + heuristic review set against the current implementation. The 2026-04-22 cycle added GAP-72 through GAP-123. The 2026-06-18 cycle 1 added GAP-124 through GAP-142. The 2026-06-18 cycle 2 added GAP-143 through GAP-145. The 2026-06-18 cycle 3 added GAP-146 through GAP-154. The 2026-06-20 cycle 4 added GAP-155 through GAP-165. The 2026-06-20 cycle 5 added GAP-166 through GAP-175. The 2026-06-22 cycle 6 added GAP-176 through GAP-181. The 2026-06-22 cycle 7 added GAP-182. The 2026-06-29 cycle 8 added GAP-183 through GAP-194. The 2026-06-29 cycle 9 added GAP-195 through GAP-217 (GAP-205 and GAP-207 are duplicates of existing gaps; GAP-212 through GAP-217 are from the HR/ATS specialist review). The 2026-06-30 cycle 11 added GAP-218 through GAP-233. The 2026-06-30 cycle 13 added GAP-234 through GAP-257. The 2026-06-30 cycle 14 added GAP-258 through GAP-270. The 2026-07-01 cycle 29 added GAP-271 through GAP-295. 2026-07-02 added GAP-296–GAP-297 (open-source/contributor-readiness, from the ci-cd-engineer persona's scope extension ahead of inviting outside users/contributors) and the new `marketing` persona (`tasks/user-story-marketing.md`, `tasks/review-status/marketing.md`) — no marketing-persona gaps filed yet pending its first full review. 2026-07-02 also added GAP-298–GAP-299 (internal testing-doc consistency follow-ups from Claude Code's review of the `e2e-browser-test.md` expansion — not persona-discovered, no end-user-facing impact). 2026-07-06 cycle 82 added GAP-300 through GAP-325. 2026-07-06 cycle 88 added GAP-326 through GAP-340. 2026-07-06 cycle 93 added GAP-341 through GAP-375 (35 new entries from full 15-persona + heuristic review).
+
+## 2026-07-07 (Cycle 105) Implementation Notes
+
+Targeted re-verification cycle: 9 persona sub-agents (applicant, accessibility-specialist, trust-compliance, returning-user, ux-expert, master-cv-curator, hiring-manager, recruiter-ops, resume-expert) independently re-checked cycle 104's fixes against current source (not cycle 104's own summary). Verdict: 7 of 9 gaps fully confirmed RESOLVED on first check; GAP-388 was found only PARTIALLY fixed by two independent reviewers (nav chrome fixed, working-screen copy not); the accessibility-specialist found GAP-384's fix was undermined by three adjacent pre-existing bugs it didn't touch. All findings were fixed in this same cycle rather than deferred:
+
+- **GAP-388** (re-opened, now fully RESOLVED): "Archive"/"archived" still appeared inside `finalise.js`'s own button, intro copy, and success banner, plus in `download-tab.js` and `final-generate.js` — cycle 104 only fixed the nav chrome. Fixed all remaining occurrences to "finalise"/"finalised."
+- **New, adjacent to GAP-384**: `showAlertModal()` (`web/ui-helpers.js`) called `pushFocusStack()` **twice** per open (a merge artifact) while `closeAlertModal()` only popped once, leaking a stale stack entry that corrupted focus restoration for whatever modal closed next — this function is used ~100+ times app-wide. Fixed by removing the redundant duplicate call.
+- **New, adjacent to GAP-384**: three master-cv.js modals (Backup History, Full Data Preview, Import Review) and the onboarding/welcome modal (`session-manager.js`) called `trapFocus()`/`restoreFocus()` but never `pushFocusStack()`, so closing them popped an unrelated stack entry belonging to whatever modal opened earlier. Fixed all four.
+- **New, adjacent to GAP-385**: the keyboard-shortcuts panel (which GAP-385's new "Getting Started" button lives inside) declared `role="dialog" aria-modal="true"` and displayed "Esc: Close modals / this panel" as its own help text, but had **no** focus trap, no initial focus, and no working Escape handler at all. Fixed by wiring the same push/trap/initial-focus/restore pattern used everywhere else, plus a real Escape listener.
+- **New, adjacent to GAP-387's verification**: `web/cover-letter.js`'s `_persuasionFlagLabels` lookup had `generic_phrases` as a key, but the backend's actual `flag_type` for that check is `generic_summary` — the label lookup silently missed and fell back to displaying the raw backend string. Fixed the key.
+- **New, adjacent to GAP-383's verification**: the ATS DOCX `candidate_to_confirm` filter lacked the `isinstance(s, dict)` guard its two sibling filters (HTML/PDF, human DOCX) both have — currently unreachable in production (upstream always normalizes skills to dicts) but fixed for defense-in-depth consistency.
+- **6 new gaps filed** (GAP-390 through GAP-395) for genuine pre-existing issues surfaced during re-verification that are out of scope for a fix-verification cycle: a misleading "confirm weak-evidence skill" UI affordance that confirms nothing (GAP-390, HIGH), a publication venue-warning glyph leaking into final delivered documents (GAP-391, MEDIUM), and four LOW-priority UX/audit-trail gaps (GAP-392–395).
+
+Full JS (see cycle-105 commit) and Python suites re-verified green before commit.
 
 ## 2026-07-07 (Cycle 104) Implementation Notes
 
@@ -4760,7 +4774,8 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 ## GAP-388: "Finalise" / "Archive" / "Package Application Files" Used Interchangeably for the Same Action Across Surfaces
 
 **Priority:** LOW
-**Status:** RESOLVED 2026-07-07 (cycle 104) — standardized on "Finalise" (already the nav pill/tab label). Fixed the stale `index.html:205` source text directly (was "📦 Package Application Files") to read "✅ Finalise Application" with a matching tooltip, and removed the runtime JS string-replace patch in `app.js` that used to paper over it (`finaliseBtn.innerHTML = ...`) — the button's `click` listener registration is all that remains in `app.js` now.
+**Status:** RESOLVED 2026-07-07 (cycle 105) — cycle 104's fix only covered the nav chrome (`index.html`/`app.js`); cycle 105's independent re-verification by recruiter-ops and hiring-manager personas found "Archive"/"archived" still used repeatedly inside the working screen itself: the submit button text ("Finalise & Archive"), the intro copy ("Archive this application..."), the success banner ("Application archived!"/"Archived"), plus `download-tab.js` and `final-generate.js`'s own references to "archive the application." All fixed in cycle 105 to use "finalise"/"finalised" consistently — verified now zero remaining case-insensitive "archiv" matches in `finalise.js`'s runtime output (regression test added: `tests/js/finalise.test.js`).
+**Cycle 104 fix (partial):** standardized on "Finalise" (already the nav pill/tab label) in the chrome only — fixed the stale `index.html:205` source text directly (was "📦 Package Application Files") to read "✅ Finalise Application" with a matching tooltip, and removed the runtime JS string-replace patch in `app.js` that used to paper over it (`finaliseBtn.innerHTML = ...`) — the button's `click` listener registration is all that remains in `app.js` now.
 **Discovered:** 2026-07-07 (cycle 103) — independently flagged by hiring-manager, recruiter-ops, master-cv-curator, trust-compliance, and accessibility-specialist personas, cvUiReview committee pass (five independent reviewers converging on the same terminology finding is itself notable).
 **Description:** The same feature/action is labeled differently depending on where a user encounters it: the workflow-step pill and tab both say "Finalise" (`index.html:151,235`); the header action button's raw HTML source still says "📦 Package Application Files" (`index.html:205`) and is only patched to "Archive Application" at runtime by `app.js:159–161` (a JS string-replace over stale markup, not a source fix); the tab's own tooltip says the action will "mark the application ready to send"; screen-reader users hear all three phrasings with no surrounding visual context to reconcile them.
 **Fix:** Pick one verb ("Finalise" is already the nav/tab label and the least ambiguous) and apply it consistently: fix the stale `index.html:205` source text directly instead of runtime-patching it, and align the button label and tooltip wording to match.
@@ -4776,3 +4791,69 @@ Also fixed in the same pass: an invalid `role="note"` ARIA attribute on the new 
 **Description:** `web/finalise.js`'s `showHarvestSection()` fetches `/api/harvest/candidates` and renders a full "📥 Update Master CV Data" panel *inside* the Finalise tab immediately after a user clicks "Finalise & Archive" (`finalise.js:342,356`) — duplicating the same surface `web/harvest.js`'s dedicated `populateHarvestTab()` implements as its own top-level workflow step. This creates ambiguity about which entry point is the canonical place to update the master CV, and is the same "same feature implemented twice in two places" risk class this project's CLAUDE.md already flags for duplicate functions (GAP-146/48/43), just at the UI-surface level rather than the code level.
 **Fix:** Either endorse this as intentional progressive disclosure (finish archiving, then immediately offer to harvest improvements) and document it as such, or remove the embedded panel and rely solely on the dedicated Harvest/Update Master CV step.
 **Affected stories:** US-M3
+
+---
+
+## GAP-390: "Confirm This Skill" Affordance Is Fully Interactive but Confirms Nothing — Generation Always Excludes the Skill Regardless
+
+**Priority:** HIGH
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 105) by trust-compliance persona, independent re-verification pass of GAP-383's fix.
+**Description:** A `skill_add` rewrite flagged "⚠ Weak evidence" is tagged `candidate_to_confirm: True` (`scripts/utils/cv_orchestrator.py:1822`). The Skills Review table (`web/skills-review.js:587-593,723-731,853-857`) renders a fully clickable "✓ Include" checkbox for these rows with active/checked visual state, and the badge's own tooltip text explicitly says "Confirm this skill is genuinely demonstrated…" — clearly implying a confirm action exists. It does not: as of GAP-383's cycle-104/105 fix, all three output formats (HTML/PDF, ATS DOCX, human DOCX) now *consistently* filter out `candidate_to_confirm` skills unconditionally at generation time (`cv_orchestrator.py:217-224, 4415-4419, 5435-5436`), with no code path anywhere that ever clears the flag or reads a "user confirmed" decision. A user can click Include, see it render as active/checked, save their session, and the skill will never appear in any generated document — with no warning that their explicit action had no effect. GAP-383 made this *more* consistent (previously it silently appeared in HTML/PDF only) but did not create or surface the missing confirm mechanism itself.
+**Fix:** Either (a) implement a real confirm action — e.g. a "Confirm evidence" button that flips `candidate_to_confirm` to `False` once the user attests the skill is genuine, and thread that decision through to generation — or (b) if weak-evidence skills should never be includable regardless of user action, remove the misleading Include affordance and its "confirm this skill" tooltip copy, replacing it with a clear "excluded from generated documents" notice.
+**Affected stories:** US-C1
+
+---
+
+## GAP-391: Publication Venue-Warning Glyph Baked Into Final Delivered HTML/PDF/DOCX Output
+
+**Priority:** MEDIUM
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 105) by hiring-manager persona, independent re-verification pass of GAP-383's fix.
+**Description:** When a publication's venue/journal cannot be resolved, the internal QA marker `⚠ [venue unavailable]` is written directly into the final rendered output — `templates/cv-template.html:712-714` (HTML/PDF), `scripts/utils/cv_orchestrator.py:5150-5151` and `:5494-5498` (human DOCX) — rather than being surfaced only as an editor-side warning during Customisation/Review. A hiring manager receiving the finished resume/CV could see this internal placeholder text directly in a delivered document.
+**Fix:** Either resolve the missing venue before allowing generation to proceed (blocking, with a clear in-app warning), or omit the venue field entirely from generated output when unavailable rather than emitting a visible glyph, reserving the `⚠` marker for the in-app review UI only.
+**Affected stories:** US-M7
+
+---
+
+## GAP-392: Active-Session "Edit Notes" Button Shown Regardless of Ownership — Rejection Only Surfaces After Clicking Save
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 105) by returning-user persona, independent re-verification pass of GAP-386's fix.
+**Description:** GAP-386 (cycle 104) correctly implemented `PATCH /api/sessions/active/notes` with owner-token validation, so editing notes on a session claimed by a different tab is correctly rejected server-side (403). However, `web/session-switcher-ui.js`'s "Edit notes" icon (`:405-429`) is rendered identically for every active row regardless of whether the current tab owns that session — a user can open the notes editor for someone else's active session, type a note, click Save, and only then learn (via a toast) that the edit was rejected.
+**Fix:** Either disable/hide the "Edit notes" affordance for active rows not owned by the current tab (matching how other ownership-gated actions in the Session Switcher already behave), or show an inline "not your session" notice before the user invests effort typing a note.
+**Affected stories:** US-S5
+
+---
+
+## GAP-393: Re-Run Audit Trail Records Only Phase/Timestamp, Not the Diff Data Already Computed Client-Side
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 105) by applicant persona, full US-A12 re-review.
+**Description:** US-A12's acceptance criteria call for the audit log to record "previous clarification answers (if changed) and count of downstream items affected" on re-run. `rerun_log` (`scripts/utils/conversation_manager.py:1861-1865`) records only `phase`, `timestamp`, and a constant `'user'` marker. The richer diff (which answers changed, how many downstream items were affected) is computed client-side purely for a one-time toast message and is never sent back to the server to be persisted.
+**Fix:** Include the computed diff summary in the `POST /api/re-run-phase` (or equivalent) request body and persist it alongside the existing `rerun_log` entry fields.
+**Affected stories:** US-A12
+
+---
+
+## GAP-394: No In-Context Reminder That Customisation/Rewrite-Review Edits Are Session-Only, Not Yet Saved to Master Data
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 105) by master-cv-curator persona, re-confirmed during independent verification of GAP-384/GAP-389.
+**Description:** US-M1's second acceptance criterion calls for a clear signal, outside the Master CV tab, that in-session edits (customizations, rewrite acceptances) are scoped to the current application only and will not silently propagate to `Master_CV_Data.json` unless explicitly harvested. `web/rewrite-review.js` has no such disclaimer anywhere in its UI.
+**Fix:** Add a small persistent note or tooltip in the Customisation/Rewrite Review tabs clarifying that changes are session-scoped, with a pointer to the Update Master CV step for anything the user wants to keep permanently.
+**Affected stories:** US-M1
+
+---
+
+## GAP-395: `cover_letter_reused_from`/`reused_from_session` Use Different Session-Identifier Semantics (File Path vs. Directory)
+
+**Priority:** LOW
+**Status:** OPEN
+**Discovered:** 2026-07-07 (cycle 105) by applicant persona, independent re-verification pass of GAP-381/GAP-382's fixes.
+**Description:** GAP-381's `cover_letter_reused_from` stores a path to a `session.json` *file* (`scripts/routes/master_data_routes.py:2046`), while GAP-382's `reused_from_session` stores the session's output *directory* (`master_data_routes.py:2593`). Both work correctly within their own feature, but the two "reused from" provenance fields are not directly comparable or interchangeable — a future feature attempting to unify "this was reused from session X" display across cover letters and screening responses would need to normalize one representation to the other first.
+**Fix:** Low priority — either document the differing semantics explicitly at each field's definition, or normalize both to the same representation (e.g. always the containing directory) for future consistency.
+**Affected stories:** US-A7, US-A8

@@ -8,9 +8,14 @@
 
 # Hiring-Manager Review Status
 
-**Last Updated:** 2026-07-07 20:16 ET
+**Last Updated:** 2026-07-07 22:02 ET
 
-**Executive Summary:** This file captures the source-verified persona review snapshot separately from the story specification so sub-agents can work in parallel safely.
+**Executive Summary:** Follow-up pass focused on independently re-verifying two fixes.
+
+- **GAP-383 (weak-evidence skill filtering across formats): RESOLVED.** All three output paths — HTML/PDF (`scripts/utils/cv_orchestrator.py:217-224`), ATS DOCX (`:4415-4416`, GAP-326), and human DOCX (`:5435-5436`, GAP-342) — now filter `candidate_to_confirm` skills, and PDF is generated from the *same already-filtered HTML* the applicant previewed (`_prepare_cv_data_for_template` runs once; `generate_pdf_variants_from_html`/`generate_final_from_confirmed_html`, `:998-1130`, convert that HTML rather than re-deriving skills). No format can show a skill hidden from another.
+- **GAP-388 (Finalise/Archive/Package terminology): PARTIAL — the visible symptom was patched, the underlying inconsistency was not.** Since the last snapshot of this file, `web/index.html:205`'s action button text changed from "📦 Archive Application" to "✅ Finalise Application" (confirmed by direct read), and the nav (`:151`) and tab (`:235`) already said "Finalise." That's real progress. But the tab's *own content*, rendered by `web/finalise.js` once the user is inside it, still says "Finalise & Archive" on the primary button (`:127`, `:310`, `:350`), "Archive this application to your CV history…" in the intro copy (`:81`), and "✅ Application archived!" / "✅ Archived" on success (`:328`, `:339`). `web/download-tab.js:431` and `web/final-generate.js:142-143` independently describe the same action as "archive the application" / "confirms the package is complete." A user who only reads the nav sees one consistent word; anyone who actually uses the feature sees three ("Finalise," "Archive," "package") on the same screen. This is a still-open gap this review did not previously catch in this level of detail — see the updated Finalise/Archive section below.
+
+The rest of this review (US-M1–M7, generated materials) was re-checked against current source for anything the GAP-383/388 fixes could have disturbed; findings are otherwise consistent with the prior snapshot and retained below with original evidence.
 
 ## Application Evaluation
 
@@ -94,20 +99,31 @@ This is the most thoroughly-covered story in the codebase — effectively a full
 | 6 | Missing-venue entries flagged during Customisation, not silently rendered | ⚠ Partial | The system does **not** silently render without a venue (good) — but instead of catching this purely during Customisation, it bakes a visible `⚠ [venue unavailable]` glyph directly into the **final human-readable HTML/PDF** (`templates/cv-template.html:712-714`, `.pub-venue-warning`) and into the ATS DOCX (`" [venue unavailable]"` suffix, `cv_orchestrator.py:5150-5151`). A separate `publication_warnings` list is surfaced at the File-Review/Finalise stage (`web/download-tab.js:441-450`, "Add missing journal or conference names… before submitting"), so the applicant *is* warned before archiving — but nothing in the pipeline blocks generation or strips the glyph, so an applicant who dismisses that late-stage warning can still send a hiring manager a CV containing a visible defect marker rather than either a clean entry or an excluded one. This is arguably worse for credibility than the failure mode the story is trying to prevent. |
 | 7 | First-author visibility | ✅ | `is_first_author` detection (`cv_orchestrator.py:904-910`) rendered as a `★` "First author" mark (`templates/cv-template.html:709-711`). |
 
-### Finalise / Archive Workflow (Cycles 102–103 re-check)
-
-Specifically re-verified per the task's request, since this tab was recently made reachable for the first time.
+### Finalise / Archive Workflow (re-verified this cycle for GAP-388)
 
 | Aspect | Status | Notes / File:Line refs |
 |--------|--------|-------------------------|
-| Reachability | ✅ | `web/index.html:151` (`step-finalise` nav item) and `:235` (`tab-finalise`) exist in the normal step sequence (Interview Prep → Thank You → **Finalise** → Update Master CV). `web/app.js:156-162` wires a dedicated "📦 Archive Application" action button to `switchTab('finalise')` — no longer a dead-end/unreachable tab. |
+| Reachability | ✅ | `web/index.html:151` (`step-finalise` nav item) and `:235` (`tab-finalise`) exist in the normal step sequence. `web/app.js:156-159` wires the action button (`id="finalise-action-btn"`) to `switchTab('finalise')` — no longer a dead-end/unreachable tab. |
 | Readiness checklist | ✅ | `web/finalise.js:164-216` `_renderReadinessChecklist()` — checks CV PDF/DOCX/HTML presence, cover letter, screening Q&A, ATS validation pass/fail, layout freshness; clearly separates blocking (❌) vs. advisory (⚠) items (line 211-214). |
 | Application status tracking | ✅ | Frontend: 8-state dropdown (queued/draft/ready/sent/interview/rejected/accepted/parked), `web/finalise.js:100-112`. Backend: `POST /api/finalise` (`scripts/routes/generation_routes.py:2097-2147`) validates the same enum, persists `application_status`/`notes`/`finalised_at` to `metadata.json`, and commits the output directory to git. `GET /api/finalise-meta` (2074-2095) restores prior status/notes on tab reopen. |
 | Harvest handoff | ✅ | `showHarvestSection()` (`web/finalise.js:356-466`) loads `/api/harvest/candidates` and lets the applicant selectively write bullets/skills/summary variants back to Master CV — nothing is pre-selected. |
+| **Terminology consistency (GAP-388)** | ❌ **Still broken, one layer down** | `web/index.html` chrome now consistently says "Finalise" — nav label `:151`, tab label `:235`, and the action button text itself, which was directly re-read this cycle and now shows `<span aria-hidden="true">✅</span> Finalise Application` at `:205` (previously "📦 Archive Application" per the prior review snapshot — that part of GAP-388 genuinely got fixed). But the tab's own rendered content, `web/finalise.js`, was **not** updated to match: file header comment `:9` "Finalise & archive tab"; intro copy `:81` "Archive this application to your CV history…"; primary button label `:127` `✅ Finalise &amp; Archive`, repeated on error state `:310`/`:350`; success banner `:328` `✅ Application archived!`; post-success button text `:339` `✅ Archived`. `web/download-tab.js:431` ("you can archive the application") and `web/final-generate.js:142-143` ("archive your application" / "confirms the package is complete") independently use yet other phrasing for the same action, without ever saying "finalise" as a verb even while referencing the "Finalise" tab by name. Net: the nav says "Finalise," the button inside says "Finalise & Archive," and the result says "Archived" — three labels for one action visible within a single flow. |
 
-No functional defects found in the Finalise/Archive workflow itself; it is now a complete, reachable, and reasonably well-designed step. The only issue found is a **terminology** one — see below.
+No functional defects found in the Finalise/Archive workflow itself; it is a complete, reachable, and reasonably well-designed step. The terminology issue is real and unresolved at the tab-content level even though the nav/button-label layer was fixed.
 
 ## Generated Materials Evaluation
+
+### GAP-383 — weak-evidence skill filtering across formats (independently re-verified this cycle)
+
+Read all three filter sites directly rather than trusting the fix summary:
+
+| Output path | Status | Evidence |
+|---|---|---|
+| HTML/PDF | ✅ | `_prepare_cv_data_for_template()`, `scripts/utils/cv_orchestrator.py:217-224`: `html_skills = [s for s in selected_content.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]`, feeding `_organize_skills_by_category()` (`:225`). `render_html_preview()` (`:927-996`) calls this once; `generate_pdf_variants_from_html()` / `generate_final_from_confirmed_html()` (`:998-1130`) then convert the *already-rendered HTML file* to PDF rather than re-deriving skills from `selected_content` — so HTML and PDF structurally cannot diverge from each other. |
+| ATS DOCX (GAP-326) | ✅ | `_generate_ats_docx()`, `:4415-4416`: `ats_skills = [s for s in content['skills'] if not s.get('candidate_to_confirm')]`. Called with raw `selected_content` (`:2210-2214`, i.e. before the HTML filter runs) — applies the same rule independently against the same source data. |
+| Human DOCX (GAP-342) | ✅ | `_generate_human_docx()`, `:5435-5436`: `skills_list = [s for s in cat.get('skills', []) if not (isinstance(s, dict) and s.get('candidate_to_confirm'))]`. Called with `cv_data` (`:2244-2249`) — the same object already produced by the HTML-path filter above — so this is filtering data that has already had `candidate_to_confirm` skills removed, with its own filter as a redundant second guard. Confirms Human DOCX cannot show a skill hidden from HTML/PDF, or vice versa. |
+
+**Conclusion: GAP-383 is RESOLVED.** A hiring manager who receives the human DOCX, opens the PDF, or was shown the HTML preview during the applicant's review will see the identical accepted-skill set — no format-specific leakage of an unconfirmed (`candidate_to_confirm: true`) skill remains in any of the three formats.
 
 The generated human-readable CV/PDF template (`templates/cv-template.html`) is well-executed relative to the story's visual and structural requirements: two-column layout with a clearly differentiated sidebar, serif/sans-serif contrast, action-verb/persuasion quality-checked bullets, relevance-sorted content, and a genuinely strong cover-letter quality gate (US-M6). The most material risks for the actual document a hiring manager receives are:
 
@@ -120,13 +136,15 @@ The generated human-readable CV/PDF template (`templates/cv-template.html`) is w
 - **Layout-digest/template contract drift (engineering-facing, but undermines US-M1/US-M4 reliability):** `scripts/utils/layout_digest.py` still targets `#page-one`/`#page-two`/`#page-three` selectors from a per-page template structure that was replaced by a single continuous `#cv-body` flow during the "Issue #70" refactor. Both files carry an explicit "update this when the template changes" contract comment that was not honoured. Propose a story/engineering acceptance criterion: *the layout-digest heuristic's selectors must be exercised by an automated test against the live template so schema drift fails CI rather than silently degrading to a permanent low-confidence fallback.*
 - **CV summary genericness check:** Propose extending `_validate_summary()` (or a new check) with the same filler/generic-phrase list already used for cover letters (`web/cover-letter.js:739-747`), so US-M1's named failure mode ("seasoned professional with diverse experience") is caught for the CV, not just the cover letter.
 - **Missing-venue publications should gate generation, not decorate it:** Propose changing behaviour so a publication with `venue_warning` is either (a) excluded from the final render by default until the applicant fixes it, or (b) blocks Finalise/Archive outright, rather than rendering a visible warning glyph into the candidate-facing HTML/PDF/DOCX.
-- **Finalise/Archive terminology inconsistency (new finding, not previously covered by any story):** the same feature is called "Finalise" (nav step label `web/index.html:151`, tab id, and the tab's own `<h1>✅ Finalise Application`, `web/finalise.js:79`), "Archive" (action button `📦 Archive Application`, `web/app.js:159`, and the tab's intro copy "Archive this application to your CV history…", `web/finalise.js:81-83`), and "mark the application ready to send and record its status" (nav tooltip, `web/index.html:151`) — three overlapping framings for one step. Recommend picking a single primary term (suggest "Finalise & Archive," which the button text already partially uses) and using it consistently in the nav label, tab header, and button.
+- **Finalise/Archive terminology inconsistency — GAP-388, PARTIAL fix, re-verified this cycle:** the nav/action-button layer (`web/index.html:151,205,235`) was updated since the prior snapshot and now consistently reads "Finalise." However, the tab's own rendered content was not touched to match: `web/finalise.js` still headers itself "Finalise & archive tab" (`:9`), tells the user to "Archive this application to your CV history…" (`:81`), labels its button "✅ Finalise & Archive" (`:127`, `:310`, `:350`), and reports success as "✅ Application archived!" / "✅ Archived" (`:328`, `:339`); `web/download-tab.js:431` and `web/final-generate.js:142-143` separately use "archive the application" / "package is complete" without ever saying "finalise." Recommend picking a single primary term and propagating it through `finalise.js`, `download-tab.js`, and `final-generate.js`, not just `index.html`.
 - **Skills-category relevance ordering is not job-aware by default** (US-M3.2): consider adding an LLM/keyword-driven default ordering (mirroring the achievement-bullet relevance sort already implemented in `_ach_relevance()`, `cv_orchestrator.py:3724-3734`) so category order matches the specific job posting out of the box, with manual drag-reorder remaining available as an override.
 
 **Reviewed against:** web/index.html, web/app.js, web/ui-core.js, web/state-manager.js, web/styles.css, scripts/web_app.py, scripts/utils/conversation_manager.py, scripts/utils/cv_orchestrator.py, plus supporting files: templates/cv-template.html, scripts/utils/layout_digest.py, scripts/routes/generation_routes.py, web/finalise.js, web/download-tab.js, web/cover-letter.js, web/skills-review.js, web/publications-review.js.
 
 | Story | ✅ Pass | ⚠ Partial | ❌ Fail | 🔲 Not Impl | — N/A |
 |-------|---------|-----------|--------|------------|-------|
+| GAP-383 (re-verify) | 3 | 0 | 0 | 0 | 0 |
+| GAP-388 (re-verify) | 2 | 0 | 1 | 0 | 0 |
 | US-M1 | 2 | 2 | 0 | 1 | 0 |
 | US-M2 | 6 | 0 | 0 | 0 | 0 |
 | US-M3 | 2 | 1 | 0 | 1 | 0 |
@@ -134,9 +152,11 @@ The generated human-readable CV/PDF template (`templates/cv-template.html`) is w
 | US-M5 | 7 | 1 | 0 | 1 | 0 |
 | US-M6 | 7 | 0 | 0 | 0 | 0 |
 | US-M7 | 6 | 1 | 0 | 0 | 0 |
-| Finalise/Archive re-check | 3 | 0 | 0 | 0 | 0 |
+| Finalise/Archive re-check | 3 | 0 | 1 | 0 | 0 |
 
 **Key evidence references:**
+- GAP-383: HTML/PDF filter → `scripts/utils/cv_orchestrator.py:217-224`; ATS DOCX filter → `:4415-4416`; Human DOCX filter → `:5435-5436`; PDF derives from the same filtered HTML → `:998-1130`.
+- GAP-388: nav/button layer fixed → `web/index.html:151,205,235`; tab-content NOT fixed → `web/finalise.js:9,81,127,310,328,339,350`; `web/download-tab.js:431`; `web/final-generate.js:142-143`.
 - US-M1: Page-1 overflow estimator broken → `scripts/utils/layout_digest.py:62-72` selectors vs. `templates/cv-template.html:66-72` structure (no `#page-one`/`#page-two`/`#page-three` exist).
 - US-M1: Summary role-specificity checks → `scripts/utils/cv_orchestrator.py:4072-4140` `_validate_summary()`.
 - US-M2: Action-verb/persuasion checks → `scripts/utils/cv_orchestrator.py:4655-4970` `check_persuasion()`.
@@ -145,7 +165,7 @@ The generated human-readable CV/PDF template (`templates/cv-template.html`) is w
 - US-M5: PDF font-embedding check → `scripts/utils/cv_orchestrator.py:6271-6311`.
 - US-M6: Cover-letter quality gate (word count, CTA, paragraph-1 role context) → `web/cover-letter.js:635-736`.
 - US-M7: Venue-warning glyph baked into final output → `templates/cv-template.html:712-714`, `scripts/utils/cv_orchestrator.py:5150-5151`.
-- Finalise/Archive: reachability + status tracking → `web/index.html:151,235`, `web/app.js:156-162`, `web/finalise.js:100-216`, `scripts/routes/generation_routes.py:2074-2147`.
+- Finalise/Archive: reachability + status tracking → `web/index.html:151,235`, `web/app.js:156-159`, `web/finalise.js:100-216`, `scripts/routes/generation_routes.py:2074-2147`.
 
 **Evidence standard:**
 - Every conclusion should be supported by evidence sufficient for another reviewer to verify it independently.

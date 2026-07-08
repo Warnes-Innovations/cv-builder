@@ -2666,6 +2666,7 @@ async function openBackupHistoryModal() {
       <div id="backup-list-body" style="font-size:0.9em;">Loading…</div>
     </div>`;
   document.body.appendChild(overlay);
+  if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
   if (typeof trapFocus === 'function') trapFocus('backup-history-overlay');
   const close = () => { overlay.remove(); if (typeof restoreFocus === 'function') restoreFocus(); };
   document.getElementById('backup-modal-close').addEventListener('click', close);
@@ -2841,6 +2842,7 @@ async function openFullDataPreviewModal() {
       <pre id="master-cv-preview-body" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;font-size:0.8em;line-height:1.5;white-space:pre-wrap;word-break:break-word;">Loading…</pre>
     </div>`;
   document.body.appendChild(overlay);
+  if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
   if (typeof trapFocus === 'function') trapFocus('master-cv-preview-overlay');
   const close = () => { overlay.remove(); if (typeof restoreFocus === 'function') restoreFocus(); };
   document.getElementById('master-cv-preview-close').addEventListener('click', close);
@@ -2953,6 +2955,7 @@ function _showMasterCvImportPreviewModal(sections) {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  if (typeof pushFocusStack === 'function') pushFocusStack(document.activeElement);
   if (typeof trapFocus === 'function') trapFocus('master-cv-import-overlay');
   const close = () => { overlay.remove(); _masterCvImportData = null; if (typeof restoreFocus === 'function') restoreFocus(); };
   document.getElementById('master-cv-import-cancel').addEventListener('click', close);

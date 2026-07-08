@@ -428,7 +428,7 @@ async function populateDownloadTab(cvData) {
   const _readinessChip = `<span style="display:inline-block;font-size:0.82em;font-weight:600;padding:3px 10px;border-radius:12px;background:${_chipBg};color:${_chipColor};border:1px solid ${_chipBorder};margin-bottom:14px;">Required files: ${_reqCount}/3 ${_reqCount === 3 ? '✅' : '⚠'}${_atsChip}</span>`;
 
   let html = `<h1>⬇️ File Review <span style="font-weight:400;">${_readinessChip}</span></h1>`;
-  html += '<p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">✅ <em>This is the <strong>completeness check</strong> step — ATS validation runs here and you can archive the application. To download files immediately after generation, use the <strong>Generated Files</strong> tab.</em></p>';
+  html += '<p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">✅ <em>This is the <strong>completeness check</strong> step — ATS validation runs here and you can finalise the application. To download files immediately after generation, use the <strong>Generated Files</strong> tab.</em></p>';
   html += _renderValidationSummary(checks, summary, pageCount, atsError);
 
   const summaryWarnings = (cvData.metadata?.summary_warnings || []);
