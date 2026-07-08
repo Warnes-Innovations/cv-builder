@@ -327,6 +327,38 @@ class TestScreeningSave(unittest.TestCase):
             self.assertEqual(len(lib), 2)
             self.assertEqual(lib[0]['question'], 'Describe a leadership challenge.')
 
+    def test_save_persists_reused_from_session_in_metadata(self):
+        """GAP-382: reused_from_session must pass through into metadata.json
+        screening_responses unchanged, since the client-supplied provenance
+        is the only place this information exists."""
+        with tempfile.TemporaryDirectory() as td:
+            out_dir     = Path(td)
+            master_path = Path(td) / 'Master_CV_Data.json'
+            master_path.write_text(json.dumps(_MASTER_DATA))
+            lib_path    = Path(td) / 'response_library.json'
+            lib_path.write_text(json.dumps([]))
+            cfg = _make_mock_cfg(master_cv_path=str(master_path))
+
+            responses = [
+                {**self._RESPONSES[0], 'reused_from_session': '/tmp/cv_output/2025-06-01/session.json'},
+                {**self._RESPONSES[1], 'reused_from_session': None},
+            ]
+
+            app, conv, _, sid, stack = _make_app(output_dir=str(out_dir))
+
+            with stack, app.test_client() as client, \
+                 patch('utils.config.get_config', return_value=cfg):
+                res = client.post('/api/screening/save',
+                                  json={'responses': responses, 'session_id': sid})
+
+            self.assertEqual(res.status_code, 200)
+            meta = json.loads((out_dir / 'metadata.json').read_text())
+            self.assertEqual(
+                meta['screening_responses'][0]['reused_from_session'],
+                '/tmp/cv_output/2025-06-01/session.json',
+            )
+            self.assertIsNone(meta['screening_responses'][1]['reused_from_session'])
+
     def test_save_returns_400_when_no_responses(self):
         app, _, _, sid, stack = _make_app()
         with stack, app.test_client() as client:

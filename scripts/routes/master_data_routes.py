@@ -2074,7 +2074,8 @@ def create_blueprint(deps):
             company_address = (body.get('company_address') or '').strip()
             highlight       = (body.get('highlight') or '').strip()
             company_context = (body.get('company_context') or '').strip()
-            reuse_body      = (body.get('reuse_body') or '').strip()
+            reuse_body         = (body.get('reuse_body') or '').strip()
+            reuse_session_path = (body.get('reuse_session_path') or '').strip()
 
             job_analysis  = conversation.state.get('job_analysis') or {}
             master        = orchestrator.master_data or {}
@@ -2204,6 +2205,10 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
                 'company_address': company_address, 'highlight': highlight,
                 'company_context': company_context,
             }
+            # GAP-381: record which prior session's cover letter (if any) was
+            # used as the reuse basis, so downstream provenance display has
+            # a real value instead of the permanently-null placeholder.
+            conversation.state['cover_letter_reused_from'] = reuse_session_path or None
 
             # Run persuasion quality checks on the generated body (GAP-339, GAP-344)
             body_text = response.strip()

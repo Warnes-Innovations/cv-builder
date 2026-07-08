@@ -354,11 +354,18 @@ async function finaliseApplication() {
 // ── Show harvest section ──────────────────────────────────────────────────────
 
 async function showHarvestSection() {
+  // GAP-389: this used to duplicate web/harvest.js's fetch-candidates-and-
+  // render-table flow in full (its own checkboxes, its own Apply button) —
+  // the same "one feature, two independent implementations" risk this
+  // project's CLAUDE.md flags for duplicate functions (GAP-146/48/43), just
+  // at the UI-surface level rather than the code level. It now only surfaces
+  // the count and links to the single canonical implementation in the
+  // dedicated Update Master CV step instead of re-rendering the table here.
   const section = document.getElementById('harvest-section');
   section.style.display = 'block';
   section.innerHTML = `
     <h2 style="margin-top:0;">📥 Update Master CV Data</h2>
-    <p style="color:#6b7280;margin-bottom:16px;">Loading improvement candidates from this session…</p>
+    <p style="color:#6b7280;margin-bottom:16px;">Checking for improvements from this session…</p>
     <div style="text-align:center;padding:24px;"><div class="loading-spinner"></div></div>`;
 
   try {
@@ -375,9 +382,9 @@ async function showHarvestSection() {
       return;
     }
 
-    const candidates = data.candidates || [];
+    const count = (data.candidates || []).length;
 
-    if (candidates.length === 0) {
+    if (count === 0) {
       section.innerHTML = `
         <h2 style="margin-top:0;">📥 Update Master CV Data</h2>
         <div class="empty-state" style="padding:24px 0;">
@@ -388,73 +395,15 @@ async function showHarvestSection() {
       return;
     }
 
-    const typeIcons = {
-      improved_bullet:    '✏️',
-      new_skill:          '🛠',
-      summary_variant:    '📝',
-      skill_gap_confirmed:'✅',
-    };
-
-    let html = `
+    section.innerHTML = `
       <h2 style="margin-top:0;">📥 Update Master CV Data</h2>
       <p style="color:#6b7280;margin-bottom:16px;">
-        Select improvements from this session to write back to <code>Master_CV_Data.json</code>.
-        No items are pre-selected — choose only what you want to keep.
+        ${count} improvement${count === 1 ? '' : 's'} from this session ${count === 1 ? 'is' : 'are'}
+        available to write back to your Master CV.
       </p>
-      <table class="review-table" style="margin-bottom:16px;">
-        <thead>
-          <tr>
-            <th style="width:36px;text-align:center;">Include</th>
-            <th>Type</th>
-            <th>Change</th>
-            <th>Rationale</th>
-          </tr>
-        </thead>
-        <tbody>`;
-
-    for (const c of candidates) {
-      const icon     = typeIcons[c.type] || '📌';
-      const original = c.original && c.original !== '(not in master data)'
-        ? `<div style="font-size:0.82em;color:#6b7280;margin-top:4px;margin-bottom:2px;
-               text-decoration:line-through;">${escapeHtml(c.original)}</div>`
-        : '';
-      html += `
-        <tr id="harvest-row-${escapeHtml(c.id)}">
-          <td style="text-align:center;">
-            <input type="checkbox" id="harvest-chk-${escapeHtml(c.id)}"
-              data-harvest-id="${escapeHtml(c.id)}" style="width:16px;height:16px;cursor:pointer;">
-          </td>
-          <td>
-            <span title="${escapeHtml(c.type)}">${icon}</span>
-            <span style="font-size:0.85em;color:#475569;margin-left:4px;">${escapeHtml(c.type.replace(/_/g,' '))}</span>
-          </td>
-          <td>
-            <div style="font-weight:500;">${escapeHtml(c.label)}</div>
-            ${original}
-            <div style="font-size:0.88em;color:#1e293b;margin-top:2px;">${escapeHtml(c.proposed)}</div>
-          </td>
-          <td style="font-size:0.85em;color:#64748b;">${escapeHtml(c.rationale)}</td>
-        </tr>`;
-    }
-
-    html += `
-        </tbody>
-      </table>
-      <div style="display:flex;gap:12px;align-items:center;">
-        <button onclick="applyHarvestSelections()"
-          style="background:#0ea5e9;color:#fff;border:none;border-radius:6px;
-                 padding:10px 24px;font-size:1em;font-weight:600;cursor:pointer;" id="harvest-apply-btn">
-          📥 Apply Selected Updates
-        </button>
-        <button onclick="document.getElementById('harvest-section').style.display='none'"
-          style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:6px;
-                 padding:10px 20px;font-size:0.95em;cursor:pointer;">
-          Skip
-        </button>
-      </div>
-      <div id="harvest-result" style="margin-top:16px;"></div>`;
-
-    section.innerHTML = html;
+      <button class="action-btn primary" onclick="switchTab('harvest')">
+        🌾 Review &amp; Update Master CV →
+      </button>`;
   } catch (err) {
     section.innerHTML = `
       <h2 style="margin-top:0;">📥 Update Master CV Data</h2>

@@ -214,8 +214,16 @@ class CVOrchestrator:
                 _show_proficiency = raw_show_prof
             elif isinstance(raw_show_prof, str):
                 _show_proficiency = raw_show_prof.strip().lower() not in {'false', '0', 'no', 'never'}
+        # Exclude weak-evidence (candidate_to_confirm) skills from HTML/PDF,
+        # matching the ATS DOCX (GAP-326) and human DOCX (GAP-342) filters —
+        # otherwise a skill excluded from the Word/ATS outputs would still
+        # silently appear in the HTML/PDF preview the user reviewed (GAP-383).
+        html_skills = [
+            s for s in selected_content.get('skills', [])
+            if not (isinstance(s, dict) and s.get('candidate_to_confirm'))
+        ]
         skills_by_category = self._organize_skills_by_category(
-            selected_content.get('skills', []),
+            html_skills,
             template_variant,
             selected_content.get('skill_category_order', []),
             show_proficiency=_show_proficiency,

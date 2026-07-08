@@ -29,6 +29,7 @@ import {
   moveSuggestedAchievementRow,
   deleteSuggestedAchievement,
   saveAchievementEditsAndContinue,
+  _openRewriteModal,
 } from '../../web/achievements-review.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────
@@ -51,6 +52,9 @@ beforeEach(() => {
   vi.stubGlobal('renderAchievementEditorRows', vi.fn())
   vi.stubGlobal('confirmDialog', vi.fn(async () => true))
   vi.stubGlobal('closeAlertModal', vi.fn())
+  vi.stubGlobal('setInitialFocus', vi.fn())
+  vi.stubGlobal('trapFocus', vi.fn())
+  vi.stubGlobal('pushFocusStack', vi.fn())
   // CSS.escape may not be available or reliable in jsdom — always stub
   vi.stubGlobal('CSS', { escape: s => String(s) })
 
@@ -671,5 +675,23 @@ describe('buildAchievementsReviewTable', () => {
     expect(html).not.toContain('Loading achievements')
     // An error message must be shown instead
     expect(html).toContain('Error rendering achievements')
+  })
+})
+
+// ── _openRewriteModal — focus-restore stack (GAP-384) ────────────────────
+
+describe('_openRewriteModal focus-restore (GAP-384)', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="alert-modal-overlay" style="display:none;">
+        <h2 id="alert-modal-title"></h2>
+        <div id="alert-modal-message"></div>
+      </div>
+    `
+  })
+
+  it('pushes the triggering element onto the shared focus stack instead of a dead variable', () => {
+    _openRewriteModal('Original text', '', null, {})
+    expect(globalThis.pushFocusStack).toHaveBeenCalledTimes(1)
   })
 })

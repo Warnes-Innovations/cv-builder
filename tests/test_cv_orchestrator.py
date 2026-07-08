@@ -489,6 +489,32 @@ class TestPrepareCvDataForTemplate(unittest.TestCase):
         )
         self.assertIsInstance(result["skills_by_category"], list)
 
+    def test_candidate_to_confirm_skills_excluded_from_html_pdf(self):
+        """GAP-383: weak-evidence skills must be excluded from HTML/PDF too,
+        matching the existing ATS DOCX (GAP-326) and human DOCX (GAP-342)
+        filters — otherwise a skill dropped from Word/ATS outputs would
+        still silently appear in the HTML/PDF the user reviewed."""
+        sel = self._selected(
+            {
+                "skills": [
+                    {"name": "Python", "category": "Programming"},
+                    {
+                        "name": "Quantum Computing",
+                        "category": "Programming",
+                        "candidate_to_confirm": True,
+                    },
+                ]
+            }
+        )
+        result = self.orc._prepare_cv_data_for_template(sel, self._job())
+        all_names = {
+            skill.get("name")
+            for category in result["skills_by_category"]
+            for skill in category.get("skills", [])
+        }
+        self.assertIn("Python", all_names)
+        self.assertNotIn("Quantum Computing", all_names)
+
     def test_template_metadata_has_required_keys(self):
         result = self.orc._prepare_cv_data_for_template(
             self._selected(), self._job()

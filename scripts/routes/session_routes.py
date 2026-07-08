@@ -757,6 +757,41 @@ def create_blueprint(deps):
             logger.exception("Failed to update session metadata")
             return jsonify({"error": "Failed to update session metadata."}), 500
 
+    @bp.route("/api/sessions/active/notes", methods=["PATCH"])
+    def sessions_patch_active_notes():
+        """Update the notes field for the current *active* (in-memory, not
+        yet saved) session's metadata.json sidecar.
+
+        GAP-386: /api/sessions/metadata (above) only works for saved sessions
+        addressed by file path — an in-progress session has no such path yet,
+        so it had no way to record a note at all until this endpoint existed.
+        """
+        entry = _get_session()
+        _validate_owner(entry)
+        data = request.get_json(silent=True) or {}
+        if "notes" not in data:
+            return jsonify({"error": "Missing notes"}), 400
+        new_notes = str(data.get("notes") or "")[:2000]
+
+        session_dir = getattr(entry.manager, "session_dir", None)
+        if not session_dir:
+            return jsonify({"error": "Session has no storage directory yet."}), 400
+
+        metadata_file = Path(session_dir) / "metadata.json"
+        try:
+            meta = {}
+            if metadata_file.exists():
+                meta = _load_json_guarded(metadata_file) or {}
+            meta["notes"] = new_notes
+            meta["metadata_updated"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            metadata_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            return jsonify({"ok": True, "notes": new_notes})
+        except Exception:
+            logger.exception("Failed to update active session notes")
+            return jsonify({"error": "Failed to update session notes."}), 500
+
     @bp.get("/api/sessions/active")
     def sessions_active():
         """Return a list of all active in-memory sessions."""

@@ -202,6 +202,30 @@ describe('saveScreeningResponses', () => {
     }))
   })
 
+  it('sends reused_from_session: null when the prior match was not used (GAP-382)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true, count: 1, filename: 'screening_2026.json' }),
+    })
+    await saveScreeningResponses()
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(body.responses[0].reused_from_session).toBeNull()
+  })
+
+  it('sends the prior session path in reused_from_session when the prior match was accepted (GAP-382)', async () => {
+    _screeningState[0] = {
+      responseText: 'I lead by example…',
+      format: 'star',
+      usePrior: true,
+      priorSessionPath: '/tmp/cv_output/2025-06-01/session.json',
+    }
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true, count: 1, filename: 'screening_2026.json' }),
+    })
+    await saveScreeningResponses()
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body)
+    expect(body.responses[0].reused_from_session).toBe('/tmp/cv_output/2025-06-01/session.json')
+  })
+
   it('shows success alert with count and filename', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true, json: async () => ({ ok: true, count: 1, filename: 'screening_2026.json' }),
