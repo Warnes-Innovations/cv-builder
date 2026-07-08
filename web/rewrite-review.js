@@ -288,6 +288,9 @@ function renderRewritePanel(rewrites, warnings = []) {
     ? 'Review each suggested text improvement. Accept, edit, or reject all suggestions before proceeding to spell check.'
     : 'No text improvements were suggested for this CV. Continue when you are ready to move to spell check.'}
       </p>
+      <p style="font-size:0.83em;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0;">
+        💡 <em>Decisions here apply to <strong>this application only</strong> — your saved Master CV data is unchanged. To keep a rewrite permanently, use the <strong>Update Master CV</strong> step after finalising.</em>
+      </p>
       <div class="rewrite-tally-bar" id="rewrite-tally" ${hasRewrites ? '' : 'style="display:none"'}>
         <span class="tally-accepted">✓ Accepted: <strong id="tally-accepted">0</strong></span>
         <span class="tally-rejected">✗ Rejected: <strong id="tally-rejected">0</strong></span>

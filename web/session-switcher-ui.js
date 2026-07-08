@@ -425,8 +425,13 @@ function _renderSessionTableRow(row) {
     actionHtml +=
       `<button data-sm-action="edit-status" data-sm-path="${escapeHtml(row.path || '')}" data-sm-idx="${row.idx}" class="sm-btn sm-btn-icon" title="Update application status" aria-label="Update application status"><i class="fa-solid fa-tag" aria-hidden="true"></i></button>`;
   }
-  actionHtml +=
-    `<button data-sm-action="edit-notes" data-sm-notes-key="${notesKey}" class="sm-btn sm-btn-icon" title="Edit notes" aria-label="Edit notes"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i></button>`;
+  // GAP-392: an active row owned by another tab would 403 on save — disable
+  // the affordance up front instead of letting the user type a note and only
+  // finding out it was rejected after clicking Save.
+  const notesOwnedByOther = row.type === 'active' && row.ownership?.label === 'Owned by another tab';
+  actionHtml += notesOwnedByOther
+    ? `<button class="sm-btn sm-btn-icon" disabled title="Owned by another tab — notes cannot be edited here" aria-label="Edit notes (unavailable — owned by another tab)"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i></button>`
+    : `<button data-sm-action="edit-notes" data-sm-notes-key="${notesKey}" class="sm-btn sm-btn-icon" title="Edit notes" aria-label="Edit notes"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i></button>`;
 
   const atsScoreLabel = row.atsScore != null
     ? (() => {

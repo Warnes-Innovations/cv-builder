@@ -280,6 +280,36 @@ class TestReRunPhaseNewSteps(unittest.TestCase):
         self.assertFalse(result['ok'])
         self.assertIn('error', result)
 
+    def test_record_rerun_diff_attaches_changed_total_to_matching_entry(self):
+        """GAP-393: the client-computed diff must be persisted onto the
+        rerun_log entry the corresponding re-run just created."""
+        self.manager.re_run_phase('spell')
+
+        result = self.manager.record_rerun_diff('spell', changed=3, total=8)
+
+        self.assertTrue(result['ok'])
+        entry = self.manager.state['rerun_log'][-1]
+        self.assertEqual(entry['changed'], 3)
+        self.assertEqual(entry['total'], 8)
+
+    def test_record_rerun_diff_does_not_overwrite_an_already_recorded_entry(self):
+        """A second diff report for the same phase should attach to the next
+        pending (undiffed) entry, not silently overwrite the first one."""
+        self.manager.re_run_phase('spell')
+        self.manager.record_rerun_diff('spell', changed=1, total=5)
+        self.manager.re_run_phase('spell')
+
+        self.manager.record_rerun_diff('spell', changed=2, total=5)
+
+        first, second = self.manager.state['rerun_log']
+        self.assertEqual(first['changed'], 1)
+        self.assertEqual(second['changed'], 2)
+
+    def test_record_rerun_diff_returns_error_when_no_matching_entry(self):
+        result = self.manager.record_rerun_diff('layout', changed=1, total=1)
+        self.assertFalse(result['ok'])
+        self.assertIn('error', result)
+
 
 class TestConfirmedIntakeSessionRename(unittest.TestCase):
 
@@ -590,6 +620,53 @@ class TestPriorClarificationsEndpoint(unittest.TestCase):
                 self.assertTrue(m.get('answers'))
         else:
             self.assertFalse(data['found'])
+
+
+# ---------------------------------------------------------------------------
+# POST /api/re-run-phase/audit-diff — integration tests (GAP-393)
+# ---------------------------------------------------------------------------
+
+class TestReRunPhaseAuditDiffEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.app, self.session_id, self._stack = _make_app_client(self.tmp_path)
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        self._stack.close()
+        self.tmp.cleanup()
+
+    def _qs(self):
+        return {'session_id': self.session_id}
+
+    def test_attaches_diff_to_the_rerun_log_entry_just_created(self):
+        rerun_res = self.client.post(
+            '/api/re-run-phase', query_string=self._qs(), json={'phase': 'spell'},
+        )
+        self.assertEqual(rerun_res.status_code, 200)
+
+        diff_res = self.client.post(
+            '/api/re-run-phase/audit-diff', query_string=self._qs(),
+            json={'phase': 'spell', 'changed': 2, 'total': 6},
+        )
+        self.assertEqual(diff_res.status_code, 200)
+        self.assertTrue(diff_res.get_json()['ok'])
+
+    def test_returns_400_when_fields_missing(self):
+        res = self.client.post(
+            '/api/re-run-phase/audit-diff', query_string=self._qs(),
+            json={'phase': 'spell'},
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_returns_404_when_no_pending_rerun_log_entry(self):
+        res = self.client.post(
+            '/api/re-run-phase/audit-diff', query_string=self._qs(),
+            json={'phase': 'spell', 'changed': 1, 'total': 1},
+        )
+        self.assertEqual(res.status_code, 404)
 
 
 if __name__ == '__main__':

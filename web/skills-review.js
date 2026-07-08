@@ -724,14 +724,21 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
         ? '<span title="Added for this session only" style="margin-left:6px;font-size:10px;color:#0f766e;border:1px solid #0f766e;border-radius:3px;padding:1px 5px;cursor:help;">Session only</span>'
         : '<span title="AI suggested — not yet in CV profile" style="margin-left:6px;font-size:10px;color:#dc7900;border:1px solid #dc7900;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Not in CV profile</span>')
       : '';
+    // GAP-390: this badge/note used to imply an Include click "confirms" a
+    // weak-evidence skill — no such mechanism exists anywhere in the app;
+    // candidate_to_confirm skills are unconditionally excluded from every
+    // generated format regardless of the row's Include/Omit state. The
+    // copy below states that plainly instead of implying a working action.
     const _evidenceText = isCandidateToConfirm && typeof skill === 'object' ? String(skill.evidence || '').trim() : '';
-    const _evidenceFallback = 'Confirm this skill is genuinely demonstrated in your experience before including it.';
-    const _evidenceTip = _evidenceText ? `Weak evidence — ${_evidenceText}` : `Weak evidence — ${_evidenceFallback}`;
+    const _evidenceTip = 'Weak evidence — this skill will not appear in any generated document until stronger evidence is added.';
     const candidateBadge = isCandidateToConfirm
-      ? `<span title="${escapeHtml(_evidenceTip)}" aria-label="${escapeHtml(_evidenceTip)}" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ ${_evidenceText ? 'Weak evidence' : 'Verify evidence'}</span>`
+      ? `<span title="${escapeHtml(_evidenceTip)}" aria-label="${escapeHtml(_evidenceTip)}" style="margin-left:6px;font-size:10px;color:#9f1239;border:1px solid #9f1239;border-radius:3px;padding:1px 5px;cursor:help;">⚠ Excluded — weak evidence</span>`
       : '';
-    const evidenceNote = isCandidateToConfirm && _evidenceText
-      ? `<small style="display:block;margin-top:3px;font-size:0.78em;color:#9f1239;">${escapeHtml(_evidenceText)}</small>`
+    const evidenceNote = isCandidateToConfirm
+      ? `<small style="display:block;margin-top:3px;font-size:0.78em;color:#9f1239;">Not included in generated documents (weak evidence)${_evidenceText ? `: ${escapeHtml(_evidenceText)}` : ''}</small>`
+      : '';
+    const _weakEvidenceTitleSuffix = isCandidateToConfirm
+      ? ' — still excluded from generated documents (weak evidence)'
       : '';
     const rerunNewBadge = newRecommendedSkills.has(skillName)
       ? '<span class="rw-change-badge rw-change-new" aria-label="New recommendation since previous run">🆕 New</span>'
@@ -852,9 +859,9 @@ function _renderSkillsTable(container, recommendedSet, data, hardSkillSet, softS
           /><span class="derived-years-hint" data-skill="${skillNameEsc}" title="Estimated years derived from matched experience entries" style="display:inline-block;margin-top:4px;font-size:0.8em;color:#6b7280;">${escapeHtml(yearsHint)}</span>` : '<span style="color:#9ca3af;">—</span>'}
         </td>
         <td class="action-btns" style="white-space:nowrap;">
-          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    aria-pressed="${defaultAction === 'emphasize'}"    title="Emphasize — feature prominently" style="color:#10b981;">➕</button>
-          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      aria-pressed="${defaultAction === 'include'}"      title="Include — standard listing">✓</button>
-          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" aria-pressed="${defaultAction === 'de-emphasize'}" title="De-emphasize — brief mention"    style="color:#f59e0b;">➖</button>
+          <button class="icon-btn ${defaultAction === 'emphasize'    ? 'active' : ''}" data-action="emphasize"    aria-label="Emphasize ${skillNameEsc}"    aria-pressed="${defaultAction === 'emphasize'}"    title="Emphasize — feature prominently${_weakEvidenceTitleSuffix}" style="color:#10b981;">➕</button>
+          <button class="icon-btn ${defaultAction === 'include'      ? 'active' : ''}" data-action="include"      aria-label="Include ${skillNameEsc}"      aria-pressed="${defaultAction === 'include'}"      title="Include — standard listing${_weakEvidenceTitleSuffix}">✓</button>
+          <button class="icon-btn ${defaultAction === 'de-emphasize' ? 'active' : ''}" data-action="de-emphasize" aria-label="De-emphasize ${skillNameEsc}" aria-pressed="${defaultAction === 'de-emphasize'}" title="De-emphasize — brief mention${_weakEvidenceTitleSuffix}"    style="color:#f59e0b;">➖</button>
           <button class="icon-btn ${defaultAction === 'exclude'      ? 'active' : ''}" data-action="exclude"      aria-label="Exclude ${skillNameEsc}"      aria-pressed="${defaultAction === 'exclude'}"      title="Exclude — omit from CV"          style="color:#ef4444;">${eyeSlashIcon()}</button>
           <button class="icon-btn" data-action="row-up"   aria-label="Move ${skillNameEsc} earlier" title="Move up"   ${isFirst ? 'disabled' : ''}>↑</button>
           <button class="icon-btn" data-action="row-down" aria-label="Move ${skillNameEsc} later"   title="Move down" ${isLast  ? 'disabled' : ''}>↓</button>

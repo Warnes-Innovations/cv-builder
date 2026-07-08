@@ -474,6 +474,18 @@ describe('active-session notes editing (GAP-386)', () => {
     await openSessionsModal();
     const btn = document.querySelector('[data-sm-action="edit-notes"][data-sm-row-type], [data-sm-action="edit-notes"]');
     expect(btn).not.toBeNull();
+  })
+
+  it('disables Edit notes for an active row owned by another tab, instead of letting Save fail after the fact (GAP-392)', async () => {
+    vi.stubGlobal('getActiveSessionOwnershipMeta', () => ({
+      isCurrent: false, className: 'session-status-owned', label: 'Owned by another tab',
+    }))
+    globalThis.fetch = mockSessionsFetch()
+    await openSessionsModal()
+    expect(document.querySelector('[data-sm-action="edit-notes"]')).toBeNull()
+    const disabledBtn = document.querySelector('.sm-btn-icon[disabled]')
+    expect(disabledBtn).not.toBeNull()
+    expect(disabledBtn.title).toContain('Owned by another tab')
   });
 
   it('renders the active session notes preview text when notes exist', async () => {

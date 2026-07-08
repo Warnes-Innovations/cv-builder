@@ -461,6 +461,28 @@ describe('reRunPhase', () => {
     await reRunPhase('analysis')
     expect(globalThis.appendRetryMessage).toHaveBeenCalled()
   })
+
+  it('reports the computed diff back to the server so the audit log records it (GAP-393)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        prior_output: { pending_rewrites: [{ id: 'rw1', proposed: 'Old text' }] },
+        new_output: { pending_rewrites: [{ id: 'rw1', proposed: 'New text' }] },
+      }),
+    })
+    await reRunPhase('rewrite')
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/re-run-phase/audit-diff', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ phase: 'rewrite', changed: 1, total: 1 }),
+    }))
+  })
+
+  it('does not call the audit-diff endpoint when no prior/new output is returned', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) })
+    await reRunPhase('analysis')
+    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/re-run-phase/audit-diff', expect.anything())
+  })
 })
 
 // ── confirmReRunPhase ─────────────────────────────────────────────────────────

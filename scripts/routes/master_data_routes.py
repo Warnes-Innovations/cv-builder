@@ -2042,8 +2042,14 @@ def create_blueprint(deps):
                             continue
                         params = state.get('cover_letter_params') or {}
                         job_analysis = state.get('job_analysis') or {}
+                        # GAP-395: use the containing directory, not the
+                        # session.json file itself, so this provenance
+                        # identifier has the same shape as screening's
+                        # response_library.json session_path (master_data_routes.py
+                        # screening_save()) rather than a second, incompatible
+                        # "reused from" representation.
                         results.append({
-                            'session_path': str(session_file),
+                            'session_path': str(session_file.parent),
                             'company':      job_analysis.get('company', ''),
                             'role':         job_analysis.get('title', ''),
                             'date':         data.get('timestamp', '')[:10],

@@ -849,4 +849,29 @@ def create_blueprint(deps):
             logger.exception("Failed to re-run phase")
             return jsonify({"error": "Failed to re-run phase."}), 500
 
+    @bp.post("/api/re-run-phase/audit-diff")
+    def re_run_phase_audit_diff():
+        """Record the client-computed changed/total item count for the most
+        recent re-run of a phase (GAP-393)."""
+        entry = _get_session()
+        _validate_owner(entry)
+        conversation = entry.manager
+        sid = entry.session_id
+        data = request.get_json(silent=True) or {}
+        phase = data.get("phase")
+        changed = data.get("changed")
+        total = data.get("total")
+        if not phase or not isinstance(changed, int) or not isinstance(total, int):
+            return jsonify({"error": "Missing phase, changed, or total"}), 400
+        try:
+            with entry.lock:
+                result = conversation.record_rerun_diff(phase, changed, total)
+            if not result.get("ok"):
+                return jsonify(result), 404
+            session_registry.touch(sid)
+            return jsonify(result)
+        except Exception:
+            logger.exception("Failed to record re-run audit diff")
+            return jsonify({"error": "Failed to record re-run audit diff."}), 500
+
     return bp
