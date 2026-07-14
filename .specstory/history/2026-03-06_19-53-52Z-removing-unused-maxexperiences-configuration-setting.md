@@ -30,3 +30,5 @@ The user wants me to:
 2. Then commit the changes
 
 Let me start by identifying changed files.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

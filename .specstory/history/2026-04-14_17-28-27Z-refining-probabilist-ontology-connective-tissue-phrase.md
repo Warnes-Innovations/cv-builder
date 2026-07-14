@@ -90,3 +90,5 @@ The most consistent choices given your existing prose:
 | **Bayesian ontological sinew** | Parallel to "Bayesian flesh" already in doc |
 
 Given that the section heading already uses "Bayesian flesh," 
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

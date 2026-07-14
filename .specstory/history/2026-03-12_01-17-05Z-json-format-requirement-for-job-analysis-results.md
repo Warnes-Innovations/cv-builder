@@ -45,3 +45,5 @@ _**User (2026-03-12 02:40:58Z)**_
 1. The questions show up in two places: `Analysis` tab and `Questions` tab.  They should only be on the questions tab.
 2. The markdown formatting in the question header and body should be properly rendered. 
 3. The question body text should not be truncated.  
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="truncated mid-thought" -->

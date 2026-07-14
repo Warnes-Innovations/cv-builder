@@ -13,3 +13,5 @@ Modify the /review prompt to add a check for dead, obsolete, or unrachable code.
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to modify the `/review` prompt to add a check for dead, obsolete, or unreachable code. Let me find the review prompt file first.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

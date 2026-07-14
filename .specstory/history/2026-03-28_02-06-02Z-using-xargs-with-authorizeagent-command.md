@@ -15,3 +15,5 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 The user wants to authorize `xargs` as a shell command for all supported agents. Let me follow the authorize agent prompt instructions.
 
 First, let me load the authorize-agent skill as instructed.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

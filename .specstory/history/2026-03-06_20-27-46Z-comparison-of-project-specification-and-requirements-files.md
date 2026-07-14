@@ -42,3 +42,5 @@ your changes
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants me to generate a commit message for the changes I made (updating PROJECT_SPECIFICATION.md and REQUIREMENTS.md to reflect the Jinja2 HTML template + WeasyPrint PDF approach). Let me check the changed files first.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

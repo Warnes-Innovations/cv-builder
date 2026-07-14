@@ -13,3 +13,5 @@ What agent tasks were in process that have not been compelted?
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user is asking about agent tasks that were in process but not completed. Let me check the session store for recent activity, and also check the OBO sessions directory mentioned in the copilot instructions.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

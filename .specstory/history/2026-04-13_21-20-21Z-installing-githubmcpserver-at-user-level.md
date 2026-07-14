@@ -93,3 +93,5 @@ For normal interactive chat (what you're doing now), **Claude Sonnet 4.6 is alre
 _**User (2026-04-13 22:05:28Z)**_
 
 Ok, thanks, that helps.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="truncated mid-thought" -->

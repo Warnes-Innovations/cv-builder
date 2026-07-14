@@ -15,3 +15,5 @@ Add a two new user story files:
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to add two new user story files. Let me first look at an existing user story file to understand the format and structure, then create the two new ones.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

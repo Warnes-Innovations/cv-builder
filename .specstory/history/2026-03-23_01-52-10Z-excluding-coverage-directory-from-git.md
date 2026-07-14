@@ -29,3 +29,5 @@ Stage and /commit your changes.
 _**Agent (copilot/gpt-5.4)**_
 
 Applicable instructions: 
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

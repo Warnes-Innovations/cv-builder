@@ -207,3 +207,5 @@ Follow instructions in [commitMessage.prompt.md](vscode-userdata:/Users/warnes/L
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to generate a commit message and commit the changes. Let me analyze the changed files first.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->

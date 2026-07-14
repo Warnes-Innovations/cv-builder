@@ -28,3 +28,5 @@ If it happens again, send me:
 4. Your VS Code + Copilot Chat version numbers
 
 With that, I can draft a high-quality bug report you can paste directly into the right GitHub issue tracker.
+
+<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->
