@@ -2,7 +2,7 @@
 
 # 2026-03-02 19:11:55Z
 
-<!-- copilotide Session e1bfbcdc-fa81-475f-915d-797b4280273f (2026-03-02 19:11:55Z) -->
+<!-- VS Code Copilot IDE Session e1bfbcdc-fa81-475f-915d-797b4280273f (2026-03-02 19:11:55Z) -->
 
 _**User (2026-03-02 19:11:55Z)**_
 
@@ -90,4 +90,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 Let me look at the skill instructions for unit testing first.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="keyword heuristic" -->

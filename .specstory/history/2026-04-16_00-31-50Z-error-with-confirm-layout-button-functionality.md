@@ -435,4 +435,4 @@ The user has approved the commit. I need to run `git add web/layout-instruction.
 
 Per the shell patterns in user memory, I should write the commit message to a temp file first, then use `git commit -F`.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

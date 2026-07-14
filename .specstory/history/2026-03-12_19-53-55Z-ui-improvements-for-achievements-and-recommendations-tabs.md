@@ -217,4 +217,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 Let me look at the full delete-session endpoint and the sessions listing endpoint to understand the full picture before making changes.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/web_app.py`" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

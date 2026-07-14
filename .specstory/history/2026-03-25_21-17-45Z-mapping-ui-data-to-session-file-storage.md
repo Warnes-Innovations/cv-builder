@@ -2,7 +2,7 @@
 
 # 2026-03-25 21:20:45Z
 
-<!-- copilotide Session 48ea48de-bd1c-4ec8-a77d-14ec07b3174d (2026-03-25 21:20:45Z) -->
+<!-- VS Code Copilot IDE Session 48ea48de-bd1c-4ec8-a77d-14ec07b3174d (2026-03-25 21:20:45Z) -->
 
 _**User (2026-03-25 21:20:45Z)**_
 
@@ -96,4 +96,4 @@ I’m focusing on the need for an answer to the commit request. I should read ap
 
 I think it’s essential to inspect the changed files, checking instructions that say to use a collaborative “we.” I’m considering mentioning sections and skills in the commentary, and I should check if the current repo is only for the CV builder. I'll need to get the changed files before proceeding!
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="keyword heuristic" -->

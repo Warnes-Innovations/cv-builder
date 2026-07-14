@@ -446,4 +446,4 @@ _**User (2026-03-19 04:20:54Z)**_
 
 Clicking on "Continue to Rewrite →" doesn't populate the 'Rewrite' tab, leaving the contents of the "Publications" tab visible.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/web_app.py`" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

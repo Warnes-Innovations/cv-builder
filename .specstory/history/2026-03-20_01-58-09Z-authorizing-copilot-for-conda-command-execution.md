@@ -100,4 +100,4 @@ But wait - I need to think about this differently. The `chat.tools.terminal.auto
 
 Let me look at the current settings file to see what file-related approvals are already configured and whether there's a separate mechanism for controlling file access to `/tmp`.
 
-<!-- specstory-relocated: processed=2026-06-30T22:03:56Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="keyword heuristic" -->

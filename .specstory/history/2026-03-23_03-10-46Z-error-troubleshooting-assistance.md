@@ -673,4 +673,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 I’m reloading the required review and commit skills first, then I’ll re-check the active worktree state so I can resume from the interrupted test phase without guessing.
 
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="keyword heuristic" -->

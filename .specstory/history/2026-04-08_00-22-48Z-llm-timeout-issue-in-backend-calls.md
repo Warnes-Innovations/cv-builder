@@ -16,5 +16,3 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 The user is asking about a timeout issue with LLM calls in the cv-builder project. The config shows `request_timeout_seconds: 300` but apparently the backend is still timing out after 60 seconds. Let me investigate how this timeout is being passed to any-llm calls.
 
 First, let me check the terminal last command to understand the context better.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

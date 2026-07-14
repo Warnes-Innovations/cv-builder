@@ -22928,4 +22928,4 @@ Wait, let me re-read. The previous push was `git push origin feat/issue-81-llm-c
  
 Actually, I'm realizing the state is a bit confusing. We pushed the feature branch directly to the
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/worktrees/fix-issue54" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first write (replace_string_in_file) resolves here" -->

@@ -13,5 +13,3 @@ Please provide the necesary instructions to obtain a correct github Personal Acc
 _**Agent (copilot/auto)**_
 
 I’ll gather the repo-specific preflight and 
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

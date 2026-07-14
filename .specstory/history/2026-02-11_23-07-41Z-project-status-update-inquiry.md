@@ -2,7 +2,7 @@
 
 # 2026-02-11 23:08:14Z
 
-<!-- copilotide Session 38189467-183b-4797-8eff-811a31402426 (2026-02-11 23:08:14Z) -->
+<!-- VS Code Copilot IDE Session 38189467-183b-4797-8eff-811a31402426 (2026-02-11 23:08:14Z) -->
 
 _**User (2026-02-11 23:08:14Z)**_
 
@@ -160,4 +160,4 @@ Local copies of the repos:
 * /Users/warnes/src/bbc/broadbandanalyzer_sng
 * /Users/warnes/src/sng/sng-dnra
 
-<!-- specstory-relocated: processed=2026-05-05T00:45:29Z source=cv-builder target=cv-builder-prod reason="keyword heuristics" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="keyword heuristic" -->

@@ -155,5 +155,3 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 The user is asking about a UX issue: when the app starts and shows a modal dialog to select or create a session, the user can close the modal (e.g., by clicking outside it or pressing Escape) without creating or selecting a session. This leaves the app in a broken state where `sendMessage()` now shows "No active session" error.
 
 Let me look at the session modal implementation to understand how it can be dismissed.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

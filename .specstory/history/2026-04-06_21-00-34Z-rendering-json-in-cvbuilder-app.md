@@ -144,4 +144,4 @@ Looking at the last terminal commands:
 
 Now I need to check what's staged and unstaged in the main repo to see what's ready to commit.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

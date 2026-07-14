@@ -713,4 +713,4 @@ _**User (2026-03-18 22:39:05Z)**_
 
 produce a “best-effort human-cleaned transcription” of the two answer
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/logs/cv_builder.log`" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

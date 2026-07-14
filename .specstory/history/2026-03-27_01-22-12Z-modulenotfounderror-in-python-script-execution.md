@@ -34,4 +34,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 I need to address the error in the CV-builder and follow the mandatory preflight instructions. I'll identify applicable skills, like "copilot-preflight," since this repo uses copilot-style instructions and requires substantial work. I might also consider "workflow-orchestration" for non-trivial multi-steps, and "python-patterns" could be relevant. If I'm modifying code or fixing bugs, I need to write unit tests. Code review is required before finalizing changes, and I should read the skills before proceeding. I think, yes, I should consult them first.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/web_app.py" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

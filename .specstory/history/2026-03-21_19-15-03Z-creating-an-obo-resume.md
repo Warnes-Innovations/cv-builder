@@ -980,4 +980,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to create a PR to merge the `feature/issue-12-publication-crud` branch into `devel`. I need to use the GitHub PR creation tools. Let me first search for the relevant tools.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first write (multi_replace_string_in_file) resolves here" -->

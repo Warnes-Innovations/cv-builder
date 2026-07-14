@@ -668,4 +668,4 @@ _**User (2026-03-30 14:20:56Z)**_
 
 /remember to run `npm run build` before commits.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/worktrees/fix-issue54" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

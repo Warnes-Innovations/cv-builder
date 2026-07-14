@@ -2,7 +2,7 @@
 
 # 2026-03-20 18:09:55Z
 
-<!-- copilotide Session f2260f11-78f3-48fb-8df3-a4d563aa6da0 (2026-03-20 18:09:55Z) -->
+<!-- VS Code Copilot IDE Session f2260f11-78f3-48fb-8df3-a4d563aa6da0 (2026-03-20 18:09:55Z) -->
 
 _**User (2026-03-20 18:09:55Z)**_
 
@@ -71,4 +71,4 @@ _**User (2026-03-20 18:53:43Z)**_
 
 Try again.
 
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="explicit repo URL" -->

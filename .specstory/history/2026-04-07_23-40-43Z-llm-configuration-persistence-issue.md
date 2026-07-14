@@ -195,4 +195,4 @@ _**User (2026-04-08 00:29:37Z)**_
 
 Warning produced when processing the job from `https://careers.ucb.com/global/en/job/92674/Senior-Project-Lead-Programmer-US`:  #terminalLastCommand 
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/web_app.py" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="contested multi-repo session; kept in place" -->

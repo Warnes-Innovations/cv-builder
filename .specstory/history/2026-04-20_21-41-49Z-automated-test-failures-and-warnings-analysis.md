@@ -1046,4 +1046,4 @@ _**Agent (copilot/gpt-4.1)**_
 
 All changes have been committed with the approved message. The repository is ready for push and CI verification. Let me know if you want to push or need further actions!
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

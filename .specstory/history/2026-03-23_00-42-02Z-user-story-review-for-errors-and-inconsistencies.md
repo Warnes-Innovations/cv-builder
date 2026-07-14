@@ -1236,4 +1236,4 @@ _**User (2026-03-23 20:47:15Z)**_
 
 Are there any incomplete requests or tasks in this agent session?
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/tasks/current-implemented-workflow.md" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first write (apply_patch) resolves here" -->

@@ -114,5 +114,3 @@ Check the current codebase in the `cv-builder` folder to see if tha bug fixes an
 _**Agent (copilot/gpt-5.4)**_
 
 Applicable guidance: critical workflows, project-specific patterns, generated bundle handling, and the “When modifying code” section. Skills I’m using for this check: preflight, cv-builder-patterns, and workflow-orchestration; I’m reading those first, then I’ll inspect the current 
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

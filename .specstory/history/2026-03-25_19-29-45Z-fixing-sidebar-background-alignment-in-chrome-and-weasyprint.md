@@ -2,7 +2,7 @@
 
 # 2026-03-25 19:30:48Z
 
-<!-- copilotide Session a0f58d65-03ec-4723-ab26-0cd44e2ef138 (2026-03-25 19:30:48Z) -->
+<!-- VS Code Copilot IDE Session a0f58d65-03ec-4723-ab26-0cd44e2ef138 (2026-03-25 19:30:48Z) -->
 
 _**User (2026-03-25 19:30:48Z)**_
 
@@ -93,5 +93,3 @@ I’m thinking it might be easier to view just 10 images at once. The view_image
 _**User (2026-03-25 19:55:33Z)**_
 
 Try again.
-
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->

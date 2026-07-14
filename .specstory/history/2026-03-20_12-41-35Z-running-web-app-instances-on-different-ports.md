@@ -85,5 +85,3 @@ Add both `/tmp` and `/dev/null` to the list of read/write folders for copilot, c
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to add `/tmp` and `/dev/null` to read/write permissions for copilot, claude, cod
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

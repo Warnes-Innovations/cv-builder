@@ -2,7 +2,7 @@
 
 # 2026-03-24 16:11:16Z
 
-<!-- VS Code Copilot IDE Session bda97cff-ccbd-4272-8b28-e9c57aeaa2e2 (2026-03-24 16:11:16Z) -->
+<!-- copilotide Session bda97cff-ccbd-4272-8b28-e9c57aeaa2e2 (2026-03-24 16:11:16Z) -->
 
 _**User (2026-03-24 16:11:16Z)**_
 
@@ -303,4 +303,4 @@ _**Agent (copilot/gpt-5.4)**_
 
 Applicable instruction sections: `Project-specific patterns and gotchas`, `When modifying code`, and `Duckflow Annotations`. Applicable skills: `agent-customization`, `copilot-preflight`, `cv-builder-patterns`, `code-review`, and `git-workflow`. I’m updating the two instruction files on `duckflow-cleanup` to use repo-based wording, then I’ll review, commit, push, and refresh the PR text to match.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path ~/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:26:42Z source=cv-builder target=cv-builder reason="contested multi-repo session, kept in place (duckflow 1 vs cv-builder 1)" -->

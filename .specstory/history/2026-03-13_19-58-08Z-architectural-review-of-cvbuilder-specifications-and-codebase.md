@@ -505,4 +505,4 @@ However, since the user said "another agent was fixing a couple of other issues"
 
 Let me try a simpler approach - just create a file with the commit message and use git commit with that file.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first write (replace_string_in_file) resolves here" -->

@@ -252,5 +252,3 @@ _**Agent (copilot/gpt-5.4)**_
 **Running terminal commands**
 
 I see that the user is asking to run a simple command in a terminal and show the output. I might need to use tools for this, but since it’s a straightforward request, I probably don’t need to check for any specific skills. I should use the "run_in_terminal" option to execute the command. It’s important to relay key details in the output, so I’ll ensure everything is clear for the user. Let's get going!
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

@@ -256,4 +256,4 @@ The user wants to align the sidebar (left-col) and main content (right-col) top 
 
 Let me find the exact CSS in the template to fix this.
 
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="https://github.com/Warnes-Innovations/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="explicit repo URL" -->

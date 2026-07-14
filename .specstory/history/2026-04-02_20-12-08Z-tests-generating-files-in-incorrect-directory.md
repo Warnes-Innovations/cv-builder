@@ -82,5 +82,3 @@ The user approves both:
 2. Delete the test-created directories from `~/CV/cv-builder/`
 
 Let me first verify the current state of conversation_manager.py since the context says it was edited, then proceed with the commit and directory deletion.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->

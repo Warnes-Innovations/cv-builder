@@ -632,4 +632,4 @@ _**User (2026-03-12 01:15:37Z)**_
 
 Do we need to specify in the prompt that the returned value should be JSON?
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/scripts/web_app.py" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first write (replace_string_in_file) resolves here" -->

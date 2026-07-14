@@ -682,4 +682,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 Let me check the current state of the merge to understand where we are.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

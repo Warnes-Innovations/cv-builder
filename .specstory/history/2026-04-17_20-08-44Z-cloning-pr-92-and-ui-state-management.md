@@ -1015,4 +1015,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to push. But looking at the context, devel was already pushed successfully in the last interaction (`git push origin devel` with exit code 0). Let me check the current state.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

@@ -2,7 +2,7 @@
 
 # 2026-03-06 17:09:57Z
 
-<!-- copilotide Session bb2a1c17-f479-489d-809e-3dd7ed046d1d (2026-03-06 17:09:57Z) -->
+<!-- VS Code Copilot IDE Session bb2a1c17-f479-489d-809e-3dd7ed046d1d (2026-03-06 17:09:57Z) -->
 
 _**User (2026-03-06 17:09:57Z)**_
 
@@ -207,5 +207,3 @@ Follow instructions in [commitMessage.prompt.md](vscode-userdata:/Users/warnes/L
 _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to generate a commit message and commit the changes. Let me analyze the changed files first.
-
-<!-- specstory-relocated: processed=2026-04-21T17:14:20Z source=oboe-mcp target=cv-builder-prod reason="first-path signal (signal3) points to cv-builder-prod" -->

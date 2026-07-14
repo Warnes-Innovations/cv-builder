@@ -91,4 +91,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 The user wants to run the flush workflow on the current state of the cv-builder repository. Let me check what's changed since the last commit.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="first write path /Users/warnes/src/cv-builder/worktrees/issue-81-llm-config-wizard`." -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first absolute path mention" -->

@@ -910,4 +910,4 @@ _**User (2026-04-07 22:35:23Z)**_
 
 Please merge into `devel`.
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/worktrees/wizard-api-keys/web/ui-core.js`" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first write (replace_string_in_file) resolves here" -->

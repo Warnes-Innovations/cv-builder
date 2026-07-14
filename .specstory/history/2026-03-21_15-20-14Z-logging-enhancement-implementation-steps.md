@@ -912,4 +912,4 @@ _**User (2026-03-21 17:12:05Z)**_
 
 @agent Try Again
 
-<!-- specstory-relocated: processed=2026-05-18T22:21:17Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.claude/worktrees/obo-items/scripts/" -->
+<!-- specstory-relocated: processed=2026-07-14T15:25:58Z source=cv-builder target=cv-builder reason="first write (multi_replace_string_in_file) resolves here" -->

@@ -57,5 +57,3 @@ What folder are you working in?
 _**Agent (copilot/gpt-5.4)**_
 
 Working in /Users/warnes/src/cv-builder.
-
-<!-- specstory-relocated: processed=2026-05-19T02:01:40Z source=flow-guard target=cv-builder reason="cv-builder" -->
