@@ -2407,4 +2407,4 @@ The session load modal needs to look more like a file browser, with columns cont
 
 It is currently cumbersome to locate a specific (e.g. most recent) session.   Perhaps changing the `Active` sessions section to `Recent Sessions` that incudes active sessions with a badge for active ones?
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="first write tool-use (replace_string_in_file) path /Users/warnes/src/cv-builder/.gitignore`" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="first write tool-use (replace_string_in_file) path /Users/warnes/src/cv-builder/.gitignore`" -->

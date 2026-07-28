@@ -240838,3 +240838,4 @@ Cleanup complete:
 - **Branches deleted**: `feature/gap-16-ux-ia-improvements` was already auto-deleted by `gh pr merge --delete-branch`; `feature/gap-01-master-data-ai-update` (the original GAP-01 branch, also already merged via PR #128) has now been force-deleted locally after confirming via `merge-base --is-ancestor` that it's fully contained in `devel`.
 
 Nothing else references this worktree or these branches — fully cleaned up.
+<!-- specstory-relocated: processed=2026-07-27T21:58:22Z source=cv-builder target=cv-builder reason="in-place (reclassified from false-positive skip)" -->

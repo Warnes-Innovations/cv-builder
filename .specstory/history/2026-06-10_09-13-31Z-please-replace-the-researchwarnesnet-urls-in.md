@@ -59,4 +59,4 @@ I'm now implementing the URL replacements in `publications.bib`. So far, I've de
 
 I'm now diving into the actual replacements. I've confirmed the initial `fpconst` URL will be updated to the `RStatServer` URL as a sub-project. I'll utilize the `replace_string_in_file` utility to systematically implement these changes in the `.bib` file. I am working on the first replacement now.
 
-<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->
+<!-- specstory-lowvalue: processed=2026-07-23T00:22:57Z reason="abandoned preamble" -->

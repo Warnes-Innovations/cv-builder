@@ -27,4 +27,4 @@ Let me explore the codebase to understand:
 
 Let me start by reading the relevant files.
 
-<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->
+<!-- specstory-lowvalue: processed=2026-07-23T00:22:57Z reason="abandoned preamble" -->

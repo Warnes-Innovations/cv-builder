@@ -61,4 +61,4 @@ Here is a summary of the SpecStory organization plan sections (Step 4):
 - If you want a more thorough scan for stubs or cv-app sessions, or want to see a full list of files in any section, let me know.
 - Otherwise, I can proceed to annotate the eligible files in place and report the final summary. Would you like to continue with this plan?
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.specstory/history/2026-03-20_19-21-19Z-summarize-your-analysis-and.md`" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/.specstory/history/2026-03-20_19-21-19Z-summarize-your-analysis-and.md`" -->

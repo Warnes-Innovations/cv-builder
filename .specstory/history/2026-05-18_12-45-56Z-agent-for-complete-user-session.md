@@ -275,4 +275,4 @@ _**Agent (copilot/claude-sonnet-4.6)**_
 
 ```
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="first write tool-use (replace_string_in_file) path /Users/warnes/src/cv-builder/.github/agents/cv-e2e-tester.agent.md`" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="first write tool-use (replace_string_in_file) path /Users/warnes/src/cv-builder/.github/agents/cv-e2e-tester.agent.md`" -->

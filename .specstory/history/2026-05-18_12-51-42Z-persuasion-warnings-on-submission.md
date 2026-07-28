@@ -187,4 +187,4 @@ I also need to fix the `<button>` inside `<a>` issue. The safest approach is to:
 Let me update `_populateGenerateTab` in review-table-base.js to:
 1. Get the session_id from `getSessionIdFromURL()` 
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="cv-builder" -->

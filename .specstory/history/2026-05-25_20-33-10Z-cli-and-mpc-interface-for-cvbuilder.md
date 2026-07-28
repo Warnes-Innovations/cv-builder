@@ -6144,4 +6144,4 @@ The user confirmed to proceed with the commit. I need to:
 
 Let me do this now.
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder" -->

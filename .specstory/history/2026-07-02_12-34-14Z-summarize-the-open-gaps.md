@@ -11278,4 +11278,4 @@ My commit (`a83b847`) landed cleanly containing only the 9 intended files. The o
 4. Commit created: `a83b847` — `chore(tooling): add duplicate-code/duplicate-definition lint suite`, 9 files, scoped exactly to this session's work.
 5. Remaining/follow-up: the 25 real duplicate findings from `npm run lint:duplication` (including the previously-undocumented `showSessionConflictBanner` third copy) are still unfixed — that's the natural next gap-resolution cycle item, not part of this flush.
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="contested multi-repo session (source mentioned far more than cv-builder-prod); kept in place" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="contested multi-repo session (source mentioned far more than cv-builder-prod); kept in place" -->

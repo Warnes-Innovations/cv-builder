@@ -24464,4 +24464,4 @@ The user wants to document the "cached preview issue" we encountered - where `ge
 
 Let me first read the relevant files to understand where to document this.
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="first write tool-use (apply_patch) path /Users/warnes/src/cv-builder/scripts/utils/cv_orchestrator.py" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="first write tool-use (apply_patch) path /Users/warnes/src/cv-builder/scripts/utils/cv_orchestrator.py" -->

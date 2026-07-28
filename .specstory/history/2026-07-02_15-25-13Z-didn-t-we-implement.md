@@ -19481,4 +19481,4 @@ Added to `tasks/gaps.md`:
 
 Both marked `OPEN`, `LOW` priority, attributed to Claude Code (not a persona review), with concrete fix suggestions. The running summary line near the top of the file now also references this addition. Diff is clean and scoped only to this one addition — nothing else in the file touched. Not committed yet; let me know if you want that added to a commit.
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="first write tool-use (Edit) path /Users/warnes/src/cv-builder/scripts/utils/config.py" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="first write tool-use (Edit) path /Users/warnes/src/cv-builder/scripts/utils/config.py" -->

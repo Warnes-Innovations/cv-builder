@@ -3108,4 +3108,4 @@ Both commits are in, scoped exactly as agreed:
 
 The remaining ~50 modified files in `agent-config` (prompts, skills, `settings.json`) are untouched and unstaged — that's other in-flight work, left exactly as it was.
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="first write tool-use (Edit) path /Users/warnes/src/cv-builder/.claude/settings.local.json" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="first write tool-use (Edit) path /Users/warnes/src/cv-builder/.claude/settings.local.json" -->

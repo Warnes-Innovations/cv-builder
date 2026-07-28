@@ -816,4 +816,4 @@ _**User (2026-05-19 02:56:03Z)**_
 
 Approve.
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/routes/session_routes.py" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder/scripts/routes/session_routes.py" -->

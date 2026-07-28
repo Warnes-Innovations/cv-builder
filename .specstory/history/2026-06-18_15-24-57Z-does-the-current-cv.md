@@ -388,4 +388,4 @@ Now I have a complete picture. Here's the answer:
 
 If you want to address this, GAP-36's recommended resolution is the right starting point: an early-startup check that detects a missing file and redirects to an onboarding wizard, with at minimum one creation path (guided form or resume upload).
 
-<!-- specstory-relocated: processed=2026-07-14T20:43:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder" -->
+<!-- specstory-relocated: processed=2026-07-23T00:21:10Z source=cv-builder target=cv-builder reason="absolute path /Users/warnes/src/cv-builder" -->

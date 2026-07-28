@@ -16,4 +16,4 @@ _**Agent (gemini/Google Gemini - CV-Builder Project/models/gemini-3.5-flash)**_
 
 I've hit a snag in the cv-builder repo. Despite enabling all publications, only ten are appearing. Digging deeper, I'm now reviewing the `copilot-instructions.md` file, specifically the `generation` configuration within it. The key is in those configuration limits; I'm betting the answer lies within.
 
-<!-- specstory-lowvalue: processed=2026-07-14T20:43:10Z reason="abandoned preamble" -->
+<!-- specstory-lowvalue: processed=2026-07-23T00:22:57Z reason="abandoned preamble" -->
