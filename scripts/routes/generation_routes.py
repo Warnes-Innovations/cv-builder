@@ -1334,7 +1334,14 @@ def create_blueprint(deps):
             if isinstance(generated_files, dict) and 'files' in generated_files:
                 output_dir = Path(generated_files['output_dir'])
                 for file_name in generated_files['files']:
-                    if file_name == filename:
+                    # generate_cv_final() stores 'files' entries as full
+                    # absolute paths, not basenames, so this URL's basename-
+                    # only <filename> never matched a bare equality check —
+                    # every download/preview request 404'd even when the
+                    # file existed on disk. Compare by basename instead,
+                    # which is correct whether an entry is a full path or
+                    # already just a basename.
+                    if Path(file_name).name == filename:
                         file_path = output_dir / filename
                         break
             else:
@@ -1984,7 +1991,7 @@ def create_blueprint(deps):
                 use_semantic_match=False,  # Skip LLM scoring — content already ranked upstream
             )
             selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
-            ats_file = conv.orchestrator._generate_ats_docx(
+            ats_file, _ats_score_at_generation = conv.orchestrator._generate_ats_docx(
                 selected_content, job_analysis, output_dir,
             )
             human_docx = conv.orchestrator._generate_human_docx(

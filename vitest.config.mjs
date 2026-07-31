@@ -32,6 +32,18 @@ export default defineConfig({
       provider:  'v8',
       include:   ['web/*.js'],
       exclude:   ['web/app.js', 'web/ui-core.js', 'web/layout-instruction.js'],
+      // Regression guard, not a target: set a few points below the actual
+      // measured baseline (statements/lines 77%, branches 67.9%, functions
+      // 71.3% as of 2026-07-08) so `npm run test:js:cover` fails if overall
+      // coverage drops, without blocking on today's existing gaps. CI's
+      // default `npm run test:js` does not run coverage and is unaffected —
+      // this only bites when someone opts into the :cover script.
+      thresholds: {
+        statements: 74,
+        branches:   64,
+        functions:  68,
+        lines:      74,
+      },
     },
   },
 })

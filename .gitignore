@@ -34,6 +34,10 @@ node_modules/
 *.backup
 index.html.1
 
+# Agent/tool cache directories (machine-local artifacts — not for sharing)
+.serena/
+.cursor/
+
 # Coverage artifacts
 coverage/
 htmlcov/

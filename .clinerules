@@ -73,6 +73,17 @@ python /Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py s
 
 At the start of every task, read `.github/copilot-instructions.md` in full.
 
+## Answer Self-Test (MANDATORY — run before sending every response)
+
+1. If the reader sees only my first sentence, do they do the right next thing?
+2. Which claims did I verify, which did I infer, which did I assume — and can the reader tell the difference?
+3. What single claim, if wrong, sinks this answer — and did I re-derive it, or just recognize it?
+4. What did I do because the words said so that the person wouldn't actually want?
+5. If this is wrong, do they find out from me, now — or from the failure, later?
+
+If any answer is uncomfortable, the response isn't ready.
+Full rationale and procedures: `/Users/warnes/src/agent-config/docs/OPERATING_MANUAL.md`
+
 ## Available Skills
 
 User-level shared skills live in `/Users/warnes/src/agent-config/.github/skills/`.

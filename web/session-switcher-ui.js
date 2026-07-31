@@ -152,10 +152,19 @@ function _updateSessionSwitcherHeader(status = {}) {
   const subtitleEl = document.getElementById('header-session-name');
   const hasSession = Boolean(_getCurrentSessionIdValue());
 
-  if (switcherLabelEl) switcherLabelEl.textContent = label;
+  if (switcherLabelEl) {
+    switcherLabelEl.textContent = label;
+    switcherLabelEl.title = label;
+  }
   if (switcherBtn) switcherBtn.classList.toggle('is-session-active', hasSession);
   if (subtitleEl) {
-    subtitleEl.textContent = hasSession ? `Current session: ${label}` : 'Select or create a session';
+    // Position name is shown as the page's own <h1> once a document loads, so
+    // repeating it here just added a long, wrapping line under "CV Builder"
+    // (worse the longer the position name is) — only the phase adds anything
+    // this line doesn't already show elsewhere.
+    const phase = formatSessionPhaseLabel(status.phase);
+    subtitleEl.textContent = hasSession ? `Active — ${phase}` : 'Select or create a session';
+    subtitleEl.title = hasSession ? `Active — ${phase}` : '';
   }
 }
 

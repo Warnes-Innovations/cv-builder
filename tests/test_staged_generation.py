@@ -1226,6 +1226,37 @@ class TestGenerateFinalEndpoint(unittest.TestCase):
         self.assertIn('generated_at', data)
         self.assertIn('outputs', data)
 
+    def test_ats_docx_output_is_a_clean_path_not_a_stringified_tuple(self):
+        """Regression: _generate_ats_docx() returns (filepath, ats_score);
+        a prior version of this route assigned the whole tuple to a
+        variable used as a filename, so str() on it produced garbage like
+        "(PosixPath('/.../CV_..._ATS.docx'), 78)" in outputs['ats_docx']
+        and outputs['files'], which then rendered as a broken filename/label
+        in the Generated Files tab (web/final-generate.js)."""
+        self._seed_confirmed_layout()
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['job_analysis'] = MINIMAL_JOB_ANALYSIS
+        entry.manager.state['customizations'] = MINIMAL_CUSTOMIZATIONS
+
+        final_paths = {'html': str(self.output_dir / 'CV_final.html'), 'pdf': str(self.output_dir / 'CV_final.pdf')}
+        with patch(
+            'utils.cv_orchestrator.CVOrchestrator.generate_final_from_confirmed_html',
+            return_value=final_paths,
+        ):
+            resp = self.client.post(
+                '/api/cv/generate-final',
+                json={'session_id': self.session_id},
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        outputs = resp.get_json()['outputs']
+        self.assertIsNotNone(outputs.get('ats_docx'))
+        self.assertTrue(outputs['ats_docx'].endswith('.docx'))
+        self.assertNotIn('PosixPath', outputs['ats_docx'])
+        self.assertNotIn(',', outputs['ats_docx'])
+        for f in outputs['files']:
+            self.assertNotIn('PosixPath', f)
+
     def test_generate_final_uses_confirmed_preview_html_verbatim(self):
         self._seed_confirmed_layout()
         corrected_html = '<html><body>Experienced engineer.</body></html>'
@@ -1369,6 +1400,73 @@ class TestLegacyLayoutEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json()['ok'])
         self.assertEqual(entry.manager.state['layout_instructions'], staged_history)
+
+
+class TestDownloadFileEndpoint(unittest.TestCase):
+    """GET /api/download/<filename> — regression: generate_cv_final() stores
+    generated_files['files'] entries as full absolute paths, but every
+    frontend caller (web/final-generate.js, web/download-tab.js,
+    web/review-table-base.js) requests this endpoint with just the
+    basename. The route's original `file_name == filename` comparison in
+    the 'files'-list branch could never match a full path against a
+    basename, so every download/HTML-preview request 404'd with "File not
+    found on disk" even when the file genuinely existed."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.app, self.session_id, self._stack = _make_app_and_client(self.tmp_path)
+        self.client = self.app.test_client()
+        self.addCleanup(self._stack.close)
+
+        self.output_dir = self.tmp_path / 'output'
+        self.output_dir.mkdir(exist_ok=True)
+        self.cv_file = self.output_dir / 'CV_Acme_Engineer_2026-01-01.html'
+        self.cv_file.write_text('<html>CV</html>', encoding='utf-8')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _seed_generated_files(self, files):
+        entry = self.app.session_registry.get(self.session_id)
+        entry.manager.state['generated_files'] = {
+            'output_dir': str(self.output_dir),
+            'files': files,
+        }
+
+    def test_matches_when_files_list_stores_full_absolute_paths(self):
+        """The real-world shape: generate_cv_final() stores str(Path), i.e.
+        a full path, not a basename."""
+        self._seed_generated_files([str(self.cv_file)])
+
+        resp = self.client.get(
+            f'/api/download/{self.cv_file.name}',
+            query_string={'session_id': self.session_id},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'<html>CV</html>', resp.data)
+
+    def test_matches_when_files_list_stores_bare_basenames(self):
+        """Also still works if a future/legacy caller stores bare basenames."""
+        self._seed_generated_files([self.cv_file.name])
+
+        resp = self.client.get(
+            f'/api/download/{self.cv_file.name}',
+            query_string={'session_id': self.session_id},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+
+    def test_returns_404_for_a_filename_not_in_the_generated_files_list(self):
+        self._seed_generated_files([str(self.cv_file)])
+
+        resp = self.client.get(
+            '/api/download/not_a_real_file.html',
+            query_string={'session_id': self.session_id},
+        )
+
+        self.assertEqual(resp.status_code, 404)
 
 
 if __name__ == '__main__':

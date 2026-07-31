@@ -166,6 +166,27 @@ describe('_updateSessionSwitcherHeader', () => {
     _updateSessionSwitcherHeader({})
     expect(document.getElementById('session-switcher-btn').classList.contains('is-session-active')).toBe(true)
   })
+
+  it('does not repeat the position name in the sidebar subtitle — it is already shown as the page <h1> (regression)', () => {
+    document.body.innerHTML = `
+      <span id="session-switcher-label"></span>
+      <button id="session-switcher-btn"></button>
+      <span id="header-session-name"></span>`
+    vi.stubGlobal('_getCurrentSessionIdValue', () => 'sess-1')
+    _updateSessionSwitcherHeader({ phase: 'final_generation' })
+    const subtitle = document.getElementById('header-session-name').textContent
+    expect(subtitle).not.toContain('Test Job')
+    expect(subtitle).toContain('final_generation')
+  })
+
+  it('sets the switcher button title attribute to the full label for accessibility when truncated', () => {
+    document.body.innerHTML = `
+      <span id="session-switcher-label"></span>
+      <button id="session-switcher-btn"></button>
+      <span id="header-session-name"></span>`
+    _updateSessionSwitcherHeader({})
+    expect(document.getElementById('session-switcher-label').title).toBe('Test Job')
+  })
 })
 
 // ── showOwnershipConflictDialog ───────────────────────────────────────────────
