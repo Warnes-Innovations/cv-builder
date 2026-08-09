@@ -55,7 +55,7 @@ follow its instructions.
 ## /obo session management
 
 Helper: `/Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py`
-Session dir: `.github/obo_sessions/`
+Session dir: `.github/oboe_sessions/`
 
 Always check for existing sessions before starting a new one:
 ```bash

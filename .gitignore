@@ -16,6 +16,21 @@ archive/
 
 # OS artifacts
 .DS_Store
+
+# OBO session state — work-in-progress notes, not repo content, and THIS REPO IS
+# PUBLIC. A session records whatever task is in flight, including the commands to
+# run it, so nobody chooses in advance what a future one will contain.
+#
+# `oboe_sessions` is the name the tooling reads (oboe-mcp hardcodes
+# .github/oboe_sessions and no flag selects another); `obo_sessions` is the
+# pre-rename name. Both names are listed in both forms: a trailing slash restricts
+# a pattern to DIRECTORIES and git does not treat a symlink as one, so the slash
+# form alone stops matching the moment the directory becomes a symlink into the
+# canonical store. Before this, only the legacy slash form was listed — which left
+# the one name a working setup must use as the one name NOT ignored.
+.github/oboe_sessions
+.github/oboe_sessions/
+.github/obo_sessions
 .github/obo_sessions/
 
 # Personal configuration (contains local paths and API keys — not for sharing)
