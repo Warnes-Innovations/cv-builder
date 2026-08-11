@@ -14,11 +14,11 @@ Adapted from:
 
 - The user asks for `/obo`, one-by-one processing, or sequential review
 - A list of findings, tasks, or design decisions should be handled one at a time
-- You need resumable session state in `.github/obo_sessions/`
+- You need resumable session state in `.github/oboe_sessions/`
 
 ## Session handling
 
-- Session files live in `.github/obo_sessions/`
+- Session files live in `.github/oboe_sessions/`
 - Prefer the helper script if available:
   `/Users/warnes/src/agent-config/skills/one-by-one/obo_helper.py`
 - If MCP/session helpers are unavailable, manage the JSON files directly
