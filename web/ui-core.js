@@ -1286,7 +1286,7 @@ function _updateModelWizardNav() {
   if (nextBtn) {
     nextBtn.style.display = (_modelWizardStep === 1 || _modelWizardStep === 2) ? '' : 'none';
     nextBtn.disabled = _modelWizardStep === 1 && !_modelWizardSelectedProvider;
-    nextBtn.textContent = _modelWizardStep === 2 ? 'Next' : 'Next';
+    nextBtn.textContent = 'Next';
   }
   if (testBtn)    testBtn.style.display    = _modelWizardStep === 3 ? '' : 'none';
   if (refreshBtn) refreshBtn.style.display = _modelWizardStep === 3 ? '' : 'none';

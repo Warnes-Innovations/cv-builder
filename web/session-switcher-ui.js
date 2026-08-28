@@ -71,20 +71,6 @@ function _renderSavedSessionRows(savedSessions, { includeManagement = false } = 
     return '<p class="session-switcher-empty">No saved sessions found.</p>';
   }
 
-  function _createdIsoFromSessionPath(sessionPath) {
-    if (!sessionPath) return '';
-    const pathText = String(sessionPath);
-    const parts = pathText.split(/[\\/]/).filter(Boolean);
-    if (parts.length < 2) return '';
-
-    const dirName = parts[parts.length - 2];
-    const match = dirName.match(/(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})/);
-    if (!match) return '';
-
-    const [, year, month, day, hour, minute, second] = match;
-    return `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
-  }
-
   return `<div class="session-switcher-list">${savedSessions.map((session, index) => {
     const escapedPath = escapeHtml(session.path || '');
     const createdIso = _createdIsoFromSessionPath(session.path);

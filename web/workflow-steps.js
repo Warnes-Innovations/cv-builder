@@ -49,11 +49,6 @@ const _STEP_DISPLAY = {
   finalise:       'Finalise',
   harvest:        'Update Master CV',
 };
-const _ACTION_LABELS = {
-  recommend_customizations: 'Selecting experiences & skills…',
-  generate_cv: 'Generating CV…',
-};
-
 const _NAV_TAB_LABELS = {
   download: '⬇️ File Review',
 };
@@ -1263,7 +1258,6 @@ function handleStepClick(step) {
 export {
   _STEP_ORDER,
   _STEP_DISPLAY,
-  _ACTION_LABELS,
   _STEP_DESCRIPTIONS,
   backToPhase,
   _showReRunConfirmModal,

@@ -7,7 +7,7 @@
 /**
  * web/session-manager.js
  * Session lifecycle: create, claim, restore, save, load.
- * Also owns formatSessionPhaseLabel and related session-label helpers.
+ * Also owns formatSessionPhaseLabelShort and related session-label helpers.
  *
  * DEPENDENCIES (all on globalThis at runtime):
  *   - createSession, fetchStatus (api-client.js)
@@ -38,7 +38,7 @@ import { PHASES, stateManager } from './state-manager.js';
 // Full-length labels live in utils.js SESSION_PHASE_LABELS.
 // ---------------------------------------------------------------------------
 
-function formatSessionPhaseLabel(phase) {
+function formatSessionPhaseLabelShort(phase) {
   if (!phase) return 'init';
   return SESSION_PHASE_LABELS_SHORT[phase] || String(phase).replace(/_/g, ' ');
 }
@@ -71,7 +71,7 @@ function _getCurrentOwnerTokenValue() {
 
 function buildSessionSwitcherLabel(status = {}) {
   const positionName = (status.position_name || '').toString().trim();
-  const phase = formatSessionPhaseLabel(status.phase);
+  const phase = formatSessionPhaseLabelShort(status.phase);
   if (positionName) {
     return `${positionName} · ${phase}`;
   }
@@ -1000,7 +1000,7 @@ function restoreTabData({ uiPrefsOnly = false } = {}) {
 
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
-  formatSessionPhaseLabel,
+  formatSessionPhaseLabelShort,
   _getCurrentSessionIdValue,
   _getCurrentOwnerTokenValue,
   buildSessionSwitcherLabel,
