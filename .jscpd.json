@@ -1,5 +1,5 @@
 {
-  "threshold": 0,
+  "threshold": 1,
   "reporters": ["console"],
   "ignore": [
     "**/bundle.js",
@@ -10,6 +10,6 @@
     "**/node_modules/**"
   ],
   "format": ["javascript", "python"],
-  "minLines": 5,
-  "minTokens": 50
+  "minLines": 10,
+  "minTokens": 100
 }
