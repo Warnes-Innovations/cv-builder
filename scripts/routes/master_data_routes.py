@@ -136,6 +136,81 @@ def _cover_letter_word_count_instruction(job_analysis: dict) -> str:
     return '300–400 words'
 
 
+def _assemble_candidate_profile(conversation, orchestrator) -> dict:
+    """Build the candidate-profile fields shared by LLM prompt assembly.
+
+    Extracts top skills, professional summary, key achievements, and
+    post-analysis answer context from master data + session state. Shared
+    by the cover-letter and interview-prep prompt builders to avoid
+    duplicating the same assembly block in each route (see AGENTS.md
+    "Avoid Duplicate Helper Definitions").
+    """
+    master        = orchestrator.master_data or {}
+    personal_info = master.get('personal_info', {})
+
+    skills_raw = master.get('skills', [])
+    all_skills = conversation.normalize_skills_data(skills_raw)
+    skill_names = [
+        s.get('name', str(s)) if isinstance(s, dict) else str(s)
+        for s in all_skills
+    ]
+    top_skills = ', '.join(skill_names[:12]) if skill_names else '(see attached CV)'
+
+    summaries = master.get('professional_summaries', {})
+    if isinstance(summaries, dict) and summaries:
+        summary_text = next(iter(summaries.values()))
+    else:
+        summary_text = master.get('summary', '')
+
+    achievements = master.get('selected_achievements', [])
+    ach_parts = []
+    for a in achievements[:4]:
+        title = a.get('title', '').strip()
+        description = a.get('description', '').strip()
+        if title and description:
+            ach_parts.append(f'- {title}: {description}')
+        elif title:
+            ach_parts.append(f'- {title}')
+        elif description:
+            ach_parts.append(f'- {description}')
+    top_ach_titles = '\n'.join(ach_parts) or '(see CV)'
+
+    answers_snippet = ''
+    answers = conversation.state.get('post_analysis_answers') or {}
+    if answers:
+        answers_snippet = 'Candidate context:\n' + '\n'.join(
+            f'- {q}: {a}' for q, a in list(answers.items())[:6]
+        )
+
+    return {
+        'master':          master,
+        'personal_info':   personal_info,
+        'top_skills':      top_skills,
+        'summary_text':    summary_text,
+        'top_ach_titles':  top_ach_titles,
+        'answers_snippet': answers_snippet,
+    }
+
+
+def _assemble_approved_rewrites(conversation, phrase: str) -> str:
+    """Return the approved-rewrites bullet block for an LLM prompt.
+
+    ``phrase`` fills the trailing instruction (e.g. "in the letter" for
+    cover letters, "in a STAR answer" for interview prep). Shared by both
+    routes to avoid duplicated assembly (see AGENTS.md).
+    """
+    approved_rewrites = conversation.state.get('approved_rewrites') or []
+    approved_bullets = []
+    for rw in approved_rewrites[:5]:
+        bullet = (rw.get('proposed') or rw.get('original') or '').strip()
+        if bullet:
+            approved_bullets.append(f'  • {bullet}')
+    return (
+        '\nTAILORED CV BULLETS (approved by candidate — reference at least one '
+        f'{phrase}):\n' + '\n'.join(approved_bullets) + '\n'
+    ) if approved_bullets else ''
+
+
 # Text similarity helper (used in screening search)
 def _text_similarity(query: str, target: str) -> float:
     """Simple word-overlap similarity score (0–1) for response library search."""
@@ -192,6 +267,7 @@ def create_blueprint(deps):
     validate_owner = deps['validate_owner']
     session_registry = deps['session_registry']
     llm_client_ref = deps['llm_client_ref']
+    extract_json_payload = deps.get('extract_json_payload')
     load_master = deps.get('load_master', _load_master)
     save_master = deps.get('save_master', _save_master)
     validate_master_data_file_fn = deps.get('validate_master_data_file')
@@ -2084,42 +2160,13 @@ def create_blueprint(deps):
             reuse_session_path = (body.get('reuse_session_path') or '').strip()
 
             job_analysis  = conversation.state.get('job_analysis') or {}
-            master        = orchestrator.master_data or {}
-            personal_info = master.get('personal_info', {})
-
-            skills_raw = master.get('skills', [])
-            all_skills = conversation.normalize_skills_data(skills_raw)
-            skill_names = [
-                s.get('name', str(s)) if isinstance(s, dict) else str(s)
-                for s in all_skills
-            ]
-            top_skills = ', '.join(skill_names[:12]) if skill_names else '(see attached CV)'
-
-            summaries = master.get('professional_summaries', {})
-            if isinstance(summaries, dict) and summaries:
-                summary_text = next(iter(summaries.values()))
-            else:
-                summary_text = master.get('summary', '')
-
-            achievements = master.get('selected_achievements', [])
-            ach_parts = []
-            for a in achievements[:4]:
-                title = a.get('title', '').strip()
-                description = a.get('description', '').strip()
-                if title and description:
-                    ach_parts.append(f'- {title}: {description}')
-                elif title:
-                    ach_parts.append(f'- {title}')
-                elif description:
-                    ach_parts.append(f'- {description}')
-            top_ach_titles = '\n'.join(ach_parts) or '(see CV)'
-
-            answers_snippet = ''
-            answers = conversation.state.get('post_analysis_answers') or {}
-            if answers:
-                answers_snippet = 'Candidate context:\n' + '\n'.join(
-                    f'- {q}: {a}' for q, a in list(answers.items())[:6]
-                )
+            profile = _assemble_candidate_profile(conversation, orchestrator)
+            master          = profile['master']
+            personal_info   = profile['personal_info']
+            top_skills      = profile['top_skills']
+            summary_text    = profile['summary_text']
+            top_ach_titles  = profile['top_ach_titles']
+            answers_snippet = profile['answers_snippet']
 
             tone_hint = _TONE_GUIDANCE.get(tone, '')
             # Auto-enrich the tone hint with culture signals from job analysis
@@ -2149,16 +2196,7 @@ def create_blueprint(deps):
             )
 
             # Inject up to 5 approved rewrites so the LLM can echo tailored phrasing.
-            approved_rewrites = conversation.state.get('approved_rewrites') or []
-            approved_bullets = []
-            for rw in approved_rewrites[:5]:
-                bullet = (rw.get('proposed') or rw.get('original') or '').strip()
-                if bullet:
-                    approved_bullets.append(f'  • {bullet}')
-            approved_rewrites_block = (
-                '\nTAILORED CV BULLETS (approved by candidate — reference at least one in the letter):\n'
-                + '\n'.join(approved_bullets) + '\n'
-            ) if approved_bullets else ''
+            approved_rewrites_block = _assemble_approved_rewrites(conversation, 'in the letter')
 
             prompt = f"""\
 You are a professional career coach writing a tailored cover letter.
@@ -2243,6 +2281,134 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
         session_registry.touch(sid)
         return jsonify({'ok': True, 'text': letter_text,
                         'persuasion_warnings': conversation.state.get('cover_letter_persuasion_warnings', [])})
+
+    @bp.post("/api/interview-prep/generate")
+    def interview_prep_generate():
+        """Generate 10 AI interview-prep questions tailored to the role and CV."""
+        # duckflow:
+        #   id: interview_prep_api_generate_live
+        #   kind: api
+        #   timestamp: "2026-08-29T00:00:00Z"
+        #   status: live
+        #   handles:
+        #     - "POST /api/interview-prep/generate"
+        #   reads:
+        #     - "state:job_analysis"
+        #     - "master:personal_info.name"
+        #     - "master:skills"
+        #     - "master:professional_summaries"
+        #     - "master:selected_achievements"
+        #     - "state:post_analysis_answers"
+        #     - "state:approved_rewrites"
+        #   writes:
+        #     - "state:interview_prep"
+        #   returns:
+        #     - "response:POST /api/interview-prep/generate.questions"
+        #     - "response:POST /api/interview-prep/generate.question_count"
+        #   notes: "Assembles the role + candidate profile into an LLM prompt asking for 10 interview-prep questions, parses the JSON questions array, and persists it to session state so the Interview Prep tab can render them."
+        entry = get_session()
+        validate_owner(entry)
+        conversation = entry.manager
+        orchestrator = entry.orchestrator
+        sid = entry.session_id
+        with entry.lock:
+            job_analysis = conversation.state.get('job_analysis') or {}
+            if not job_analysis:
+                return jsonify({'ok': False, 'error': 'No job analysis found — complete job analysis first.'}), 400
+
+            profile         = _assemble_candidate_profile(conversation, orchestrator)
+            personal_info   = profile['personal_info']
+            top_skills      = profile['top_skills']
+            summary_text    = profile['summary_text']
+            top_ach_titles  = profile['top_ach_titles']
+            answers_snippet = profile['answers_snippet']
+
+            approved_rewrites_block = _assemble_approved_rewrites(conversation, 'in a STAR answer')
+
+            company     = job_analysis.get('company', 'the company')
+            role        = job_analysis.get('title', 'the position')
+            keywords    = ', '.join((job_analysis.get('ats_keywords') or [])[:12])
+            req_skills  = ', '.join((job_analysis.get('required_skills') or [])[:10])
+            culture     = ', '.join((job_analysis.get('culture_indicators') or [])[:5])
+
+            prompt = f"""\
+You are an expert interview coach preparing a candidate for a specific interview.
+
+TARGET ROLE
+  Company: {company}
+  Position: {role}
+  Key requirements: {req_skills or keywords or '(see job description)'}
+  Culture signals: {culture or '(not specified)'}
+
+CANDIDATE PROFILE
+  Name: {personal_info.get('name', 'The candidate')}
+  Summary: {summary_text[:400] if summary_text else '(see CV)'}
+  Top skills: {top_skills}
+  Key achievements:
+{top_ach_titles}
+{approved_rewrites_block}
+
+{answers_snippet}
+
+Generate exactly 10 interview preparation questions for this role. Mix of:
+  - Behavioural / STAR questions grounded in the candidate's actual experience
+  - Technical or role-specific questions drawn from the key requirements
+  - Cultural-fit and "tell me about yourself" style questions
+  - One or two curveball / stretch questions
+
+For each question provide:
+  - "question": the question to ask the candidate
+  - "rationale": why the interviewer likely asks this (what they are probing)
+  - "hint": a specific preparation hint tied to the candidate's CV (a story, metric, or skill to highlight)
+
+Return ONLY raw JSON, no markdown fences, conforming to this schema:
+{{"questions": [{{"question": "...", "rationale": "...", "hint": "..."}}]}}
+"""
+
+            try:
+                response = llm_client_ref['value'].chat(
+                    messages=[
+                        {'role': 'system', 'content': 'You are an expert interview coach. Return only the requested JSON. Every hint must be grounded in the candidate profile provided — do not invent experiences, metrics, or facts not present in the source material.'},
+                        {'role': 'user',   'content': prompt},
+                    ],
+                    temperature=0.7,
+                )
+            except Exception:
+                logger.exception("Interview prep LLM request failed")
+                return jsonify({'ok': False, 'error': 'LLM request failed — check provider settings or try again.'}), 500
+
+            try:
+                if extract_json_payload is not None:
+                    parsed = extract_json_payload(response)
+                else:
+                    parsed = llm_client_ref['value']._parse_json_response(response)
+            except Exception:
+                logger.exception("Interview prep JSON parse failed")
+                return jsonify({'ok': False, 'error': 'Could not parse the interview prep response.'}), 500
+
+            if not isinstance(parsed, dict) or not isinstance(parsed.get('questions'), list):
+                return jsonify({'ok': False, 'error': 'Unexpected response format from the AI Model.'}), 500
+
+            questions = []
+            for q in parsed['questions']:
+                if not isinstance(q, dict):
+                    continue
+                question = (q.get('question') or '').strip()
+                if not question:
+                    continue
+                questions.append({
+                    'question':  question,
+                    'rationale': (q.get('rationale') or '').strip(),
+                    'hint':      (q.get('hint') or '').strip(),
+                })
+
+            if not questions:
+                return jsonify({'ok': False, 'error': 'No questions were generated.'}), 500
+
+            conversation.state['interview_prep'] = questions
+
+        session_registry.touch(sid)
+        return jsonify({'ok': True, 'questions': questions, 'question_count': len(questions)})
 
     @bp.post("/api/cover-letter/save")
     def cover_letter_save():
