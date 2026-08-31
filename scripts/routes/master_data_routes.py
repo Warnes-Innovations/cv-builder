@@ -2161,7 +2161,6 @@ def create_blueprint(deps):
 
             job_analysis  = conversation.state.get('job_analysis') or {}
             profile = _assemble_candidate_profile(conversation, orchestrator)
-            master          = profile['master']
             personal_info   = profile['personal_info']
             top_skills      = profile['top_skills']
             summary_text    = profile['summary_text']
