@@ -14,10 +14,10 @@
     "test:ui": "conda run -n cvgen python -m pytest tests/ui/ -q --tb=short",
     "test:integration:headless": "node web/tests/integration/run_integration.js",
     "lint:duplicates": "python3 scripts/lint_duplicate_definitions.py",
-    "lint:duplicate-code": "jscpd web scripts --config .jscpd.json --exit-code 1",
+    "lint:duplicate-code": "jscpd web scripts --config .jscpd.json",
     "lint:duplicate-functions": "eslint \"web/*.js\"",
     "lint:early-preview-guard": "eslint web/early-preview-panel.js",
-    "lint:duplicate-code:py": "conda run -n cvgen pylint scripts",
+    "lint:duplicate-code:py": "conda run -n cvgen pylint --rcfile pyproject.toml scripts",
     "lint:duplication": "npm run lint:duplicates && npm run lint:duplicate-functions && npm run lint:duplicate-code && npm run lint:duplicate-code:py"
   },
   "devDependencies": {

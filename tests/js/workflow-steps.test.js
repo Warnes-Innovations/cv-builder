@@ -12,7 +12,6 @@
 import {
   _STEP_ORDER,
   _STEP_DISPLAY,
-  _ACTION_LABELS,
   _markChanged,
   _highlightChangedItems,
   _injectCustomizationsFilterToggle,
@@ -26,6 +25,7 @@ import {
   _getStepTooltip,
   _updateViewingIndicator,
 } from '../../web/workflow-steps.js'
+import { _ACTION_LABELS } from '../../web/session-actions.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────
 

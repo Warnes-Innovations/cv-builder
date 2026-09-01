@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/committee-review.prompt.md
+../../../vscode-config/prompts/committee-review.prompt.md

@@ -33,6 +33,42 @@ generation:
     human_pdf: true
     human_docx: true
   skills_section_title: Skills
+
+# Position-style presets (issue #131).
+# Extends / overrides the built-in defaults (industry, academic, government)
+# from scripts/utils/config.py. Each key is selectable via position_style_override
+# and is auto-detected from the job description when its domain_terms match.
+position_styles:
+  medical_clinical:
+    label: Medical / Clinical
+    page_warn_below: 2.0
+    page_warn_above: null        # no upper page limit
+    include_publications: true
+    include_teaching: true
+    domain_terms:
+      - medical
+      - healthcare
+      - hospital
+      - nurse
+      - nursing
+      - physician
+      - pharmac
+      - patient care
+      - clinical operations
+  industry_research:
+    label: Industry Research / Applied R&D
+    page_warn_below: 2.0
+    page_warn_above: 4.0
+    include_publications: true
+    include_teaching: false
+    domain_terms:
+      - applied scientist
+      - research scientist
+      - research engineer
+      - r&d
+      - industry research
+      - staff scientist
+      - principal scientist
 session:
   auto_save: true
   session_dir: ~/CV/cv-builder/sessions

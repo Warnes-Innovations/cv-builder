@@ -9,7 +9,7 @@
  * Unit tests for web/session-manager.js helpers and session restore flows.
  */
 import {
-  formatSessionPhaseLabel,
+  formatSessionPhaseLabelShort,
   _getCurrentSessionIdValue,
   _getCurrentOwnerTokenValue,
   buildSessionSwitcherLabel,
@@ -49,25 +49,25 @@ function makeStorageMock() {
 
 // ── formatSessionPhaseLabel ───────────────────────────────────────────────
 
-describe('formatSessionPhaseLabel', () => {
+describe('formatSessionPhaseLabelShort', () => {
   it('returns "init" for null/undefined', () => {
-    expect(formatSessionPhaseLabel(null)).toBe('init')
-    expect(formatSessionPhaseLabel(undefined)).toBe('init')
+    expect(formatSessionPhaseLabelShort(null)).toBe('init')
+    expect(formatSessionPhaseLabelShort(undefined)).toBe('init')
   })
 
   it('returns "init" for empty string', () => {
-    expect(formatSessionPhaseLabel('')).toBe('init')
+    expect(formatSessionPhaseLabelShort('')).toBe('init')
   })
 
   it('maps known phases', () => {
-    expect(formatSessionPhaseLabel('job_analysis')).toBe('Analysis')
-    expect(formatSessionPhaseLabel('customization')).toBe('Customising')
-    expect(formatSessionPhaseLabel('rewrite_review')).toBe('Rewrites')
-    expect(formatSessionPhaseLabel('refinement')).toBe('Finalise')
+    expect(formatSessionPhaseLabelShort('job_analysis')).toBe('Analysis')
+    expect(formatSessionPhaseLabelShort('customization')).toBe('Customising')
+    expect(formatSessionPhaseLabelShort('rewrite_review')).toBe('Rewrites')
+    expect(formatSessionPhaseLabelShort('refinement')).toBe('Finalise')
   })
 
   it('converts unknown phases by replacing underscores with spaces', () => {
-    expect(formatSessionPhaseLabel('some_custom_phase')).toBe('some custom phase')
+    expect(formatSessionPhaseLabelShort('some_custom_phase')).toBe('some custom phase')
   })
 })
 

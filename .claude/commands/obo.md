@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/obo.prompt.md
+../../../vscode-config/prompts/obo.prompt.md

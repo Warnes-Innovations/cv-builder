@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/fixBibEntry.prompt.md
+../../../vscode-config/prompts/fixBibEntry.prompt.md

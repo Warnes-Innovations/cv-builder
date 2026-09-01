@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from routes.generation_routes import _harvest_add_skill, _harvest_add_summary_variant
+from utils.session_data_view import _skill_name
 
 # Sections a MasterDataChange may target.
 ALLOWED_SECTIONS = frozenset({
@@ -67,12 +68,6 @@ def _set_dotted(target: Dict[str, Any], dotted_field: str, value: Any) -> None:
             node[part] = nxt
         node = nxt
     node[parts[-1]] = value
-
-
-def _skill_name(skill: Any) -> str:
-    if isinstance(skill, dict):
-        return str(skill.get('name') or '').strip()
-    return str(skill or '').strip()
 
 
 def _find_stored_skill(master: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:

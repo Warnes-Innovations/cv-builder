@@ -75,7 +75,9 @@ function _htmlPreviewFile(files) {
 function _renderPreviewPane(htmlFile) {
   if (!htmlFile) return '';
   const base = htmlFile.split('/').pop();
-  const src = `/api/download/${encodeURIComponent(base)}`;
+  const sid = typeof getSessionIdFromURL === 'function' ? getSessionIdFromURL() : null;
+  const sp  = sid ? `?session_id=${encodeURIComponent(sid)}` : '';
+  const src = `/api/download/${encodeURIComponent(base)}${sp}`;
   return `
     <div id="final-preview-pane" style="margin-bottom:24px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;${_previewOpen ? '' : 'display:none;'}">
       <div style="padding:10px 16px;background:#f1f5f9;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;">
@@ -159,6 +161,8 @@ async function populateFinalGenerateTab(cvData = {}) {
   if (files.length === 0) {
     html += '<p style="color:#9ca3af;padding:16px;">No files generated yet.</p>';
   } else {
+    const _dlSid = typeof getSessionIdFromURL === 'function' ? getSessionIdFromURL() : null;
+    const _dlSp  = _dlSid ? `?session_id=${encodeURIComponent(_dlSid)}` : '';
     html += '<div style="display:grid;gap:12px;margin-bottom:28px;">';
     for (const filename of files) {
       const base   = filename.split('/').pop();
@@ -174,7 +178,7 @@ async function populateFinalGenerateTab(cvData = {}) {
             <div style="font-weight:600;font-size:0.95em;color:#1e293b;">${escapeHtml(label)}</div>
             <div style="font-size:0.83em;color:#64748b;margin-top:2px;">${escapeHtml(desc)}</div>
           </div>
-          <a href="/api/download/${encodeURIComponent(base)}"
+          <a href="/api/download/${encodeURIComponent(base)}${_dlSp}"
              download="${escapeHtml(base)}"
              style="display:inline-flex;align-items:center;gap:6px;
                     background:#3b82f6;color:#fff;

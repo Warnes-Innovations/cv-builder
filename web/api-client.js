@@ -34,6 +34,20 @@ function disclosureKey(provider) {
   return `${StorageKeys.LLM_DISCLOSURE_SHOWN}-${p}`;
 }
 
+function maybeShowLlmDisclosure() {
+  try {
+    const provider = JSON.parse(localStorage.getItem(StorageKeys.TAB_DATA) || '{}').currentModelProvider || null;
+    const key = disclosureKey(provider);
+    if (!localStorage.getItem(key)) {
+      const label = provider ? ` (${provider})` : '';
+      if (typeof appendMessage === 'function') {
+        appendMessage('system', `ℹ️ Content you submit is sent to the configured AI Model provider${label} for analysis. Review your provider's data policy for details.`);
+      }
+      localStorage.setItem(key, '1');
+    }
+  } catch (_) { /* non-fatal */ }
+}
+
 function getSessionIdFromURL() {
   if (typeof window === 'undefined' || !window.location) return null;
   return new URLSearchParams(window.location.search).get('session');
@@ -252,5 +266,6 @@ export {
   fetchStatus,
   fetchSettings, updateSettings,
   disclosureKey,
+  maybeShowLlmDisclosure,
 };
 

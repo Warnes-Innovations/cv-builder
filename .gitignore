@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 
+# Virtual environments
+.venv/
+
 # Local outputs and sessions (private)
 files/
 
@@ -49,6 +52,10 @@ node_modules/
 *.backup
 index.html.1
 
+# Agent/tool cache directories (machine-local artifacts — not for sharing)
+.serena/
+.cursor/
+
 # Coverage artifacts
 coverage/
 htmlcov/
@@ -65,7 +72,6 @@ htmlcov/
 /tmp/
 *.bak
 tasks/e2e-test-report-*.md
-.specstory/history/
 .specstory/statistics.json
 llm-keys.zsh
 

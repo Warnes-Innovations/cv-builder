@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/findCitations.prompt.md
+../../../vscode-config/prompts/findCitations.prompt.md

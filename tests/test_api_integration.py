@@ -286,7 +286,7 @@ class TestModelAPI(unittest.TestCase):
             'Authentication failed with OpenAI. Check that your API key is valid and has not expired.'
         )
 
-        with patch('scripts.web_app.get_llm_provider', return_value=fake_client):
+        with patch('routes.auth_routes.get_llm_provider', return_value=fake_client):
             response = self.client.post('/api/model', json={
                 'provider': 'github',
                 'model': 'claude-3-haiku',

@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/citationStatus.prompt.md
+../../../vscode-config/prompts/citationStatus.prompt.md

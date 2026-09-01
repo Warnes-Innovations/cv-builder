@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/duckflow.prompt.md
+../../../vscode-config/prompts/duckflow.prompt.md

@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/flush.prompt.md
+../../../vscode-config/prompts/flush.prompt.md

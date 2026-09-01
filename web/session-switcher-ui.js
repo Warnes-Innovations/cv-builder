@@ -71,20 +71,6 @@ function _renderSavedSessionRows(savedSessions, { includeManagement = false } = 
     return '<p class="session-switcher-empty">No saved sessions found.</p>';
   }
 
-  function _createdIsoFromSessionPath(sessionPath) {
-    if (!sessionPath) return '';
-    const pathText = String(sessionPath);
-    const parts = pathText.split(/[\\/]/).filter(Boolean);
-    if (parts.length < 2) return '';
-
-    const dirName = parts[parts.length - 2];
-    const match = dirName.match(/(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})/);
-    if (!match) return '';
-
-    const [, year, month, day, hour, minute, second] = match;
-    return `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
-  }
-
   return `<div class="session-switcher-list">${savedSessions.map((session, index) => {
     const escapedPath = escapeHtml(session.path || '');
     const createdIso = _createdIsoFromSessionPath(session.path);
@@ -152,10 +138,19 @@ function _updateSessionSwitcherHeader(status = {}) {
   const subtitleEl = document.getElementById('header-session-name');
   const hasSession = Boolean(_getCurrentSessionIdValue());
 
-  if (switcherLabelEl) switcherLabelEl.textContent = label;
+  if (switcherLabelEl) {
+    switcherLabelEl.textContent = label;
+    switcherLabelEl.title = label;
+  }
   if (switcherBtn) switcherBtn.classList.toggle('is-session-active', hasSession);
   if (subtitleEl) {
-    subtitleEl.textContent = hasSession ? `Current session: ${label}` : 'Select or create a session';
+    // Position name is shown as the page's own <h1> once a document loads, so
+    // repeating it here just added a long, wrapping line under "CV Builder"
+    // (worse the longer the position name is) — only the phase adds anything
+    // this line doesn't already show elsewhere.
+    const phase = formatSessionPhaseLabel(status.phase);
+    subtitleEl.textContent = hasSession ? `Active — ${phase}` : 'Select or create a session';
+    subtitleEl.title = hasSession ? `Active — ${phase}` : '';
   }
 }
 

@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/auditCitations.prompt.md
+../../../vscode-config/prompts/auditCitations.prompt.md

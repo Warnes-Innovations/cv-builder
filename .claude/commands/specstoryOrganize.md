@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/specstoryOrganize.prompt.md
+../../../vscode-config/prompts/specstoryOrganize.prompt.md

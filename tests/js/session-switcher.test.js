@@ -11,7 +11,7 @@
  */
 
 import {
-  formatSessionPhaseLabel,
+  formatSessionPhaseLabelShort,
   buildSessionSwitcherLabel,
   getActiveSessionOwnershipMeta,
 } from '../../web/session-manager.js'
@@ -36,9 +36,9 @@ describe('session switcher helpers', () => {
   })
 
   it('formats workflow phases for display', () => {
-    expect(formatSessionPhaseLabel('rewrite_review')).toBe('Rewrites')
-    expect(formatSessionPhaseLabel('layout_review')).toBe('Layout')
-    expect(formatSessionPhaseLabel('custom_phase')).toBe('custom phase')
+    expect(formatSessionPhaseLabelShort('rewrite_review')).toBe('Rewrites')
+    expect(formatSessionPhaseLabelShort('layout_review')).toBe('Layout')
+    expect(formatSessionPhaseLabelShort('custom_phase')).toBe('custom phase')
   })
 
   it('builds a header label from position name and phase', () => {

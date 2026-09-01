@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/commandDiscovery.prompt.md
+../../../vscode-config/prompts/commandDiscovery.prompt.md

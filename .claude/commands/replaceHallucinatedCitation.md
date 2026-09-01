@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/replaceHallucinatedCitation.prompt.md
+../../../vscode-config/prompts/replaceHallucinatedCitation.prompt.md

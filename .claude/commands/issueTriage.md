@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/issueTriage.prompt.md
+../../../vscode-config/prompts/issueTriage.prompt.md

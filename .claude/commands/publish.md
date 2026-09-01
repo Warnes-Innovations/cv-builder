@@ -1,1 +1,1 @@
-/Users/warnes/src/vscode-config/prompts/publish.prompt.md
+../../../vscode-config/prompts/publish.prompt.md
