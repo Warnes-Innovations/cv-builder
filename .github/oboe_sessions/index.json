@@ -1,0 +1,20 @@
+{
+  "format_version": 1,
+  "last_updated": "2026-08-29T09:31:23.297086",
+  "sessions": [
+    {
+      "file": "session_20260828_145013.json",
+      "title": "Issue triage: cv-builder open issues",
+      "status": "completed",
+      "pending": 0,
+      "in_progress": 0,
+      "deferred": 0,
+      "blocked": 0,
+      "actionable": 0,
+      "open": 0,
+      "created": "2026-08-28",
+      "parent_session_file": null,
+      "active_child_session": null
+    }
+  ]
+}
