@@ -172,7 +172,7 @@ Slash commands are available from the shared prompt set in `~/src/agent-config/.
 
 ### /obo in cv-builder
 
-- Session dir: `.github/obo_sessions/`
+- Session dir: `.github/oboe_sessions/`
 
 ---
 

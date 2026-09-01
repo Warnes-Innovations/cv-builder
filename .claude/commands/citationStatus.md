@@ -1,0 +1,1 @@
+../../../vscode-config/prompts/citationStatus.prompt.md

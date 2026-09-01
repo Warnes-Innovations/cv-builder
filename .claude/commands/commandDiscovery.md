@@ -1,0 +1,1 @@
+../../../vscode-config/prompts/commandDiscovery.prompt.md

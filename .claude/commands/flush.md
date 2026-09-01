@@ -1,0 +1,1 @@
+../../../vscode-config/prompts/flush.prompt.md
