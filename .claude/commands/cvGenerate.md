@@ -1,1 +1,1 @@
-/Users/warnes/src/cv-builder/.github/prompts/cvGenerate.prompt.md
+../../.github/prompts/cvGenerate.prompt.md

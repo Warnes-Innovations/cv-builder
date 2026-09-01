@@ -1,1 +1,1 @@
-/Users/warnes/src/cv-builder/.github/prompts/plan-stepPillNavStateModel.prompt.md
+../../.github/prompts/plan-stepPillNavStateModel.prompt.md

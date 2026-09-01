@@ -1,1 +1,1 @@
-/Users/warnes/src/cv-builder/.github/prompts/e2ePhaseTest.prompt.md
+../../.github/prompts/e2ePhaseTest.prompt.md
