@@ -1,1 +1,1 @@
-/Users/warnes/src/cv-builder/.github/prompts/cvMasterEdit.prompt.md
+../../.github/prompts/cvMasterEdit.prompt.md
