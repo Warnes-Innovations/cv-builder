@@ -323,6 +323,65 @@ class TestParseArgs(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# _require_cv_builder
+# ---------------------------------------------------------------------------
+
+class TestRequireCvBuilder(unittest.TestCase):
+    """The preflight probe must distinguish 'nothing there' from 'wrong thing there'.
+
+    Regression context: the original probe requested /api/models - an endpoint
+    this app has never served - and caught only RequestException, so a 404
+    counted as success. It confirmed that *something* held the port, not that
+    it was cv-builder.
+    """
+
+    def test_live_cv_builder_returns_payload(self):
+        resp = _mock_response(200, {"alive": True, "ok": True, "phase": None})
+        with patch("requests.get", return_value=resp):
+            data = cv_cli._require_cv_builder("http://localhost:5001")
+        self.assertTrue(data["alive"])
+
+    def test_probes_api_status_not_api_models(self):
+        resp = _mock_response(200, {"alive": True})
+        with patch("requests.get", return_value=resp) as mock_get:
+            cv_cli._require_cv_builder("http://localhost:5001")
+        url = mock_get.call_args[0][0]
+        self.assertTrue(url.endswith("/api/status"), url)
+        self.assertNotIn("/api/models", url)
+
+    def test_connection_error_exits_1(self):
+        with patch("requests.get", side_effect=requests.RequestException("boom")):
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://localhost:5001")
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_404_is_rejected_not_treated_as_success(self):
+        """The exact defect: a 404 response must not pass the check."""
+        resp = _mock_response(404, {"error": "not found"})
+        with patch("requests.get", return_value=resp):
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://localhost:5001")
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_non_json_body_is_rejected(self):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.side_effect = ValueError("not json")
+        with patch("requests.get", return_value=resp):
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://localhost:5001")
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_json_without_alive_field_is_rejected(self):
+        """Some other JSON service on the port is still the wrong service."""
+        resp = _mock_response(200, {"status": "fine", "service": "something-else"})
+        with patch("requests.get", return_value=resp):
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://localhost:5001")
+        self.assertEqual(cm.exception.code, 1)
+
+
+# ---------------------------------------------------------------------------
 # _resolve_summary_variant
 # ---------------------------------------------------------------------------
 
@@ -415,19 +474,19 @@ class TestGetHelper(unittest.TestCase):
 
     def test_get_returns_json_on_200(self):
         with patch("requests.get", return_value=_mock_response(200, {"status": "ok"})):
-            result = cv_cli._get("http://localhost:5001", "/api/models")
+            result = cv_cli._get("http://localhost:5001", "/api/status")
         self.assertEqual(result, {"status": "ok"})
 
     def test_get_raises_api_error_on_5xx(self):
         with patch("requests.get", return_value=_mock_response(500, {})):
             with self.assertRaises(cv_cli.APIError):
-                cv_cli._get("http://localhost:5001", "/api/models")
+                cv_cli._get("http://localhost:5001", "/api/status")
 
     def test_get_raises_api_error_on_connection_error(self):
         import requests as _req
         with patch("requests.get", side_effect=_req.RequestException("timeout")):
             with self.assertRaises(cv_cli.APIError):
-                cv_cli._get("http://localhost:5001", "/api/models")
+                cv_cli._get("http://localhost:5001", "/api/status")
 
 
 # ---------------------------------------------------------------------------

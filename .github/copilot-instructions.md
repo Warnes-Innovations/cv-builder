@@ -84,7 +84,13 @@ the tests.
   - **session_id delivery**: GET requests pass `?session_id=<uuid>` as a query parameter; POST/PUT/DELETE requests include `"session_id": "<uuid>"` in the JSON body. `_get_session(required=True)` in `web_app.py` resolves the session from either location and returns HTTP 400 if not found.
   - **Ownership model**: sessions can be *unclaimed* (`owner_token is None`, no token needed) or *claimed* (`owner_token` set by `POST /api/sessions/claim`). `_validate_owner(entry)` skips validation for unclaimed sessions and returns HTTP 403 for wrong-token requests on claimed ones.
   - **Session lifecycle endpoints** (no `session_id` needed): `POST /api/sessions/new`, `POST /api/sessions/claim`, `POST /api/sessions/takeover`, `GET /api/sessions/active`, `DELETE /api/sessions/<id>/evict`.
-  - **Session-free endpoints** (model/pricing metadata): `/api/model-catalog`, `/api/pricing`, `/api/models`.
+  - **Session-free endpoints** (model metadata): `/api/model-catalog`, `/api/model`.
+    Note the singular `/api/model`. There is no `/api/models` and no `/api/pricing` —
+    both were listed here until 2026-09-11 and neither has ever had a route (verified
+    live: 404, and `git log -S` finds no route in any commit). A probe written against
+    `/api/models` on the strength of this line shipped in `cv_generate_cli.py` and
+    passed its tests, because a 404 is a successful HTTP response. Pricing refresh is
+    `POST /api/model-pricing/refresh`.
   - All other API routes require a valid `session_id`; never bypass `_get_session()` in new routes.
 - **Rewrite audit key**: field is `final_text` in the spec but `final` in code (renamed in commit `576b75f`). Do not revert.
 - **Known shadowing incidents — duplicate helper defined in two files**: this codebase has repeatedly split the *same* helper across two modules during refactors, where the later-loaded copy silently overrides the earlier one at runtime, quietly reverting whatever fix landed in the "losing" copy. Confirmed past cases: `toggleChat` (`web/ui-core.js` vs `web/ui-helpers.js`, GAP-146), `showAlertModal`/`closeAlertModal` (same file pair, GAP-48), and `_save_master` (`scripts/master_data_routes.py` vs `scripts/web_app.py`, GAP-43 — **still open**, needs consolidation). See "When modifying code" below for the required check before adding any new helper/export. Automated checks exist for this — run `npm run lint:duplication` (or the individual `lint:duplicates` [exact-name JS/Python duplicates], `lint:duplicate-functions` [eslint-plugin-sonarjs, near-identical JS function bodies], `lint:duplicate-code` [jscpd, copy-pasted blocks across JS+Python], `lint:duplicate-code:py` [pylint `duplicate-code`/R0801] scripts) before committing changes that add or move helpers.
