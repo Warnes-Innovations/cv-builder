@@ -12,6 +12,10 @@
       "properties": {
         "name": { "type": "string" },
         "title": { "type": "string" },
+        "citizenship": {
+          "type": "string",
+          "description": "Optional citizenship / clearance-eligibility statement rendered near the contact block. Federal-contract applications screen for this before reading anything else, so its absence reads as ineligibility. Deliberately free text rather than structured fields: the required phrasing varies by agency, and how much eligibility an applicant is willing to assert is their own decision."
+        },
         "contact": {
           "type": "object",
           "additionalProperties": true,

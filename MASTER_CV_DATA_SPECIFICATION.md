@@ -69,6 +69,10 @@ Observed fields:
 
 - `name`: string
 - `title`: string
+- `citizenship`: string (optional) — citizenship / clearance-eligibility statement, rendered near
+  the contact block. Present for applicants targeting federal-contract roles, which screen for it
+  before reading anything else, so its absence reads as ineligibility. Deliberately free text, not
+  structured fields: phrasing varies by agency and by what the applicant is willing to assert.
 - `contact`: object
 - `languages`: array
 
@@ -93,7 +97,14 @@ Observed fields:
 Observed shape:
 
 - Object mapping summary key -> summary text string
-- Example keys in current data: `default`, `data_science_leadership`, `biostatistics_ic`, `ml_engineering`
+- The key set is open and grows per target role type. **Read the live keys from the data**
+  (`jq -r '.professional_summaries | keys[]' Master_CV_Data.json`) rather than trusting any list
+  written here — an enumeration in this file is stale the moment a variant is added. Illustrative
+  only, as of 2026-09-10: `default`, `data_science_leadership`, `biostatistics_ic`,
+  `ml_engineering`, `scientific_advisor`, `federal_advisor`.
+- `federal_advisor` targets federal-contract advisory roles (program/technical advisor positions at
+  agencies such as BARDA, NIH, ARPA-H): it leads with program leadership, funding acquisition, and
+  proposal-review experience rather than with individual-contributor technical depth.
 
 Compatibility:
 

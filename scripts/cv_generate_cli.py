@@ -15,21 +15,24 @@ Usage
     #   conda activate cvgen && python scripts/web_app.py --llm-provider github
     #
     # Then run this CLI:
-    python scripts/cv_generate_cli.py --mode comprehensive
-    python scripts/cv_generate_cli.py --mode focused
-    python scripts/cv_generate_cli.py --mode comprehensive --job-file path/to/job.txt
-    python scripts/cv_generate_cli.py --base-url http://127.0.0.1:5000 --mode focused --dry-run
+    python scripts/cv_generate_cli.py --mode comprehensive --summary-variant scientific_advisor
+    python scripts/cv_generate_cli.py --mode focused --summary-variant federal_advisor
+    python scripts/cv_generate_cli.py --mode comprehensive --summary-variant federal_advisor \
+        --job-file path/to/job.txt
+    python scripts/cv_generate_cli.py --base-url http://127.0.0.1:5000 --mode focused \
+        --summary-variant scientific_advisor --dry-run
+
+The summary variant is required; it is validated against the keys present in
+Master_CV_Data.json and the run aborts on an unknown one.
 
 Modes
 -----
 comprehensive
     All experience entries, all achievements, all skills, full publications.
-    Uses the ``scientific_advisor`` professional summary.
 
 focused
     Highlights Pfizer, Boehringer Ingelheim, Medidata, Novartis, Warnes Innovations.
     Excludes older / less relevant roles.
-    Uses the ``scientific_advisor`` professional summary.
 """
 
 from __future__ import annotations
@@ -184,6 +187,37 @@ def _load_master_data(path: str | Path) -> dict[str, Any]:
         return json.load(fh)
 
 
+def _available_summary_variants(master: dict[str, Any]) -> list[str]:
+    """Summary variant keys present in the master data, in declaration order."""
+    summaries = master.get("professional_summaries")
+    if isinstance(summaries, dict):
+        return list(summaries.keys())
+    return []
+
+
+def _resolve_summary_variant(master: dict[str, Any], requested: str) -> str:
+    """Validate `requested` against the master data, or fail with the real options.
+
+    Do not relax this into a silent fallback. The API accepts any string for
+    summary_focus, so an unrecognised variant posts successfully and the CV is
+    generated with whatever summary the backend defaults to — a wrong document
+    that looks like a right one. Failing here is the only place the mistake is
+    still visible.
+    """
+    available = _available_summary_variants(master)
+    if not available:
+        raise SystemExit(
+            "ERROR: master data has no object-form 'professional_summaries'; "
+            "cannot select a summary variant."
+        )
+    if requested not in available:
+        raise SystemExit(
+            f"ERROR: unknown summary variant {requested!r}.\n"
+            f"  available: {', '.join(available)}"
+        )
+    return requested
+
+
 def _all_achievement_ids(master: dict[str, Any]) -> list[str]:
     ids: list[str] = []
     for exp in master.get("experience", []):
@@ -286,11 +320,13 @@ def run_generation(
     job_text: str,
     master_cv_path: str,
     publications_path: str,
+    summary_variant: str,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Drive the full generation workflow and return final output info."""
 
     master = _load_master_data(master_cv_path)
+    summary_variant = _resolve_summary_variant(master, summary_variant)
 
     exp_decisions   = _EXPERIENCE_DECISIONS[mode]
     ach_decisions   = _build_achievement_decisions(master, mode)
@@ -368,8 +404,8 @@ def run_generation(
         _p("/api/review-decisions", {"type": "publications", "decisions": pub_decisions})
         _ok(f"{len(pub_decisions)} publications included")
 
-    _step("Setting summary variant: scientific_advisor")
-    _p("/api/review-decisions", {"type": "summary_focus", "decisions": "scientific_advisor"})
+    _step(f"Setting summary variant: {summary_variant}")
+    _p("/api/review-decisions", {"type": "summary_focus", "decisions": summary_variant})
     _ok()
 
     # ------------------------------------------------------------------
@@ -421,6 +457,17 @@ def _parse_args() -> argparse.Namespace:
         choices=["comprehensive", "focused"],
         required=True,
         help="comprehensive = all experience; focused = Pfizer/BI/Medidata/Novartis/Warnes Innovations",
+    )
+    p.add_argument(
+        "--summary-variant",
+        required=True,
+        metavar="KEY",
+        help=(
+            "professional_summaries key to use (e.g. scientific_advisor, federal_advisor). "
+            "Required and validated against the master data: there is deliberately no default, "
+            "because the summary is the most role-specific text on the CV and a silent default "
+            "produces a plausible document aimed at the wrong audience."
+        ),
     )
     p.add_argument(
         "--base-url",
@@ -489,6 +536,7 @@ def main() -> None:
             job_text=job_text,
             master_cv_path=args.master_cv,
             publications_path=args.publications,
+            summary_variant=args.summary_variant,
             dry_run=args.dry_run,
         )
     except APIError as exc:

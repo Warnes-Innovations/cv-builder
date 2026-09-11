@@ -54,6 +54,12 @@ class MasterDataBuilder:
     def __init__(self) -> None:
         self._experiences: list = []
         self._skills: object = []
+        # run_generation validates the requested summary variant against these,
+        # so the fixture must carry at least one real key.
+        self._summaries: object = {
+            "default": "Default summary text.",
+            "scientific_advisor": "Scientific advisor summary text.",
+        }
 
     def with_experiences(self, *experiences: dict) -> "MasterDataBuilder":
         self._experiences.extend(experiences)
@@ -63,8 +69,16 @@ class MasterDataBuilder:
         self._skills = skills
         return self
 
+    def with_summaries(self, summaries: object) -> "MasterDataBuilder":
+        self._summaries = summaries
+        return self
+
     def build(self) -> dict:
-        return {"skills": self._skills, "experience": self._experiences}
+        return {
+            "skills": self._skills,
+            "experience": self._experiences,
+            "professional_summaries": self._summaries,
+        }
 
 
 def _master(skills_format: str = "list") -> dict:
@@ -241,27 +255,29 @@ class TestParseArgs(unittest.TestCase):
             sys.argv = old
 
     def test_mode_comprehensive(self):
-        args = self._parse(["--mode", "comprehensive"])
+        args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor"])
         self.assertEqual(args.mode, "comprehensive")
 
     def test_mode_focused(self):
-        args = self._parse(["--mode", "focused"])
+        args = self._parse(["--mode", "focused", "--summary-variant", "scientific_advisor"])
         self.assertEqual(args.mode, "focused")
 
     def test_default_base_url(self):
-        args = self._parse(["--mode", "comprehensive"])
+        args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor"])
         self.assertEqual(args.base_url, "http://127.0.0.1:5001")
 
     def test_custom_base_url(self):
-        args = self._parse(["--mode", "comprehensive", "--base-url", "http://localhost:9000"])
+        args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor",
+                            "--base-url", "http://localhost:9000"])
         self.assertEqual(args.base_url, "http://localhost:9000")
 
     def test_dry_run_flag(self):
-        args = self._parse(["--mode", "comprehensive", "--dry-run"])
+        args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor",
+                            "--dry-run"])
         self.assertTrue(args.dry_run)
 
     def test_dry_run_default_false(self):
-        args = self._parse(["--mode", "comprehensive"])
+        args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor"])
         self.assertFalse(args.dry_run)
 
     def test_mode_required_exits_with_code_2(self):
@@ -274,15 +290,90 @@ class TestParseArgs(unittest.TestCase):
         finally:
             sys.argv = old
 
-    def test_invalid_mode_rejected(self):
+    def test_summary_variant_parsed(self):
+        args = self._parse(["--mode", "comprehensive",
+                            "--summary-variant", "federal_advisor"])
+        self.assertEqual(args.summary_variant, "federal_advisor")
+
+    def test_summary_variant_required_exits_with_code_2(self):
+        """--summary-variant has no default on purpose.
+
+        The summary is the most role-specific text on the CV, so a silent
+        default produces a plausible document aimed at the wrong audience.
+        """
         old = sys.argv[:]
         try:
-            sys.argv = ["cv_generate_cli.py", "--mode", "extreme"]
+            sys.argv = ["cv_generate_cli.py", "--mode", "comprehensive"]
             with self.assertRaises(SystemExit) as cm:
                 cv_cli._parse_args()
             self.assertEqual(cm.exception.code, 2)
         finally:
             sys.argv = old
+
+    def test_invalid_mode_rejected(self):
+        old = sys.argv[:]
+        try:
+            sys.argv = ["cv_generate_cli.py", "--mode", "extreme",
+                        "--summary-variant", "scientific_advisor"]
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._parse_args()
+            self.assertEqual(cm.exception.code, 2)
+        finally:
+            sys.argv = old
+
+
+# ---------------------------------------------------------------------------
+# _resolve_summary_variant
+# ---------------------------------------------------------------------------
+
+class TestResolveSummaryVariant(unittest.TestCase):
+
+    def test_known_variant_returned_unchanged(self):
+        master = _master()
+        self.assertEqual(
+            cv_cli._resolve_summary_variant(master, "scientific_advisor"),
+            "scientific_advisor",
+        )
+
+    def test_unknown_variant_aborts_and_lists_available(self):
+        master = _master()
+        with self.assertRaises(SystemExit) as cm:
+            cv_cli._resolve_summary_variant(master, "no_such_variant")
+        msg = str(cm.exception)
+        self.assertIn("no_such_variant", msg)
+        self.assertIn("scientific_advisor", msg)
+
+    def test_unknown_variant_is_not_silently_defaulted(self):
+        """Regression guard: the API accepts any string for summary_focus.
+
+        If this ever falls back to a default instead of raising, an
+        unrecognised variant posts successfully and the CV is generated with
+        the wrong summary - a wrong document that looks like a right one.
+        """
+        master = _master()
+        with self.assertRaises(SystemExit):
+            cv_cli._resolve_summary_variant(master, "typo_advisor")
+
+    def test_missing_summaries_aborts(self):
+        master = MasterDataBuilder().with_summaries({}).build()
+        with self.assertRaises(SystemExit) as cm:
+            cv_cli._resolve_summary_variant(master, "scientific_advisor")
+        self.assertIn("professional_summaries", str(cm.exception))
+
+    def test_list_form_summaries_aborts(self):
+        """Legacy list-form summaries have no keys to select by."""
+        master = MasterDataBuilder().with_summaries(["just a string"]).build()
+        with self.assertRaises(SystemExit):
+            cv_cli._resolve_summary_variant(master, "scientific_advisor")
+
+    def test_available_variants_preserves_declaration_order(self):
+        master = MasterDataBuilder().with_summaries(
+            {"b_second": "x", "a_first": "y"}
+        ).build()
+        self.assertEqual(
+            cv_cli._available_summary_variants(master),
+            ["b_second", "a_first"],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +449,7 @@ class TestRunGenerationDryRun(unittest.TestCase):
             job_text="Some job",
             master_cv_path=self._f.name,
             publications_path="/nonexistent/publications.bib",
+            summary_variant="scientific_advisor",
             dry_run=True,
         )
         self.assertEqual(result, {})
@@ -370,6 +462,7 @@ class TestRunGenerationDryRun(unittest.TestCase):
                 job_text="Some job",
                 master_cv_path=self._f.name,
                 publications_path="/nonexistent/publications.bib",
+                summary_variant="scientific_advisor",
                 dry_run=True,
             )
         mock_post.assert_not_called()
@@ -434,6 +527,7 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
                 job_text="Some job",
                 master_cv_path=self._f.name,
                 publications_path="/nonexistent/publications.bib",
+                summary_variant="scientific_advisor",
                 dry_run=False,
             )
         self.assertEqual(result["session_id"], "test-sid-001")
@@ -453,6 +547,7 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
                 job_text="Some job",
                 master_cv_path=self._f.name,
                 publications_path="/nonexistent/publications.bib",
+                summary_variant="scientific_advisor",
                 dry_run=False,
             )
         self.assertTrue(calls[0].endswith("/api/sessions/new"), f"First call was {calls[0]}")
@@ -471,6 +566,7 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
                 job_text="Some job",
                 master_cv_path=self._f.name,
                 publications_path="/nonexistent/publications.bib",
+                summary_variant="scientific_advisor",
                 dry_run=False,
             )
         self.assertTrue(calls[-1].endswith("/api/cv/generate-final"), f"Last call was {calls[-1]}")
@@ -485,6 +581,7 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
                     job_text="Some job",
                     master_cv_path=self._f.name,
                     publications_path="/nonexistent/publications.bib",
+                    summary_variant="scientific_advisor",
                     dry_run=False,
                 )
 
@@ -505,6 +602,7 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
                     job_text="Some job",
                     master_cv_path=self._f.name,
                     publications_path="/nonexistent/publications.bib",
+                    summary_variant="scientific_advisor",
                     dry_run=False,
                 )
 
@@ -525,6 +623,7 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
                     job_text="Some job",
                     master_cv_path=self._f.name,
                     publications_path="/nonexistent/publications.bib",
+                    summary_variant="scientific_advisor",
                     dry_run=False,
                 )
 
