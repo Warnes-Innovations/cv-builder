@@ -20,6 +20,7 @@ import {
   showSessionsLandingPanel,
   ensureSessionContext,
   createNewSessionAndNavigate,
+  createNewSessionInNewTab,
   onboardingCreateEmptyProfile,
   showOnboardingModal,
   showWelcomeModal,
@@ -1625,3 +1626,192 @@ describe('restoreBackendState', () => {
           expect(globalThis.window.pendingRecommendations).toBeNull()
         })
       })
+
+// ── createNewSessionInNewTab ─────────────────────────────────────────────
+//
+// Regression cover for the "＋ New Session" header button doing nothing
+// (web/index.html, onclick="createNewSessionInNewTab()"). Two defects:
+//   1. window.open() ran AFTER `await createSession()`, so the browser had
+//      already discarded the click's user activation and blocked the popup
+//      silently. POST /api/sessions/new measures ~8s, so the gap is enormous.
+//   2. A failed create threw out of an inline onclick handler, where the
+//      rejection is discarded and the user is shown nothing at all.
+
+function makeTabMock() {
+  return {
+    document: { write: vi.fn(), close: vi.fn() },
+    location: { replace: vi.fn() },
+    close: vi.fn(),
+    opener: { some: 'opener' },
+  }
+}
+
+describe('createNewSessionInNewTab', () => {
+  let openMock
+
+  beforeEach(() => {
+    vi.stubGlobal('createSession', vi.fn())
+    openMock = vi.fn(() => makeTabMock())
+    vi.stubGlobal('open', openMock)
+    vi.stubGlobal('showToast', vi.fn())
+    vi.stubGlobal('location', { assign: vi.fn() })
+    document.body.innerHTML = `
+      <button id="new-session-header-btn">＋ New Session</button>
+      <div id="onboarding-modal-overlay" style="display:none;"></div>
+      <p id="onboarding-master-cv-path"></p>
+      <p id="onboarding-modal-status"></p>
+    `
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('opens the tab synchronously, before the slow create call resolves', async () => {
+    // THE defect-1 guard. If window.open is ever moved back below the await,
+    // this fails: at this point the create promise is still pending, so a
+    // post-await open would not have happened yet.
+    let resolveCreate
+    createSession.mockReturnValue(new Promise(res => { resolveCreate = res }))
+
+    const pending = createNewSessionInNewTab()
+
+    expect(openMock).toHaveBeenCalledTimes(1)
+    expect(openMock).toHaveBeenCalledWith('', '_blank')
+
+    resolveCreate({ session_id: 'abc', redirect_url: '/?session=abc' })
+    await pending
+  })
+
+  it('does not pass noopener, which would null the handle it needs', async () => {
+    // window.open(..., 'noopener') returns null by spec, so the tab could
+    // never be navigated once the session id arrived.
+    createSession.mockResolvedValue({ session_id: 'abc', redirect_url: '/?session=abc' })
+
+    await createNewSessionInNewTab()
+
+    expect(openMock.mock.calls[0][2]).toBeUndefined()
+  })
+
+  it('navigates the opened tab and severs the opener reference', async () => {
+    const tab = makeTabMock()
+    openMock.mockReturnValue(tab)
+    createSession.mockResolvedValue({ session_id: 'abc', redirect_url: '/?session=abc' })
+
+    await createNewSessionInNewTab()
+
+    expect(tab.location.replace).toHaveBeenCalledWith('/?session=abc')
+    expect(tab.opener).toBeNull()
+    expect(tab.close).not.toHaveBeenCalled()
+  })
+
+  it('falls back to a session URL when the response omits redirect_url', async () => {
+    const tab = makeTabMock()
+    openMock.mockReturnValue(tab)
+    createSession.mockResolvedValue({ session_id: 'xyz' })
+
+    await createNewSessionInNewTab()
+
+    expect(tab.location.replace).toHaveBeenCalledWith('/?session=xyz')
+  })
+
+  it('falls back to this tab when the popup is blocked outright', async () => {
+    openMock.mockReturnValue(null)
+    createSession.mockResolvedValue({ session_id: 'abc', redirect_url: '/?session=abc' })
+
+    await createNewSessionInNewTab()
+
+    expect(location.assign).toHaveBeenCalledWith('/?session=abc')
+  })
+
+  it('closes the placeholder tab and shows onboarding when master CV is missing', async () => {
+    const tab = makeTabMock()
+    openMock.mockReturnValue(tab)
+    createSession.mockResolvedValue({
+      ok: false, error: 'master_cv_missing', master_cv_path: '/home/user/CV/Master_CV_Data.json',
+    })
+
+    await createNewSessionInNewTab()
+
+    expect(tab.close).toHaveBeenCalled()
+    expect(tab.location.replace).not.toHaveBeenCalled()
+    expect(document.getElementById('onboarding-modal-overlay').style.display).toBe('flex')
+  })
+
+  it('reports the failure to the user and closes the tab when the id is missing', async () => {
+    const tab = makeTabMock()
+    openMock.mockReturnValue(tab)
+    createSession.mockResolvedValue({ redirect_url: '/?session=missing' })
+
+    await expect(createNewSessionInNewTab()).rejects.toThrow('Failed to create session')
+
+    expect(tab.close).toHaveBeenCalled()
+    expect(showToast).toHaveBeenCalled()
+    expect(showToast.mock.calls[0][0]).toMatch(/Could not create a new session/)
+    expect(showToast.mock.calls[0][1]).toBe('error')
+  })
+
+  it('reports a rejected create call rather than failing silently', async () => {
+    createSession.mockRejectedValue(new Error('network down'))
+
+    await expect(createNewSessionInNewTab()).rejects.toThrow('network down')
+
+    expect(showToast).toHaveBeenCalled()
+    expect(showToast.mock.calls[0][0]).toMatch(/network down/)
+  })
+
+  it('disables the header button while the create is in flight and restores it after', async () => {
+    const btn = document.getElementById('new-session-header-btn')
+    let resolveCreate
+    createSession.mockReturnValue(new Promise(res => { resolveCreate = res }))
+
+    const pending = createNewSessionInNewTab()
+    expect(btn.disabled).toBe(true)
+    expect(btn.textContent).toBe('Creating…')
+
+    resolveCreate({ session_id: 'abc', redirect_url: '/?session=abc' })
+    await pending
+
+    expect(btn.disabled).toBe(false)
+    expect(btn.textContent).toBe('＋ New Session')
+  })
+
+  it('re-enables the header button after a failed create', async () => {
+    const btn = document.getElementById('new-session-header-btn')
+    createSession.mockRejectedValue(new Error('network down'))
+
+    await expect(createNewSessionInNewTab()).rejects.toThrow('network down')
+
+    expect(btn.disabled).toBe(false)
+    expect(btn.textContent).toBe('＋ New Session')
+  })
+})
+
+describe('createNewSessionAndNavigate — failure reporting', () => {
+  beforeEach(() => {
+    vi.stubGlobal('createSession', vi.fn())
+    vi.stubGlobal('showToast', vi.fn())
+    vi.stubGlobal('location', { assign: vi.fn() })
+    vi.stubGlobal('localStorage', makeStorageMock())
+    document.body.innerHTML = '<button id="new-session-header-btn">＋ New Session</button>'
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('surfaces a failure to the user instead of only throwing', async () => {
+    // The throw is retained for programmatic callers (onboardingCreateEmptyProfile
+    // reacts to it), but on its own it is invisible from an inline onclick.
+    createSession.mockResolvedValue({ redirect_url: '/?session=missing' })
+
+    await expect(createNewSessionAndNavigate()).rejects.toThrow('Failed to create session')
+
+    expect(showToast).toHaveBeenCalled()
+    expect(showToast.mock.calls[0][1]).toBe('error')
+  })
+
+  it('re-enables the header button after a failure', async () => {
+    const btn = document.getElementById('new-session-header-btn')
+    createSession.mockRejectedValue(new Error('boom'))
+
+    await expect(createNewSessionAndNavigate()).rejects.toThrow('boom')
+
+    expect(btn.disabled).toBe(false)
+    expect(btn.textContent).toBe('＋ New Session')
+  })
+})

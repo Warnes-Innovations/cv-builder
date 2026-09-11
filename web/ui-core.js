@@ -1085,6 +1085,14 @@ async function startCopilotAuthFromWizard() {
   const linkEl = document.getElementById('model-auth-link');
   if (!statusEl || !codeEl || !linkEl) return;
 
+  // Open the tab HERE, synchronously, while the click's user activation is
+  // still live. Do NOT move this below the awaits: browsers sever user
+  // activation across ANY await, so a window.open() down there is blocked
+  // silently. The verification URL is not known until the fetch returns, so
+  // the tab is opened blank and navigated once it is. 'noopener' is omitted
+  // deliberately — it would force window.open() to return null, leaving no
+  // handle to navigate; the opener is severed by hand instead.
+  const authTab = window.open('', '_blank');
   _showModelWizardBusy('Starting GitHub device authorization...');
   try {
     const flowRes = await fetch('/api/copilot-auth/start', { method: 'POST' });
@@ -1095,7 +1103,14 @@ async function startCopilotAuthFromWizard() {
     linkEl.href = flow.verification_uri || 'https://github.com/login/device';
     linkEl.style.display = '';
     statusEl.textContent = 'Open GitHub, enter the code, then return here.';
-    window.open(linkEl.href, '_blank');
+    if (authTab) {
+      try { authTab.opener = null; } catch (_) { /* not settable in every browser */ }
+      authTab.location.replace(linkEl.href);
+    }
+    // If the popup was blocked outright there is deliberately no fallback to
+    // this tab: navigating away would destroy the wizard showing the device
+    // code the user still has to type. The link made visible just above is
+    // the fallback.
 
     await fetch('/api/copilot-auth/poll', { method: 'POST' });
     _updateLlmStatusPill('polling', 'Copilot auth pending', '⧗');
@@ -1113,6 +1128,8 @@ async function startCopilotAuthFromWizard() {
       }
     }, 5000);
   } catch (error) {
+    // Don't strand the blank placeholder tab when auth never got started.
+    if (authTab) authTab.close();
     statusEl.textContent = `Auth start failed: ${error.message || error}`;
   } finally {
     _hideModelWizardBusy();
