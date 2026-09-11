@@ -23,6 +23,7 @@ import yaml
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
+from utils.app_identity import get_app_version, is_testing_server
 from utils.config import get_config
 from utils.llm_client import PROVIDER_MODELS
 from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
@@ -667,12 +668,19 @@ def create_blueprint(deps):
         _provider_name = _provider_name_ref['value']
         _current_model = _current_model_ref['value']
         if entry is None:
+            # The no-session probe response. This is what a harness or CLI
+            # reaches for to answer "what is listening here?", so `testing` and
+            # `version` have to be on THIS branch, not only on the session
+            # payload below — a caller deciding whether to reuse a server has
+            # no session yet by definition.
             return jsonify({
                 "ok": True,
                 "alive": True,
                 "phase": None,
                 "llm_provider": _provider_name,
                 "llm_model": _current_model,
+                "testing": is_testing_server(),
+                "version": get_app_version(),
             })
         conversation = entry.manager
         orchestrator = entry.orchestrator
@@ -786,6 +794,8 @@ def create_blueprint(deps):
                 .get("checks") or []
             ) or None,
             notes=session_notes,
+            testing=is_testing_server(),
+            version=get_app_version(),
         )))
 
     @bp.get("/api/context-stats")

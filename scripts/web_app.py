@@ -54,6 +54,7 @@ if env_path.exists():
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
+from utils.app_identity import UNKNOWN_VERSION
 from utils.config import get_config, validate_config, setup_logging
 from utils.llm_client import get_llm_provider, PROVIDER_MODELS
 from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
@@ -135,6 +136,11 @@ class StatusResponse:
     session_last_modified: Optional[str] = None
     ats_checks: Optional[List[Any]] = None
     notes: Optional[str] = None
+    # Identity markers, mirroring the no-session probe branch of /api/status so
+    # the answer does not depend on whether the caller happens to hold a
+    # session. See utils/app_identity.py for why `testing` must default False.
+    testing: bool = False
+    version: str = UNKNOWN_VERSION
 
 
 @dataclass
