@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -327,41 +328,96 @@ class TestParseArgs(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestRequireCvBuilder(unittest.TestCase):
-    """The preflight probe must distinguish 'nothing there' from 'wrong thing there'.
+    """The preflight probe decides where this CLI sends data, so it is tested
+    as a gate rather than as a formatter.
 
-    Regression context: the original probe requested /api/models - an endpoint
-    this app has never served - and caught only RequestException, so a 404
-    counted as success. It confirmed that *something* held the port, not that
-    it was cv-builder.
+    Exit codes are part of the contract, because a scripted caller cannot read
+    stderr: 3 means retryable (nothing there yet, or wedged), 4 means fatal
+    (something is there and it is the wrong thing).
+
+    Three defects are pinned here by regression tests, each of which was
+    demonstrated against the real code before being written:
+      - a 404 counted as success (the original bug);
+      - a host answering only {"alive": true} was accepted (an impostor drove
+        the whole CLI to exit 0);
+      - a redirect let host B satisfy a probe aimed at host A.
     """
+
+    # -- the happy path -----------------------------------------------------
 
     def test_live_cv_builder_returns_payload(self):
         resp = _mock_response(200, {"alive": True, "ok": True, "phase": None})
         with patch("requests.get", return_value=resp):
-            data = cv_cli._require_cv_builder("http://localhost:5001")
+            data = cv_cli._require_cv_builder("http://127.0.0.1:5001")
         self.assertTrue(data["alive"])
 
-    def test_probes_api_status_not_api_models(self):
+    def test_probes_api_status(self):
         resp = _mock_response(200, {"alive": True})
         with patch("requests.get", return_value=resp) as mock_get:
-            cv_cli._require_cv_builder("http://localhost:5001")
+            cv_cli._require_cv_builder("http://127.0.0.1:5001")
         url = mock_get.call_args[0][0]
         self.assertTrue(url.endswith("/api/status"), url)
-        self.assertNotIn("/api/models", url)
 
-    def test_connection_error_exits_1(self):
-        with patch("requests.get", side_effect=requests.RequestException("boom")):
+    def test_probe_does_not_follow_redirects(self):
+        """allow_redirects=False is the control, not a detail.
+
+        With it on, the host that ANSWERS the probe need not be the host that
+        RECEIVES the data — demonstrated with a 302 to a second host, after
+        which every workflow POST went to the unvalidated first host.
+        """
+        resp = _mock_response(200, {"alive": True})
+        with patch("requests.get", return_value=resp) as mock_get:
+            cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertIs(mock_get.call_args.kwargs.get("allow_redirects"), False)
+
+    # -- retryable: nothing usable there yet (exit 3) -----------------------
+
+    def test_connection_error_is_retryable_exit_3(self):
+        with patch("requests.get", side_effect=requests.ConnectionError("refused")):
             with self.assertRaises(SystemExit) as cm:
-                cv_cli._require_cv_builder("http://localhost:5001")
-        self.assertEqual(cm.exception.code, 1)
+                cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertEqual(cm.exception.code, 3)
 
-    def test_404_is_rejected_not_treated_as_success(self):
-        """The exact defect: a 404 response must not pass the check."""
-        resp = _mock_response(404, {"error": "not found"})
+    def test_timeout_is_distinguished_from_unreachable(self):
+        """A wedged or still-booting server is reachable; saying otherwise sends
+        the operator to the wrong remedy."""
+        with patch("requests.get", side_effect=requests.Timeout("slow")):
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertEqual(cm.exception.code, 3)
+
+    def test_5xx_is_retryable_not_wrong_host(self):
+        """A 500 from /api/status is overwhelmingly cv-builder erroring, not a
+        different service — so it must not claim 'not a cv-builder app'."""
+        resp = _mock_response(500, {"error": "boom"})
         with patch("requests.get", return_value=resp):
             with self.assertRaises(SystemExit) as cm:
-                cv_cli._require_cv_builder("http://localhost:5001")
-        self.assertEqual(cm.exception.code, 1)
+                cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertEqual(cm.exception.code, 3)
+
+    # -- fatal: something is there, and it is the wrong thing (exit 4) ------
+
+    def test_404_is_rejected_not_treated_as_success(self):
+        """The original defect, pinned.
+
+        The fixture satisfies every OTHER guard — it carries alive:true — so
+        only the status-code branch can reject it. An earlier version of this
+        test used {"error": "not found"}, which also tripped the payload guard;
+        the status guard could then be deleted with the suite still green.
+        """
+        resp = _mock_response(404, {"alive": True})
+        with patch("requests.get", return_value=resp):
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertEqual(cm.exception.code, 4)
+
+    def test_redirect_is_refused(self):
+        resp = _mock_response(302, {})
+        resp.headers = {"Location": "http://elsewhere.example/api/status"}
+        with patch("requests.get", return_value=resp):
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertEqual(cm.exception.code, 4)
 
     def test_non_json_body_is_rejected(self):
         resp = MagicMock()
@@ -369,16 +425,94 @@ class TestRequireCvBuilder(unittest.TestCase):
         resp.json.side_effect = ValueError("not json")
         with patch("requests.get", return_value=resp):
             with self.assertRaises(SystemExit) as cm:
-                cv_cli._require_cv_builder("http://localhost:5001")
-        self.assertEqual(cm.exception.code, 1)
+                cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertEqual(cm.exception.code, 4)
 
     def test_json_without_alive_field_is_rejected(self):
-        """Some other JSON service on the port is still the wrong service."""
         resp = _mock_response(200, {"status": "fine", "service": "something-else"})
         with patch("requests.get", return_value=resp):
             with self.assertRaises(SystemExit) as cm:
-                cv_cli._require_cv_builder("http://localhost:5001")
-        self.assertEqual(cm.exception.code, 1)
+                cv_cli._require_cv_builder("http://127.0.0.1:5001")
+        self.assertEqual(cm.exception.code, 4)
+
+    def test_alive_false_is_rejected(self):
+        """Regression: the predicate tests the CLAIM, not the key's presence.
+
+        A membership test accepted alive:false, null, 0 and {} — a host saying
+        'I am not alive' passed a check named for liveness.
+        """
+        for payload in ({"alive": False}, {"alive": None}, {"alive": 0},
+                        {"alive": {}}, {"alive": "yes"}):
+            with self.subTest(payload=payload):
+                resp = _mock_response(200, payload)
+                with patch("requests.get", return_value=resp):
+                    with self.assertRaises(SystemExit) as cm:
+                        cv_cli._require_cv_builder("http://127.0.0.1:5001")
+                self.assertEqual(cm.exception.code, 4)
+
+    # -- the host bound, which is the control that actually holds -----------
+
+    def test_non_loopback_host_is_refused_before_any_request(self):
+        """The payload check cannot authenticate an app that has no auth, so the
+        host bound is the real control. Refused BEFORE the network call, so a
+        mistyped or hostile --base-url never even receives a probe."""
+        with patch("requests.get") as mock_get:
+            with self.assertRaises(SystemExit) as cm:
+                cv_cli._require_cv_builder("http://example.com:5001")
+        self.assertEqual(cm.exception.code, 4)
+        mock_get.assert_not_called()
+
+    def test_allow_remote_permits_a_non_loopback_host(self):
+        resp = _mock_response(200, {"alive": True})
+        with patch("requests.get", return_value=resp):
+            data = cv_cli._require_cv_builder("http://example.com:5001",
+                                              allow_remote=True)
+        self.assertTrue(data["alive"])
+
+    def test_impostor_on_loopback_still_passes_and_that_is_documented(self):
+        """Stated rather than hidden: on loopback, a host answering alive:true
+        IS accepted. cv-builder has no authentication, so no probe can do
+        better; the loopback bound is what keeps that acceptable."""
+        resp = _mock_response(200, {"alive": True})
+        with patch("requests.get", return_value=resp):
+            data = cv_cli._require_cv_builder("http://127.0.0.1:9999")
+        self.assertTrue(data["alive"])
+
+
+# ---------------------------------------------------------------------------
+# the probe path must name a route the app actually serves
+# ---------------------------------------------------------------------------
+
+class TestProbePathExists(unittest.TestCase):
+    """Offline guard against the defect class that caused the original bug.
+
+    Every other test here mocks requests, so the suite asserts only that a
+    particular STRING is requested — it cannot tell a real endpoint from an
+    invented one. Substituting a nonexistent path into both module and tests
+    left all tests passing while the CLI aborted against the live app.
+    """
+
+    def test_probe_path_is_a_real_route(self):
+        import importlib.util
+        import sys as _sys
+        from pathlib import Path as _Path
+
+        repo = _Path(__file__).resolve().parent.parent
+        routes_dir = repo / "scripts" / "routes"
+        if not routes_dir.is_dir():
+            self.skipTest("scripts/routes not present")
+
+        # Read the route table from source rather than importing the whole app:
+        # importing web_app pulls in config, an LLM client and a live provider
+        # registry, which a unit test should not need.
+        declared = set()
+        for f in routes_dir.glob("*.py"):
+            for m in re.finditer(r"""@bp\.(?:get|post|put|delete|route)\(\s*["']([^"']+)["']""",
+                                 f.read_text(encoding="utf-8")):
+                declared.add(m.group(1))
+        self.assertTrue(declared, "no routes parsed — the guard would pass vacuously")
+        self.assertIn("/api/status", declared,
+                      "the preflight probes /api/status; no route declares it")
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +674,8 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
     def tearDown(self):
         Path(self._f.name).unlink(missing_ok=True)
 
-    def _post_side_effect(self, url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
+    def _post_side_effect(self, url: str, json: dict = None, timeout: int = None,
+                          allow_redirects: bool = True) -> MagicMock:  # type: ignore[assignment]
         resp = MagicMock()
         resp.status_code = 200
         payload: dict = json or {}
@@ -595,7 +730,8 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
     def test_creates_session_as_first_api_call(self):
         calls: list[str] = []
 
-        def _side(url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
+        def _side(url: str, json: dict = None, timeout: int = None,
+                  allow_redirects: bool = True) -> MagicMock:  # type: ignore[assignment]
             calls.append(url)
             return self._post_side_effect(url, json=json, timeout=timeout)
 
@@ -614,7 +750,8 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
     def test_calls_generate_final_as_last_api_call(self):
         calls: list[str] = []
 
-        def _side(url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
+        def _side(url: str, json: dict = None, timeout: int = None,
+                  allow_redirects: bool = True) -> MagicMock:  # type: ignore[assignment]
             calls.append(url)
             return self._post_side_effect(url, json=json, timeout=timeout)
 
@@ -646,7 +783,8 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
 
     def test_api_returns_500(self):
         """run_generation raises APIError when the server returns HTTP 500."""
-        def _side_500(url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
+        def _side_500(url: str, json: dict = None, timeout: int = None,
+                     allow_redirects: bool = True) -> MagicMock:  # type: ignore[assignment]
             resp = MagicMock()
             resp.status_code = 500
             resp.json.return_value = {"error": "Internal Server Error"}
@@ -667,7 +805,8 @@ class TestRunGenerationMockedAPI(unittest.TestCase):
 
     def test_api_returns_invalid_json(self):
         """run_generation raises APIError when the server returns non-JSON body."""
-        def _side_bad_json(url: str, json: dict = None, timeout: int = None) -> MagicMock:  # type: ignore[assignment]
+        def _side_bad_json(url: str, json: dict = None, timeout: int = None,
+                          allow_redirects: bool = True) -> MagicMock:  # type: ignore[assignment]
             resp = MagicMock()
             resp.status_code = 200
             resp.json.side_effect = ValueError("No JSON object could be decoded")
