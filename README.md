@@ -342,23 +342,45 @@ interactive web UI. The web app must be running before invoking the driver.
 conda activate cvgen
 
 # Start the web app first (in a separate terminal)
-python scripts/web_app.py --llm-provider github
+python scripts/web_app.py
+# or, where the launchd service is installed: launchd/restart.sh
 
 # Generate a comprehensive CV (all experience, all achievements, all skills)
-python scripts/cv_generate_cli.py --mode comprehensive
+python scripts/cv_generate_cli.py --mode comprehensive --summary-variant scientific_advisor
 
 # Generate a focused pharma / scientific-advisor CV
-python scripts/cv_generate_cli.py --mode focused
+python scripts/cv_generate_cli.py --mode focused --summary-variant scientific_advisor
+
+# Target a federal-contract advisory role
+python scripts/cv_generate_cli.py --mode comprehensive --summary-variant federal_advisor
 
 # Load a custom job description from a file
-python scripts/cv_generate_cli.py --mode comprehensive --job-file path/to/job.txt
+python scripts/cv_generate_cli.py --mode comprehensive --summary-variant federal_advisor \
+    --job-file path/to/job.txt
 
 # Preview decisions without calling the API
-python scripts/cv_generate_cli.py --mode comprehensive --dry-run
+python scripts/cv_generate_cli.py --mode comprehensive --summary-variant scientific_advisor \
+    --dry-run
 
-# Target a different running instance
-python scripts/cv_generate_cli.py --mode focused --base-url http://127.0.0.1:5000
+# Target a different running instance (default is http://127.0.0.1:5001)
+python scripts/cv_generate_cli.py --mode focused --summary-variant scientific_advisor \
+    --base-url http://127.0.0.1:5055
+
+# A non-loopback --base-url is refused unless you say you mean it
+python scripts/cv_generate_cli.py --mode focused --summary-variant scientific_advisor \
+    --base-url http://other-machine.local:5001 --allow-remote
 ```
+
+`--base-url` is bounded to loopback by default. The driver posts your job
+description, every skill name from your CV, publication cite keys and your
+per-role emphasis decisions to whatever address it names, and cv-builder has no
+authentication — so the host bound, not the health check, is what decides where
+that goes. `--allow-remote` lifts the bound deliberately.
+
+Exit codes distinguish what a scripted caller cannot read from stderr: **3** is
+retryable (nothing listening yet, a timeout, or a 5xx — which is cv-builder
+erroring rather than the wrong service), **4** is fatal (a different service on
+the port, a redirect, or a payload that is not cv-builder's).
 
 **Modes:**
 
@@ -367,8 +389,13 @@ python scripts/cv_generate_cli.py --mode focused --base-url http://127.0.0.1:500
 | `comprehensive` | All experience entries, full achievements and skills, all publications. |
 | `focused` | Highlights pharma/biostat roles (Pfizer, BI, Medidata, Novartis, Warnes Innovations). Excludes older / less-relevant entries. |
 
-Both modes use the `scientific_advisor` professional summary variant. The
-`--dry-run` flag prints a decision summary without making any API calls.
+`--summary-variant` is required and is independent of `--mode`: it names a key in
+`professional_summaries` (read the live set with
+`jq -r '.professional_summaries | keys[]' ~/CV/Master_CV_Data.json`) and the run aborts
+on an unknown one. There is deliberately no default — the summary is the most
+role-specific text on the CV, so a silent default yields a plausible document aimed at
+the wrong audience. The `--dry-run` flag prints a decision summary without making any
+API calls.
 
 ### Comprehensive CV Package (full-data)
 
