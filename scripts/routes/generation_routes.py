@@ -1991,6 +1991,9 @@ def create_blueprint(deps):
                 use_semantic_match=False,  # Skip LLM scoring — content already ranked upstream
             )
             selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
+            selected_content['show_citizenship'] = (
+                conv.orchestrator._should_show_citizenship(customizations)
+            )
             ats_file, _ats_score_at_generation = conv.orchestrator._generate_ats_docx(
                 selected_content, job_analysis, output_dir,
             )

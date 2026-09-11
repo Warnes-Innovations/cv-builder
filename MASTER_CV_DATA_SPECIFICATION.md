@@ -1,6 +1,6 @@
 # Master_CV_Data.json Specification
 
-**Last Updated:** 2026-03-20 23:40 EDT
+**Last Updated:** 2026-09-10 21:15 EDT
 
 **Executive Summary:** This document specifies the effective schema of `Master_CV_Data.json` and the Python contracts that read, normalize, validate, and persist it in this repository. It reflects both the current live file shape and compatibility paths in code (including legacy formats).
 
@@ -69,6 +69,25 @@ Observed fields:
 
 - `name`: string
 - `title`: string
+- `citizenship`: string (optional) — citizenship / clearance-eligibility statement, for applicants
+  targeting federal-contract roles, where screening for citizenship or clearance eligibility
+  typically precedes substantive review. Deliberately free text, not structured fields: phrasing
+  varies by agency and by what the applicant is willing to assert.
+  **Rendered conditionally, never by default.** `CVOrchestrator._should_show_citizenship()`
+  decides, and both the HTML contact block and the ATS DOCX contact line consult it:
+  - **On by default** for summary variants aimed at federal roles — currently just
+    `federal_advisor`, listed in `CVOrchestrator.CITIZENSHIP_DEFAULT_VARIANTS`. Adding a
+    federal-targeted variant means adding it there.
+  - **Off otherwise**, unless the session sets `include_citizenship: true` in its
+    customizations.
+  - An explicit `include_citizenship` wins in **both** directions, so a federal variant can
+    still be told to leave it out.
+
+  The default is silence because the asymmetry is real: on a federal-contract application the
+  statement is a qualification whose absence reads as ineligibility, while on an application to
+  a private employer it is information they are in many jurisdictions restricted from asking
+  for — and the ATS DOCX is machine-parsed into third-party applicant-tracking systems, where
+  the line would persist well outside the application it was written for.
 - `contact`: object
 - `languages`: array
 
@@ -93,11 +112,25 @@ Observed fields:
 Observed shape:
 
 - Object mapping summary key -> summary text string
-- Example keys in current data: `default`, `data_science_leadership`, `biostatistics_ic`, `ml_engineering`
+- The key set is open and grows per target role type. **Read the live keys from the data**
+  (`jq -r '.professional_summaries | keys_unsorted[]' ~/CV/Master_CV_Data.json` — `keys_unsorted`
+  rather than `keys`, so the output matches the declaration order the code preserves) rather than
+  trusting any list written here: an enumeration in this file is stale the moment a variant is
+  added. Any unknown value passed to `--summary-variant` also prints the live list, which needs no
+  `jq` and no path. Illustrative
+  only, as of 2026-09-10: `default`, `data_science_leadership`, `biostatistics_ic`,
+  `ml_engineering`, `scientific_advisor`, `federal_advisor`.
+- `federal_advisor` targets federal-contract advisory roles (program/technical advisor positions at
+  agencies such as BARDA, NIH, ARPA-H — named as example target roles, not as content): it leads
+  with program leadership, funding acquisition, and proposal-review experience while retaining
+  individual-contributor technical depth.
 
 Compatibility:
 
 - Some write code accepts list-form summaries and may coerce list -> dict in some routes.
+- **The headless `scripts/cv_generate_cli.py` requires the object form.** List-form summaries carry
+  no keys to select a variant by, so `--summary-variant` cannot be satisfied and the run aborts;
+  convert to the object form before driving generation from the CLI.
 
 ### 4.3 `experience` (array of objects)
 

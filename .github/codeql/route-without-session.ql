@@ -11,8 +11,7 @@
  *                - /api/sessions/active
  *                - /api/sessions/<id>/evict
  *                - /api/model-catalog
- *                - /api/pricing
- *                - /api/models
+ *                - /api/model
  *                - /api/copilot-auth/*
  *
  * @kind problem

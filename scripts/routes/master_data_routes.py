@@ -1027,9 +1027,22 @@ def create_blueprint(deps):
                 return jsonify({"error": "importance must be between 1 and 10"}), 400
 
             employment_type = str(exp_data.get('employment_type') or 'full_time').strip()
+            # Keep this in step with the JSON schema and with the values actually
+            # present in Master_CV_Data.json. The schema types employment_type as a
+            # bare string and constrains nothing, so a value can be written to the
+            # file, validate cleanly, and then be REJECTED here on the next UI save —
+            # the file is the source of truth, and this allowlist is the narrower
+            # gate. All three additions below are present in live data and none of
+            # them is 'part_time', which implies pay: 'joint_appointment' (an unpaid
+            # academic appointment held concurrently with other employment),
+            # 'volunteer' (unpaid full-time service), and 'founding_contributor' (an
+            # originating contribution to a venture that was never an employment
+            # relationship). Expect this list to keep growing — a career record holds
+            # more kinds of engagement than an HR dropdown does.
             allowed_types = {
                 'full_time', 'part_time', 'contract', 'consulting',
-                'internship', 'self_employed',
+                'internship', 'self_employed', 'joint_appointment', 'volunteer',
+                'founding_contributor',
             }
             if employment_type not in allowed_types:
                 return jsonify({"error": "employment_type is invalid"}), 400

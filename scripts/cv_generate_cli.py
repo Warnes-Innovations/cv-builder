@@ -12,35 +12,43 @@ Drives the cv-builder REST API end-to-end from the command line:
 Usage
 -----
     # Start the app first (separate terminal):
-    #   conda activate cvgen && python scripts/web_app.py --llm-provider github
+    #   conda activate cvgen && python scripts/web_app.py
+    # or, where the launchd service is installed:
+    #   launchd/restart.sh
     #
     # Then run this CLI:
-    python scripts/cv_generate_cli.py --mode comprehensive
-    python scripts/cv_generate_cli.py --mode focused
-    python scripts/cv_generate_cli.py --mode comprehensive --job-file path/to/job.txt
-    python scripts/cv_generate_cli.py --base-url http://127.0.0.1:5000 --mode focused --dry-run
+    python scripts/cv_generate_cli.py --mode comprehensive --summary-variant scientific_advisor
+    python scripts/cv_generate_cli.py --mode focused --summary-variant federal_advisor
+    python scripts/cv_generate_cli.py --mode comprehensive --summary-variant federal_advisor \
+        --job-file path/to/job.txt
+    python scripts/cv_generate_cli.py --base-url http://127.0.0.1:5055 --mode focused \
+        --summary-variant scientific_advisor --dry-run
+
+The summary variant is required; it is validated against the keys present in
+Master_CV_Data.json and the run aborts on an unknown one.
 
 Modes
 -----
 comprehensive
     All experience entries, all achievements, all skills, full publications.
-    Uses the ``scientific_advisor`` professional summary.
 
 focused
     Highlights Pfizer, Boehringer Ingelheim, Medidata, Novartis, Warnes Innovations.
     Excludes older / less relevant roles.
-    Uses the ``scientific_advisor`` professional summary.
 """
 
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
+import socket
 import sys
 import textwrap
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -134,7 +142,7 @@ class APIError(RuntimeError):
 def _post(base_url: str, path: str, payload: dict[str, Any], timeout: int = 120) -> dict[str, Any]:
     url = base_url.rstrip("/") + path
     try:
-        resp = requests.post(url, json=payload, timeout=timeout)
+        resp = requests.post(url, json=payload, timeout=timeout, allow_redirects=False)
     except requests.RequestException as exc:
         raise APIError(f"POST {path} failed: {exc}") from exc
     try:
@@ -150,7 +158,7 @@ def _post(base_url: str, path: str, payload: dict[str, Any], timeout: int = 120)
 def _get(base_url: str, path: str, params: dict | None = None, timeout: int = 30) -> dict[str, Any]:
     url = base_url.rstrip("/") + path
     try:
-        resp = requests.get(url, params=params or {}, timeout=timeout)
+        resp = requests.get(url, params=params or {}, timeout=timeout, allow_redirects=False)
     except requests.RequestException as exc:
         raise APIError(f"GET {path} failed: {exc}") from exc
     try:
@@ -182,6 +190,207 @@ def _load_master_data(path: str | Path) -> dict[str, Any]:
         raise FileNotFoundError(f"Master CV not found: {p}")
     with p.open(encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def _is_loopback(base_url: str) -> bool:
+    """True when `base_url`'s host resolves to loopback.
+
+    Resolves the name rather than string-matching "localhost": a hostname can
+    point anywhere, and the question is where the bytes actually go.
+    """
+    host = urlparse(base_url).hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    return all(ipaddress.ip_address(i[4][0]).is_loopback for i in infos)
+
+
+def _require_cv_builder(base_url: str, allow_remote: bool = False) -> dict[str, Any]:
+    """Abort unless `base_url` is a live cv-builder app, and say which it isn't.
+
+    Probes ``GET /api/status``, which answers ``{"alive": true, ...}``.
+
+    WHAT THIS CAN AND CANNOT ESTABLISH
+    ----------------------------------
+    It confirms a cv-builder-SHAPED status payload from a host this CLI is
+    willing to talk to. It is not authentication: the app has none, so no probe
+    can supply it. A host answering ``{"alive": true}`` passes the payload
+    check — which is why the loopback bound below, not the payload, is the
+    control that actually holds. It also does not establish a compatible
+    version, or a working LLM provider.
+
+    THE THREE DEFECTS THIS SHAPE EXISTS TO AVOID, each found by running it
+    ---------------------------------------------------------------------
+    1. The version before this one requested ``/api/models`` — an endpoint this
+       app has never served — and caught only ``RequestException``, so a 404
+       counted as success. It confirmed something held the port, not that it was
+       cv-builder. Pointed at macOS ControlCenter on :5000, it passed.
+    2. Its replacement accepted any JSON carrying an ``alive`` key, including
+       ``alive: false``. A forty-line impostor server drove the whole CLI to
+       exit 0. Hence ``is not True`` rather than a membership test, and hence
+       the host bound.
+    3. ``requests`` follows redirects by default, so the host that PASSED the
+       probe need not be the host that RECEIVES the data — demonstrated with a
+       302/307 pair that satisfied the check from host B while every workflow
+       POST went to host A. Hence ``allow_redirects=False`` here AND in
+       ``_post``/``_get``: a probe the caller can redirect is not a probe.
+
+    The loopback default is not a new policy. ``web_app.py`` already enforces
+    loopback as this app's trust boundary on the INBOUND side (GAP-55,
+    ``CV_WEB_HOST``/``CV_ALLOWED_HOSTS``); this is the same boundary applied
+    outbound, so the two directions agree.
+    """
+    if not allow_remote and not _is_loopback(base_url):
+        print(
+            f"ERROR: refusing to talk to a non-loopback host: {base_url}\n"
+            "  This CLI posts your job description, every skill name from your CV,\n"
+            "  publication cite keys and your per-role emphasis decisions to this\n"
+            "  address. cv-builder has no authentication, so the host bound is the\n"
+            "  only thing deciding where that goes.\n"
+            "  Pass --allow-remote if you genuinely mean to target another machine.",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+
+    url = base_url.rstrip("/") + "/api/status"
+    start_hint = (
+        "  If the launchd service is installed:  launchd/restart.sh\n"
+        "    (it can take ~60s to begin serving; re-run the CLI after that)\n"
+        "  Otherwise, and ONLY if nothing is already serving:\n"
+        "    conda activate cvgen && python scripts/web_app.py\n"
+        "    WARNING: that entry point calls _evict_port(), which SIGTERMs every\n"
+        "    process holding the port — including a browser tab connected to it."
+    )
+    wrong_host_hint = (
+        "  Check --base-url: the default is http://127.0.0.1:5001.\n"
+        "  On macOS, AirPlay Receiver holds :5000 and answers HTTP 403."
+    )
+    not_ours = "  Something is listening there, but it is not a cv-builder app."
+
+    try:
+        # allow_redirects=False: see defect 3 above. A redirect means the host
+        # that answers is not the host we are about to send data to.
+        resp = requests.get(url, timeout=5, allow_redirects=False)
+    except requests.Timeout:
+        print(
+            f"ERROR: {base_url} accepted the connection but did not answer "
+            "/api/status within 5s.\n"
+            "  It may still be starting, or be wedged. Check the log:\n"
+            "    tail -f ~/Library/Logs/cv-builder/launchd-stderr.log",
+            file=sys.stderr,
+        )
+        sys.exit(3)
+    except requests.RequestException as exc:
+        print(
+            f"ERROR: nothing reachable at {base_url} ({exc.__class__.__name__})\n"
+            f"{start_hint}",
+            file=sys.stderr,
+        )
+        sys.exit(3)
+
+    # Explicit status range rather than resp.is_redirect: that property is a
+    # requests convenience a MagicMock fakes as truthy, so a test double would
+    # silently take this branch. The status code is the fact; the property is a
+    # reading of it.
+    if 300 <= resp.status_code < 400:
+        print(
+            f"ERROR: {base_url} redirected /api/status to "
+            f"{resp.headers.get('Location', '<no Location header>')}.\n"
+            "  --base-url must name the app directly, not a redirector: the host\n"
+            "  that answers a redirected probe is not the host that receives the\n"
+            "  data, and a 307 delivers the body to both.\n"
+            f"{wrong_host_hint}",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+
+    if resp.status_code >= 500:
+        print(
+            f"ERROR: {base_url} answered HTTP {resp.status_code} for /api/status.\n"
+            "  cv-builder appears to be running but its /api/status handler failed.\n"
+            "  Check the log: tail -f ~/Library/Logs/cv-builder/launchd-stderr.log",
+            file=sys.stderr,
+        )
+        sys.exit(3)
+
+    if resp.status_code >= 400:
+        print(
+            f"ERROR: {base_url} answered HTTP {resp.status_code} for /api/status.\n"
+            f"{not_ours}\n"
+            f"{wrong_host_hint}",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+
+    try:
+        data = resp.json()
+    except ValueError:
+        print(
+            f"ERROR: {base_url} returned non-JSON from /api/status.\n"
+            f"{not_ours}\n"
+            f"{wrong_host_hint}",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+
+    # `is not True`, not `"alive" in data`: the field is named for a claim, so
+    # check the claim. A host answering alive:false was previously accepted.
+    if not isinstance(data, dict) or data.get("alive") is not True:
+        print(
+            f"ERROR: {base_url} did not report alive:true from /api/status.\n"
+            f"{not_ours}\n"
+            f"{wrong_host_hint}",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+
+    return data
+
+
+def _available_summary_variants(master: dict[str, Any]) -> list[str]:
+    """Summary variant keys present in the master data, in declaration order."""
+    summaries = master.get("professional_summaries")
+    if isinstance(summaries, dict):
+        return list(summaries.keys())
+    return []
+
+
+# Focus values the SERVER creates during a run, which therefore never appear in
+# Master_CV_Data.json. Validating only against the master file rejects these —
+# and `ai_recommended` is produced by the recommend phase THIS CLI triggers, so
+# the guard refused a value its own workflow generates. Both are documented in
+# .github/skills/cv-builder-workflow/SKILL.md as valid summary_focus_override
+# values.
+_SESSION_CREATED_VARIANTS = ("ai_recommended", "ai_generated")
+
+
+def _resolve_summary_variant(master: dict[str, Any], requested: str) -> str:
+    """Validate `requested` against the master data, or fail with the real options.
+
+    Do not relax this into a silent fallback. The API accepts any string for
+    summary_focus, so an unrecognised variant posts successfully and the CV is
+    generated with whatever summary the backend defaults to — a wrong document
+    that looks like a right one. Failing here is the only place the mistake is
+    still visible.
+    """
+    available = _available_summary_variants(master)
+    if not available:
+        raise SystemExit(
+            "ERROR: master data has no object-form 'professional_summaries'; "
+            "cannot select a summary variant."
+        )
+    if requested in _SESSION_CREATED_VARIANTS:
+        return requested
+    if requested not in available:
+        raise SystemExit(
+            f"ERROR: unknown summary variant {requested!r}.\n"
+            f"  from master data: {', '.join(available)}\n"
+            f"  created during a run: {', '.join(_SESSION_CREATED_VARIANTS)}"
+        )
+    return requested
 
 
 def _all_achievement_ids(master: dict[str, Any]) -> list[str]:
@@ -286,11 +495,13 @@ def run_generation(
     job_text: str,
     master_cv_path: str,
     publications_path: str,
+    summary_variant: str,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Drive the full generation workflow and return final output info."""
 
     master = _load_master_data(master_cv_path)
+    summary_variant = _resolve_summary_variant(master, summary_variant)
 
     exp_decisions   = _EXPERIENCE_DECISIONS[mode]
     ach_decisions   = _build_achievement_decisions(master, mode)
@@ -368,8 +579,8 @@ def run_generation(
         _p("/api/review-decisions", {"type": "publications", "decisions": pub_decisions})
         _ok(f"{len(pub_decisions)} publications included")
 
-    _step("Setting summary variant: scientific_advisor")
-    _p("/api/review-decisions", {"type": "summary_focus", "decisions": "scientific_advisor"})
+    _step(f"Setting summary variant: {summary_variant}")
+    _p("/api/review-decisions", {"type": "summary_focus", "decisions": summary_variant})
     _ok()
 
     # ------------------------------------------------------------------
@@ -423,6 +634,27 @@ def _parse_args() -> argparse.Namespace:
         help="comprehensive = all experience; focused = Pfizer/BI/Medidata/Novartis/Warnes Innovations",
     )
     p.add_argument(
+        "--summary-variant",
+        required=True,
+        metavar="KEY",
+        help=(
+            "professional_summaries key to use (e.g. scientific_advisor, federal_advisor). "
+            "Required and validated against the master data: there is deliberately no default, "
+            "because the summary is the most role-specific text on the CV and a silent default "
+            "produces a plausible document aimed at the wrong audience."
+        ),
+    )
+    p.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help=(
+            "permit a non-loopback --base-url. Off by default: this CLI posts job "
+            "text, every skill name, cite keys and per-role emphasis decisions to "
+            "that address, and cv-builder has no authentication, so the host bound "
+            "is the only control on where it goes."
+        ),
+    )
+    p.add_argument(
         "--base-url",
         default="http://127.0.0.1:5001",
         help="cv-builder web app base URL (default: http://127.0.0.1:5001)",
@@ -466,20 +698,21 @@ def main() -> None:
         job_text = _DEFAULT_JOB_DESCRIPTION
 
     # Verify app is reachable (unless dry-run)
+    status: dict[str, Any] = {}
     if not args.dry_run:
-        try:
-            requests.get(f"{args.base_url.rstrip('/')}/api/models", timeout=5)
-        except requests.RequestException:
-            print(
-                f"ERROR: cv-builder app not reachable at {args.base_url}\n"
-                "  Start it with: conda activate cvgen && python scripts/web_app.py --llm-provider github",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        status = _require_cv_builder(args.base_url, allow_remote=args.allow_remote)
 
     print(f"\ncv_generate_cli — mode: {args.mode}")
     print(f"  job source : {'file: ' + args.job_file if args.job_file else 'built-in generic pharma JD'}")
     print(f"  target     : {args.base_url}")
+    if status:
+        # The probe already fetched these, and they decide what the generated CV
+        # actually says. Printing them is the one moment the operator can still
+        # abort on seeing the wrong provider — a launchd-started instance uses
+        # whatever config.yaml said at boot, not what you expect right now.
+        provider = status.get("llm_provider") or "unknown"
+        model = status.get("llm_model") or "unknown"
+        print(f"  llm        : {provider} / {model}")
 
     t0 = time.monotonic()
     try:
@@ -489,6 +722,7 @@ def main() -> None:
             job_text=job_text,
             master_cv_path=args.master_cv,
             publications_path=args.publications,
+            summary_variant=args.summary_variant,
             dry_run=args.dry_run,
         )
     except APIError as exc:

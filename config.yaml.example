@@ -118,6 +118,42 @@ position_styles:
       - military
       - public service
 
+  # Required by tests/test_config_position_styles.py, which checks that the
+  # repository's effective configuration defines these. They previously lived
+  # only in the untracked config.yaml, so copying this example produced a config
+  # the project's own tests rejected — drift that stayed invisible while
+  # config.yaml was tracked and CI received it for free.
+  medical_clinical:
+    label: "Medical / Clinical"
+    page_warn_below: 2.0
+    page_warn_above: null        # no upper page limit
+    include_publications: true
+    include_teaching: true
+    domain_terms:
+      - medical
+      - healthcare
+      - hospital
+      - nurse
+      - nursing
+      - physician
+      - pharmac
+      - patient care
+      - clinical operations
+
+  industry_research:
+    label: "Industry Research / Applied R&D"
+    page_warn_below: 2.0
+    page_warn_above: 4.0
+    include_publications: true
+    include_teaching: false
+    domain_terms:
+      - applied scientist
+      - research scientist
+      - research engineer
+      - r&d
+      - industry research
+      - staff scientist
+
 # ── Session persistence ───────────────────────────────────────────────────────
 session:
   auto_save:    true

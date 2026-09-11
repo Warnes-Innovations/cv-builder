@@ -549,6 +549,15 @@
                         {% endif %}
                     </div>
                     {% endif %}
+                    {# Gated by show_citizenship, not by the field's presence: see
+                       CVOrchestrator._should_show_citizenship. Default is OFF, on only
+                       for federal-targeted summary variants or an explicit request. #}
+                    {% if show_citizenship and personal_info.citizenship | default('') | trim %}
+                    <div class="contact-item">
+                        <i class="fas fa-id-card" aria-hidden="true"></i>
+                        <span>{{ personal_info.citizenship }}</span>
+                    </div>
+                    {% endif %}
                     {% if personal_info.contact.website | default('') | trim %}
                     <div class="contact-item">
                         <i class="fas fa-globe" aria-hidden="true"></i>
