@@ -31,7 +31,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.13",
     "loglevel": "^1.9.2",
     "marked": "^17.0.5"
   }
