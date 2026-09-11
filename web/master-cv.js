@@ -19,6 +19,77 @@
 
 let _masterChangeNotice = '';
 
+// ---------------------------------------------------------------------------
+// Controlled vocabularies for the editor's <select> elements
+// ---------------------------------------------------------------------------
+//
+// Served by /api/master-data/vocabularies, which defines them once in
+// scripts/routes/master_data_routes.py and unions them with the values
+// actually present in the master data.
+//
+// WHY THIS IS NOT A HARDCODED <option> LIST, so nobody "simplifies" it back:
+// assigning a value with no matching <option> to a <select> sets .value to ""
+// and selectedIndex to -1, and throws NOTHING. The save path then reads that
+// "" and writes it back. That is not hypothetical — the Employment Type
+// dropdown shipped 6 options while the data held 9, so opening and saving any
+// experience with one of the other 3 silently rewrote it to 'full_time'.
+// A hardcoded list is a data-loss bug waiting for someone to add a tenth value.
+let _vocabularies = null;
+
+async function loadVocabularies() {
+  if (_vocabularies) return _vocabularies;
+  try {
+    const res  = await fetch('/api/master-data/vocabularies');
+    const data = await res.json();
+    if (data && Array.isArray(data.employment_types) && data.employment_types.length) {
+      _vocabularies = data;
+      return _vocabularies;
+    }
+  } catch (err) {
+    console.warn('vocabularies fetch failed; selects fall back to the stored value only', err);
+  }
+  return null;
+}
+
+/**
+ * Fill a <select> with `values`, then select `current`.
+ *
+ * `current` is ALWAYS made selectable, even when the server did not list it.
+ * That is the belt-and-suspenders half: the endpoint already unions in the
+ * values it can see, but a select that cannot represent the value it was just
+ * handed is precisely the failure this function exists to prevent, so it is
+ * guarded here too rather than trusted to the layer above.
+ *
+ * Returns true if `current` had to be added as an unlisted value — the caller
+ * can surface that, since it means the data holds something the vocabulary
+ * does not know about.
+ */
+function populateVocabularySelect(selectId, values, current) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return false;
+
+  const list    = Array.isArray(values) ? values.slice() : [];
+  const wanted  = (current == null ? '' : String(current)).trim();
+  let unlisted  = false;
+
+  if (wanted && !list.includes(wanted)) {
+    list.push(wanted);
+    unlisted = true;
+  }
+
+  sel.innerHTML = '';
+  for (const v of list) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    // Render 'full_time' as 'Full-time': cosmetic only, value is authoritative.
+    opt.textContent = v.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+    sel.appendChild(opt);
+  }
+  if (wanted) sel.value = wanted;
+
+  return unlisted;
+}
+
 // Tracks the active render target: modal body div when opened from header,
 // null when rendered into the normal tab viewer.
 let _masterCvActiveContainer = null;
@@ -63,9 +134,14 @@ async function populateMasterTab(container = null) {
   let fullData  = {};
 
   try {
+    // Vocabularies load alongside the data so the edit modals — which are
+    // synchronous — can populate their <select>s from a warm cache. A failure
+    // here is not fatal: populateVocabularySelect() still guarantees the
+    // stored value is selectable, so a save can never silently blank it.
     const [ovRes, fdRes] = await Promise.all([
       fetch('/api/master-data/overview'),
       fetch('/api/master-data/full'),
+      loadVocabularies(),
     ]);
     overview = (await ovRes.json()) || {};
     fullData  = (await fdRes.json()) || {};
@@ -368,15 +444,10 @@ async function populateMasterTab(container = null) {
           </div>
           <div style="margin-bottom:12px;">
             <label for="pub-modal-type" style="display:block;font-weight:600;margin-bottom:4px;">Entry Type <span aria-hidden="true">*</span></label>
-            <select id="pub-modal-type" class="edit-input" style="width:100%;">
-              <option value="article">article</option>
-              <option value="inproceedings">inproceedings</option>
-              <option value="book">book</option>
-              <option value="incollection">incollection</option>
-              <option value="techreport">techreport</option>
-              <option value="phdthesis">phdthesis</option>
-              <option value="mastersthesis">mastersthesis</option>
-              <option value="misc">misc</option>
+            <!-- Populated from /api/master-data/vocabularies; see the note on
+                 #exp-type-input. bibtex_parser.py passes ENTRYTYPE through
+                 unconstrained, so an imported .bib can carry a type no
+                 hardcoded list here would anticipate. --><select id="pub-modal-type" class="edit-input" style="width:100%;">
             </select>
           </div>
           <div style="margin-bottom:12px;">
@@ -599,14 +670,12 @@ async function populateMasterTab(container = null) {
             </div>
             <div>
               <label for="exp-type-input" style="display:block;font-weight:600;margin-bottom:4px;">Employment Type</label>
-              <select id="exp-type-input" class="edit-input" style="width:100%;">
-                <option value="full_time">Full-time</option>
-                <option value="part_time">Part-time</option>
-                <option value="contract">Contract</option>
-                <option value="consulting">Consulting</option>
-                <option value="internship">Internship</option>
-                <option value="self_employed">Self-employed</option>
-              </select>
+              <!-- Options are populated from /api/master-data/vocabularies.
+                   Do NOT hardcode <option> elements here: a stored value with
+                   no matching option makes .value resolve to "" silently, and
+                   the save path then writes that "" back. See
+                   populateVocabularySelect(). -->
+              <select id="exp-type-input" class="edit-input" style="width:100%;"></select>
             </div>
             <div>
               <label for="exp-importance-input" style="display:block;font-weight:600;margin-bottom:4px;">Importance (1–10)</label>
@@ -1551,7 +1620,9 @@ function showAddPublicationModal() {
   _pubModalUsesEditorField = false;
   _pubModalOriginalExtraKeys = [];
   document.getElementById('pub-modal-key').value    = '';
-  document.getElementById('pub-modal-type').value   = 'article';
+  populateVocabularySelect('pub-modal-type',
+                           _vocabularies && _vocabularies.publication_types,
+                           'article');
   document.getElementById('pub-modal-author').value = '';
   const authorLabel = document.getElementById('pub-modal-author-label');
   if (authorLabel) authorLabel.textContent = 'Author(s)';
@@ -1573,7 +1644,13 @@ function editMasterPublication(pub) {
   // Track whether this entry uses `editor` so we preserve it on save
   _pubModalUsesEditorField = !fields.author && !!fields.editor;
   document.getElementById('pub-modal-key').value     = pub.key || '';
-  document.getElementById('pub-modal-type').value    = pub.type || 'article';
+  // See the note on exp-type-input: populate before selecting. An imported
+  // .bib can carry an ENTRYTYPE no fixed list would have anticipated.
+  if (populateVocabularySelect('pub-modal-type',
+                               _vocabularies && _vocabularies.publication_types,
+                               pub.type || 'article')) {
+    console.warn('publication type not in served vocabulary:', pub.type);
+  }
   document.getElementById('pub-modal-author').value  = fields.author || fields.editor || '';
   // Update the Author/Editor label so the user knows which field is being edited
   const authorLabel = document.getElementById('pub-modal-author-label');
@@ -1612,7 +1689,15 @@ async function saveMasterPublication() {
   const key    = keyEl.value.trim();
   const action = keyEl.disabled ? 'update' : 'add';
   if (!key) { showAlertModal('⚠️ Validation', 'Cite key is required.'); return; }
-  const type   = document.getElementById('pub-modal-type').value.trim() || 'article';
+  // No `|| 'article'` fallback. An empty value here means the <select> could
+  // not represent the stored type, and quietly substituting a plausible one is
+  // how the sibling employment_type bug destroyed data. Fail loudly instead.
+  const type   = document.getElementById('pub-modal-type').value.trim();
+  if (!type) {
+    showAlertModal('⚠️ Validation',
+      'The entry type could not be read. Reload the page and try again — saving now would overwrite the stored type.');
+    return;
+  }
   const author = document.getElementById('pub-modal-author').value.trim();
   const title  = document.getElementById('pub-modal-title').value.trim();
   const year   = document.getElementById('pub-modal-year').value.trim();
@@ -2032,7 +2117,9 @@ function showAddExperienceModal() {
   document.getElementById('exp-state-input').value     = '';
   document.getElementById('exp-start-input').value     = '';
   document.getElementById('exp-end-input').value       = '';
-  document.getElementById('exp-type-input').value      = 'full_time';
+  populateVocabularySelect('exp-type-input',
+                           _vocabularies && _vocabularies.employment_types,
+                           'full_time');
   document.getElementById('exp-importance-input').value = '5';
   document.getElementById('exp-tags-input').value      = '';
   document.getElementById('exp-domain-relevance-input').value = '';
@@ -2127,7 +2214,13 @@ function editMasterExperience(id) {
   document.getElementById('exp-state-input').value      = loc.state || '';
   document.getElementById('exp-start-input').value      = exp.start_date || '';
   document.getElementById('exp-end-input').value        = exp.end_date || '';
-  document.getElementById('exp-type-input').value       = exp.employment_type || 'full_time';
+  // Populate BEFORE selecting: the stored value must have an <option> to land
+  // on, or .value silently resolves to "" and the save path writes that back.
+  if (populateVocabularySelect('exp-type-input',
+                               _vocabularies && _vocabularies.employment_types,
+                               exp.employment_type || 'full_time')) {
+    console.warn('employment_type not in served vocabulary:', exp.employment_type);
+  }
   document.getElementById('exp-importance-input').value  = exp.importance || 5;
   document.getElementById('exp-tags-input').value       = typeof exp.tags === 'string' ? exp.tags
                                                          : (exp.tags || []).join(', ');
@@ -3066,6 +3159,8 @@ export {
   populateMasterTab,
   openMasterCvModal,
   closeMasterCvModal,
+  populateVocabularySelect,
+  loadVocabularies,
   _renderPersonalInfoCard,
   _renderExperiencesList,
   _renderSkillsSection,

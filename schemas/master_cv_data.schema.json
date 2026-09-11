@@ -219,7 +219,21 @@
         },
         "start_date": { "type": ["string", "null"] },
         "end_date": { "type": ["string", "null"] },
-        "employment_type": { "type": "string" },
+        "employment_type": {
+          "type": "string",
+          "description": "Kind of engagement. The authoritative vocabulary is EMPLOYMENT_TYPES in scripts/routes/master_data_routes.py, served to the editor's dropdown by GET /api/master-data/vocabularies. Deliberately NOT an enum here: this file is the source of truth, so a value it already holds must never fail validation — that is the direction of failure this field's history is made of. The API route is the narrower gate and is where a new value gets rejected.",
+          "examples": [
+            "full_time",
+            "part_time",
+            "contract",
+            "consulting",
+            "internship",
+            "self_employed",
+            "joint_appointment",
+            "volunteer",
+            "founding_contributor"
+          ]
+        },
         "tags": {
           "type": "array",
           "items": { "type": "string" }

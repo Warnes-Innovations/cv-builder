@@ -143,7 +143,13 @@ Observed item fields:
 - `location`: object (`city`, `state`)
 - `start_date`: string
 - `end_date`: string
-- `employment_type`: string
+- `employment_type`: string — kind of engagement. The authoritative vocabulary
+  is `EMPLOYMENT_TYPES` in `scripts/routes/master_data_routes.py`; do not retype
+  the list anywhere else. `GET /api/master-data/vocabularies` serves it (unioned
+  with any value already present in this file) and every editor dropdown is
+  populated from that response. The schema deliberately does not constrain this
+  to an enum: this file is the source of truth, so a value it already holds must
+  never fail validation.
 - `tags`: array
 - `audience`: array
 - `domain_relevance`: array

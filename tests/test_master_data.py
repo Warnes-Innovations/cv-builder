@@ -1849,5 +1849,145 @@ class TestMasterDataExport(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Controlled vocabularies, and the empty-value guard
+# ---------------------------------------------------------------------------
+
+class TestEmploymentTypeEmptyGuard(unittest.TestCase):
+    """An EMPTY employment_type must be rejected, not repaired.
+
+    This is the interesting half, and it is the half that was missing. The
+    route previously read `str(exp_data.get('employment_type') or 'full_time')`,
+    which cannot distinguish "the caller did not set this" from "the client
+    sent an empty string because its dropdown could not represent the stored
+    value". It resolved both to 'full_time' — an allowlisted value — so a UI
+    round-trip silently rewrote the user's data and every layer reported
+    success.
+
+    A test that only asserted the valid values are accepted would pass just as
+    happily against that broken version, which is why these are written as
+    negative cases.
+    """
+
+    def _post(self, client, sid, exp):
+        return client.post(
+            '/api/master-data/experience',
+            json={'action': 'add', 'experience': exp, 'session_id': sid},
+        )
+
+    def test_empty_string_is_rejected_not_defaulted(self):
+        """The regression, pinned. '' must 400 rather than become 'full_time'."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {
+                'title': 'Engineer', 'company': 'Acme', 'employment_type': '',
+            })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('employment_type', res.get_json()['error'])
+
+    def test_whitespace_only_is_rejected(self):
+        """'   ' strips to empty and must be treated identically to ''."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {
+                'title': 'Engineer', 'company': 'Acme', 'employment_type': '   ',
+            })
+        self.assertEqual(res.status_code, 400)
+
+    def test_absent_still_defaults(self):
+        """Absent is NOT the same as empty: an API caller that never sets the
+        field is not a broken client, and must keep working."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {'title': 'Engineer', 'company': 'Acme'})
+        self.assertNotEqual(res.status_code, 400)
+
+    def test_every_served_vocabulary_value_is_accepted_by_the_route(self):
+        """The endpoint and the gate must not drift apart.
+
+        Asserted against the route's own constant rather than a list retyped
+        here — a hand-copied list would silently stop covering a tenth value.
+        """
+        from scripts.routes.master_data_routes import EMPLOYMENT_TYPES
+        for emp_type in EMPLOYMENT_TYPES:
+            with self.subTest(employment_type=emp_type):
+                app, _, sid, stack = _make_app()
+                with stack, app.test_client() as client:
+                    res = self._post(client, sid, {
+                        'title': 'Engineer', 'company': 'Acme',
+                        'employment_type': emp_type,
+                    })
+                self.assertNotEqual(
+                    res.status_code, 400,
+                    f'{emp_type} is served to the dropdown but rejected by the route',
+                )
+
+
+class TestVocabulariesEndpoint(unittest.TestCase):
+    """The endpoint every editor <select> is populated from."""
+
+    def test_serves_the_permitted_employment_types(self):
+        from scripts.routes.master_data_routes import EMPLOYMENT_TYPES
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'experience': []}))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        body = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        for t in EMPLOYMENT_TYPES:
+            self.assertIn(t, body['employment_types'])
+
+    def test_unions_in_a_stored_value_the_vocabulary_does_not_know(self):
+        """The whole point. A value already in the data MUST be offered, or the
+        dropdown cannot represent it and saving destroys it."""
+        master = {'experience': [{'id': 'e1', 'employment_type': 'secondment'}],
+                  'publications': []}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        self.assertIn('secondment', res.get_json()['employment_types'])
+
+    def test_unions_in_an_imported_bibtex_entry_type(self):
+        """bibtex_parser passes ENTRYTYPE through unconstrained, so the data can
+        hold a publication type no fixed list anticipated."""
+        master = {'experience': [],
+                  'publications': [{'key': 'k1', 'type': 'booklet'}]}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        self.assertIn('booklet', res.get_json()['publication_types'])
+
+    def test_offers_conference_and_manual_which_the_dropdown_used_to_omit(self):
+        """Both are handled elsewhere in this codebase and were missing from the
+        hardcoded publication dropdown."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'publications': []}))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        types = res.get_json()['publication_types']
+        self.assertIn('conference', types)
+        self.assertIn('manual', types)
+
+    def test_unreadable_master_degrades_rather_than_500s(self):
+        """A dropdown with the standard options is degraded; one with NO options
+        would make every save destructive, which is worse than the failure it
+        would be reporting."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', side_effect=IOError('disk error')):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        body = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(body['degraded'])
+        self.assertIn('full_time', body['employment_types'])
+
+
 if __name__ == '__main__':
     unittest.main()
