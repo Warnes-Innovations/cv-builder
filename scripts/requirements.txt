@@ -33,7 +33,12 @@ nltk>=3.8
 language-tool-python>=3.3.0
 
 # BibTeX Processing
-bibtexparser>=1.4.0
+# Upper bound is load-bearing: v2 removed bibtexparser.bparser and reworked
+# customization, both of which scripts/utils/bibtex_parser.py imports. Without
+# it pip resolves to 2.x on a clean runner and EVERY test module fails to
+# import, aborting the workflow before CodeQL uploads - which surfaced as a
+# 'Code scanning configuration error' rather than as a dependency problem.
+bibtexparser>=1.4.0,<2
 
 # Data Validation
 pydantic>=2.0.0
