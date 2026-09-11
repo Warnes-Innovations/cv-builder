@@ -21,14 +21,14 @@
     "lint:duplication": "npm run lint:duplicates && npm run lint:duplicate-functions && npm run lint:duplicate-code && npm run lint:duplicate-code:py"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^3.0.0",
+    "@vitest/coverage-v8": "^5.0.0",
     "esbuild": "^0.27.4",
     "eslint": "^10.6.0",
     "eslint-plugin-sonarjs": "^4.1.0",
     "jscpd": "^5.0.11",
     "jsdom": "^26.0.0",
     "playwright": "^1.42.0",
-    "vitest": "^3.0.0"
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "dompurify": "^3.4.13",
