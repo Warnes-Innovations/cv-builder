@@ -106,6 +106,10 @@ def server_fixture():
             str(publications_path),
             "--output-dir",
             str(output_dir),
+            # --output-dir does not redirect logging; without --log-dir
+            # this run appends to the user's live ~/CV/cv-builder/logs.
+            "--log-dir",
+            str(output_dir),
         ]
         env = os.environ.copy()
         env["FLASK_ENV"] = "testing"

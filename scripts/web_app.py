@@ -1247,6 +1247,12 @@ def parse_args():
                        help="Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
                        help="Output directory")
+    parser.add_argument("--log-dir", default=None,
+                       help="Directory to write the log file into. Overrides "
+                            "logging.log_dir in config.yaml and the CV_LOG_DIR "
+                            "env var. Note that --output-dir does NOT affect "
+                            "the log destination; pass this to isolate logs "
+                            "(e.g. so a test run does not write to the live log).")
     parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk", "stub"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
@@ -1262,7 +1268,7 @@ def main():
     config = get_config()
 
     # Set up logging before anything else
-    setup_logging(config)
+    setup_logging(config, log_dir=args.log_dir)
 
     app = create_app(args)
     bundle_status = app.config.get('FRONTEND_BUNDLE_STATUS', 'unknown')
