@@ -14,7 +14,7 @@
         "title": { "type": "string" },
         "citizenship": {
           "type": "string",
-          "description": "Optional citizenship / clearance-eligibility statement for applicants targeting federal-contract roles, where screening for citizenship or clearance eligibility typically precedes substantive review. Deliberately free text rather than structured fields: the required phrasing varies by agency, and how much eligibility an applicant is willing to assert is their own decision. ACCEPTED BUT NOT YET RENDERED: no template or document writer reads this field as of 2026-09-10; see MASTER_CV_DATA_SPECIFICATION.md section 4.1 for the unconditional-versus-opt-in decision to make before adding a renderer."
+          "description": "Optional citizenship / clearance-eligibility statement for applicants targeting federal-contract roles, where screening for citizenship or clearance eligibility typically precedes substantive review. Deliberately free text rather than structured fields: the required phrasing varies by agency, and how much eligibility an applicant is willing to assert is their own decision. RENDERED CONDITIONALLY: on by default only for summary variants aimed at federal roles (CVOrchestrator.CITIZENSHIP_DEFAULT_VARIANTS), otherwise only when the session sets include_citizenship; an explicit include_citizenship wins in both directions. Default is silence because the ATS DOCX is machine-parsed into third-party tracking systems. See MASTER_CV_DATA_SPECIFICATION.md section 4.1."
         },
         "contact": {
           "type": "object",

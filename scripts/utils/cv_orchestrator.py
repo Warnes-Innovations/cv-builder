@@ -303,6 +303,7 @@ class CVOrchestrator:
 
         cv_data = {
             'personal_info': personal_info,
+            'show_citizenship': self._should_show_citizenship(customizations),
             'professional_summary': professional_summary,
             'experiences': experiences,
             'achievements': achievements,
@@ -359,6 +360,42 @@ class CVOrchestrator:
             return normalized
 
         return ''
+
+    # Summary variants whose target audience makes a citizenship / clearance
+    # statement an ASSET rather than a disclosure. Adding a federal-targeted
+    # variant means adding it here — the default is silence, so forgetting this
+    # omits the line on an application that wanted it, which is the safe
+    # direction to fail.
+    CITIZENSHIP_DEFAULT_VARIANTS = frozenset({"federal_advisor"})
+
+    @classmethod
+    def _should_show_citizenship(cls, customizations: Optional[Dict]) -> bool:
+        """Whether personal_info.citizenship is rendered on this CV.
+
+        DEFAULT IS OFF, and the asymmetry is the point. The field states
+        citizenship and clearance eligibility. On a federal-contract application
+        that is a qualification, and its absence reads as ineligibility; on an
+        application to a private employer it is information they are in many
+        jurisdictions restricted from asking for — and the ATS DOCX is
+        machine-parsed into third-party applicant-tracking systems, where it
+        would persist well outside the application it was written for.
+
+        So: on by default only for variants aimed at federal roles, and
+        otherwise only when the caller asks for it explicitly.
+        """
+        if not isinstance(customizations, dict):
+            return False
+        explicit = customizations.get("include_citizenship")
+        if explicit is not None:
+            # An explicit choice wins in BOTH directions, so a federal variant
+            # can still be told to leave it off.
+            return bool(explicit)
+        variant = (
+            customizations.get("selected_summary_key")
+            or customizations.get("summary_focus_override")
+            or ""
+        )
+        return str(variant).strip() in cls.CITIZENSHIP_DEFAULT_VARIANTS
 
     @staticmethod
     def _resolve_human_skills_title(customizations: Optional[Dict]) -> str:
@@ -2207,6 +2244,7 @@ For manual generation:
         #   notes: "Carries the user-selected skills title into the ATS DOCX generation payload."
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         selected_content['ai_attribution'] = bool(customizations.get('ai_attribution', False))
+        selected_content['show_citizenship'] = self._should_show_citizenship(customizations)
         ats_file, ats_score_at_generation = self._generate_ats_docx(
             selected_content,
             job_analysis,
@@ -4393,6 +4431,12 @@ Include one entry per candidate. Do not omit any candidate."""
             contact_parts.append(contact['email'])
         if contact.get('linkedin'):
             contact_parts.append(contact['linkedin'])
+        # Gated: see _should_show_citizenship. This document is machine-parsed
+        # into third-party applicant-tracking systems, so an unconditional
+        # citizenship line would persist far outside the application it was
+        # written for.
+        if content.get('show_citizenship') and personal.get('citizenship'):
+            contact_parts.append(personal['citizenship'])
 
         contact_para = doc.add_paragraph(' | '.join(contact_parts))
         contact_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER

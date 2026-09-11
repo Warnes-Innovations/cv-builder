@@ -73,13 +73,21 @@ Observed fields:
   targeting federal-contract roles, where screening for citizenship or clearance eligibility
   typically precedes substantive review. Deliberately free text, not structured fields: phrasing
   varies by agency and by what the applicant is willing to assert.
-  **Status: accepted and schema-valid, but not currently rendered by any output format.** No
-  template, orchestrator, or DOCX/PDF writer reads this field as of 2026-09-10 — `templates/
-  cv-template.html` renders `.contact-info` from four explicitly named fields and has no generic
-  loop over `personal_info`. Populating it therefore has no effect on a generated CV yet. Before a
-  renderer is added, decide whether it should appear unconditionally or only for variants that opt
-  in: rendered unconditionally it would also land in the machine-parsed ATS DOCX, including for
-  employers who are restricted from asking.
+  **Rendered conditionally, never by default.** `CVOrchestrator._should_show_citizenship()`
+  decides, and both the HTML contact block and the ATS DOCX contact line consult it:
+  - **On by default** for summary variants aimed at federal roles — currently just
+    `federal_advisor`, listed in `CVOrchestrator.CITIZENSHIP_DEFAULT_VARIANTS`. Adding a
+    federal-targeted variant means adding it there.
+  - **Off otherwise**, unless the session sets `include_citizenship: true` in its
+    customizations.
+  - An explicit `include_citizenship` wins in **both** directions, so a federal variant can
+    still be told to leave it out.
+
+  The default is silence because the asymmetry is real: on a federal-contract application the
+  statement is a qualification whose absence reads as ineligibility, while on an application to
+  a private employer it is information they are in many jurisdictions restricted from asking
+  for — and the ATS DOCX is machine-parsed into third-party applicant-tracking systems, where
+  the line would persist well outside the application it was written for.
 - `contact`: object
 - `languages`: array
 
