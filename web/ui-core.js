@@ -1092,7 +1092,7 @@ async function startCopilotAuthFromWizard() {
   // the tab is opened blank and navigated once it is. 'noopener' is omitted
   // deliberately — it would force window.open() to return null, leaving no
   // handle to navigate; the opener is severed by hand instead.
-  const authTab = window.open('', '_blank');
+  let authTab = window.open('', '_blank');
   _showModelWizardBusy('Starting GitHub device authorization...');
   try {
     const flowRes = await fetch('/api/copilot-auth/start', { method: 'POST' });
@@ -1106,6 +1106,13 @@ async function startCopilotAuthFromWizard() {
     if (authTab) {
       try { authTab.opener = null; } catch (_) { /* not settable in every browser */ }
       authTab.location.replace(linkEl.href);
+      // Drop the handle the instant the tab stops being our blank placeholder.
+      // The awaits below are inside this same try, so a later failure (a poll
+      // that 500s, a dropped connection) reaches the catch — and a catch that
+      // still held this handle would close the GitHub tab the user is at that
+      // moment typing their device code into. Cleanup must only ever be able
+      // to close a tab that never got anywhere.
+      authTab = null;
     }
     // If the popup was blocked outright there is deliberately no fallback to
     // this tab: navigating away would destroy the wizard showing the device

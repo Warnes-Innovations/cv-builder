@@ -319,8 +319,12 @@ function _reportSessionCreateFailure(err) {
   else if (typeof showAlertModal === 'function') showAlertModal('New session failed', message);
 }
 
-// Disable the header button while a create is in flight, so an 8-second wait
-// cannot be turned into several concurrent sessions by an impatient second click.
+// Disable the header button while a create is in flight, so the wait cannot be
+// turned into several concurrent sessions by an impatient second click.
+// NOTE: this reaches only #new-session-header-btn. The landing-panel buttons
+// below (search this file for createNewSessionInNewTab/createNewSessionAndNavigate
+// in onclick=) carry no id and are NOT disabled, so the double-click window is
+// still open on that screen.
 function _setNewSessionBusy(busy) {
   const btn = document.getElementById('new-session-header-btn');
   if (!btn) return;
@@ -388,7 +392,7 @@ async function createNewSessionInNewTab() {
   // return null, and the handle is needed to navigate the tab once the session
   // id arrives. The opener reference is severed by hand below, which buys the
   // same protection.
-  const tab = window.open('', '_blank');
+  let tab = window.open('', '_blank');
   if (tab) {
     try {
       tab.document.write(
@@ -409,6 +413,13 @@ async function createNewSessionInNewTab() {
     if (tab) {
       try { tab.opener = null; } catch (_) { /* not settable in every browser */ }
       tab.location.replace(url);
+      // Drop the handle once the tab is no longer our blank placeholder, so the
+      // catch below can only ever close a tab that never got anywhere. Nothing
+      // awaits after this line today, which is the only reason that catch is
+      // currently safe — this keeps it safe by construction rather than by
+      // accident if an await is ever added here. Same guard as the Copilot
+      // device-auth flow in ui-core.js, where the equivalent gap was live.
+      tab = null;
     } else {
       // The popup was blocked outright (popups disabled for this site), so the
       // synchronous open above could not help. Fall back to this tab rather

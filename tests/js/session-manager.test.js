@@ -1633,7 +1633,9 @@ describe('restoreBackendState', () => {
 // (web/index.html, onclick="createNewSessionInNewTab()"). Two defects:
 //   1. window.open() ran AFTER `await createSession()`, so the browser had
 //      already discarded the click's user activation and blocked the popup
-//      silently. POST /api/sessions/new measures ~8s, so the gap is enormous.
+//      silently. Activation is severed by ANY await, however fast it resolves,
+//      so this does not depend on how slow session creation is — "the endpoint
+//      got faster" is never a reason to relax the guard below.
 //   2. A failed create threw out of an inline onclick handler, where the
 //      rejection is discarded and the user is shown nothing at all.
 
