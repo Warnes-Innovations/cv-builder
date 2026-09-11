@@ -418,6 +418,37 @@ class TestMasterDataFieldValidation(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertIn('employment_type', res.get_json()['error'])
 
+    def test_experience_accepts_joint_appointment_and_volunteer(self):
+        """Unpaid appointment types must be accepted, not rejected as invalid.
+
+        Both values occur in live Master_CV_Data.json: an unpaid academic joint
+        appointment held concurrently with salaried employment, and full-time
+        volunteer service. Neither is 'part_time', which implies pay. Before this
+        was fixed the JSON schema accepted them (it types employment_type as an
+        unconstrained string) while this route returned 400, so an entry could be
+        written to the file and then be un-editable through the UI.
+        """
+        for emp_type in ('joint_appointment', 'volunteer', 'founding_contributor'):
+            with self.subTest(employment_type=emp_type):
+                app, _, sid, stack = _make_app()
+                with stack, app.test_client() as client:
+                    res = client.post(
+                        '/api/master-data/experience',
+                        json={
+                            'action': 'add',
+                            'experience': {
+                                'title': 'Research Scientist',
+                                'company': 'Acme University',
+                                'employment_type': emp_type,
+                            },
+                            'session_id': sid,
+                        },
+                    )
+                self.assertNotEqual(
+                    res.status_code, 400,
+                    f"{emp_type} was rejected: {res.get_json()}",
+                )
+
     def test_experience_achievements_must_be_list_returns_400(self):
         app, _, sid, stack = _make_app()
         with stack, app.test_client() as client:
