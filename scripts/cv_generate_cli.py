@@ -358,6 +358,15 @@ def _available_summary_variants(master: dict[str, Any]) -> list[str]:
     return []
 
 
+# Focus values the SERVER creates during a run, which therefore never appear in
+# Master_CV_Data.json. Validating only against the master file rejects these —
+# and `ai_recommended` is produced by the recommend phase THIS CLI triggers, so
+# the guard refused a value its own workflow generates. Both are documented in
+# .github/skills/cv-builder-workflow/SKILL.md as valid summary_focus_override
+# values.
+_SESSION_CREATED_VARIANTS = ("ai_recommended", "ai_generated")
+
+
 def _resolve_summary_variant(master: dict[str, Any], requested: str) -> str:
     """Validate `requested` against the master data, or fail with the real options.
 
@@ -373,10 +382,13 @@ def _resolve_summary_variant(master: dict[str, Any], requested: str) -> str:
             "ERROR: master data has no object-form 'professional_summaries'; "
             "cannot select a summary variant."
         )
+    if requested in _SESSION_CREATED_VARIANTS:
+        return requested
     if requested not in available:
         raise SystemExit(
             f"ERROR: unknown summary variant {requested!r}.\n"
-            f"  available: {', '.join(available)}"
+            f"  from master data: {', '.join(available)}\n"
+            f"  created during a run: {', '.join(_SESSION_CREATED_VARIANTS)}"
         )
     return requested
 

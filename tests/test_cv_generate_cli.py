@@ -493,8 +493,6 @@ class TestProbePathExists(unittest.TestCase):
     """
 
     def test_probe_path_is_a_real_route(self):
-        import importlib.util
-        import sys as _sys
         from pathlib import Path as _Path
 
         repo = _Path(__file__).resolve().parent.parent
@@ -546,6 +544,24 @@ class TestResolveSummaryVariant(unittest.TestCase):
         master = _master()
         with self.assertRaises(SystemExit):
             cv_cli._resolve_summary_variant(master, "typo_advisor")
+
+    def test_session_created_variants_are_accepted(self):
+        """Regression: ai_recommended is produced by the recommend phase this CLI
+        itself triggers, and lives in SESSION state, never in the master file.
+        Validating only against the master file rejected a value the workflow
+        generates — and the same guard shipped to origin/devel in 1560535."""
+        master = _master()
+        for v in ("ai_recommended", "ai_generated"):
+            with self.subTest(variant=v):
+                self.assertEqual(cv_cli._resolve_summary_variant(master, v), v)
+
+    def test_unknown_variant_error_names_both_vocabularies(self):
+        master = _master()
+        with self.assertRaises(SystemExit) as cm:
+            cv_cli._resolve_summary_variant(master, "typo_advisor")
+        msg = str(cm.exception)
+        self.assertIn("from master data", msg)
+        self.assertIn("created during a run", msg)
 
     def test_missing_summaries_aborts(self):
         master = MasterDataBuilder().with_summaries({}).build()
