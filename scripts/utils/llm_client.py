@@ -2144,16 +2144,29 @@ class AnthropicClient(LLMClient):
         max_tokens: Optional[int] = None,
         json_mode: bool = False,
     ) -> str:
-        """Send chat messages to Claude."""
+        """Send chat messages to Claude.
+
+        ``temperature`` is accepted for signature-compatibility with the other
+        providers' ``chat()`` implementations, but is deliberately NOT forwarded
+        to the Anthropic SDK — see the comment on ``request_kwargs`` below.
+        """
         system_blocks, payload_messages = _anthropic_messages_payload(messages)
 
         from utils.config import get_config as _get_config  # noqa: PLC0415
         timeout_secs = _get_config().llm_request_timeout
         try:
+            # Do NOT add "temperature" here. The anthropic SDK (>= 1.2.0) removed it
+            # from Messages.create(), which rejects unknown keywords outright:
+            #   TypeError: Messages.create() got an unexpected keyword argument 'temperature'
+            # That aborts EVERY Anthropic call before it reaches the network, so the
+            # provider fails closed rather than degrading. Callers still pass
+            # temperature=... (analyze_job_description uses 0.3, propose_rewrites 0.4);
+            # those values are intentionally ignored for this provider only. The sibling
+            # OpenAI/Gemini/Groq/Copilot clients DO forward it — do not "make them
+            # consistent" by copying this omission into them.
             request_kwargs = {
                 "model":       self.model,
                 "max_tokens":  max_tokens or 4096,
-                "temperature": temperature,
                 "messages":    payload_messages,
             }
             if system_blocks:

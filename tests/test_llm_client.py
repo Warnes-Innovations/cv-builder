@@ -438,7 +438,6 @@ class TestAnthropicClient(unittest.TestCase):
         client.client.messages.create.assert_called_once_with(
             model='claude-sonnet-4-6',
             max_tokens=8,
-            temperature=0,
             system=[{'type': 'text', 'text': 'Answer in one word.'}],
             messages=[
                 {
@@ -446,6 +445,41 @@ class TestAnthropicClient(unittest.TestCase):
                     'content': [{'type': 'text', 'text': 'Say ready'}],
                 }
             ],
+        )
+
+    def test_chat_does_not_forward_temperature(self):
+        """temperature must never reach Messages.create().
+
+        The anthropic SDK (>= 1.2.0) removed ``temperature`` from
+        ``Messages.create()`` and rejects unknown keywords outright, so
+        forwarding it raises TypeError before the request is sent and every
+        Anthropic call fails. Callers still pass temperature=... and that is
+        fine — it is ignored for this provider.
+
+        Note this test asserts a *call shape*, not real SDK behaviour: the
+        MagicMock below happily accepts any keyword, which is precisely why the
+        original bug shipped green. Treat a change here as a signal to re-check
+        against the installed SDK signature, not just to re-run the mock.
+        """
+        client = object.__new__(AnthropicClient)
+        client.model = 'claude-sonnet-4-6'
+        client.client = MagicMock()
+        client.client.messages.create.return_value = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=8, output_tokens=2),
+            content=[SimpleNamespace(text='ready')],
+        )
+
+        _no_timeout = SimpleNamespace(llm_request_timeout=None)
+        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
+            client.chat(
+                messages=[{'role': 'user', 'content': 'Say ready'}],
+                temperature=0.3,
+                max_tokens=8,
+            )
+
+        self.assertNotIn(
+            'temperature',
+            client.client.messages.create.call_args.kwargs,
         )
 
     def test_chat_omits_system_when_not_present(self):
