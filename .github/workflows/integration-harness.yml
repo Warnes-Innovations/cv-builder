@@ -46,6 +46,15 @@ jobs:
           pip install -r scripts/requirements.txt
           pip install pytest
 
+      - name: Create config from the tracked example
+        # config.yaml is NOT tracked (be592fa): it is where the app writes API
+        # keys from the settings UI, and a tracked copy in a public repo is one
+        # `git add -A` from publishing a live credential. CI therefore has to
+        # make its own, exactly as CONFIGURATION.md tells a developer to.
+        # Without this every config-dependent test raises
+        # ConfigurationError('No data path configured').
+        run: cp config.yaml.example config.yaml
+
       - name: Run Python unit tests
         run: |
           mkdir -p test-results

@@ -50,6 +50,15 @@ jobs:
           .venv/bin/pip install -r scripts/requirements.txt
           .venv/bin/pip install pytest
 
+      - name: Create config from the tracked example
+        # config.yaml is NOT tracked (be592fa): it is where the app writes API
+        # keys from the settings UI, and a tracked copy in a public repo is one
+        # `git add -A` from publishing a live credential. CI therefore makes its
+        # own, exactly as CONFIGURATION.md tells a developer to. Without this,
+        # anything that loads config raises
+        # ConfigurationError('No data path configured').
+        run: cp config.yaml.example config.yaml
+
       - name: Run Python unit tests
         run: .venv/bin/python -m pytest -q tests/unit
 
@@ -91,6 +100,15 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/pip install -r scripts/requirements.txt
           .venv/bin/pip install pytest
+
+      - name: Create config from the tracked example
+        # config.yaml is NOT tracked (be592fa): it is where the app writes API
+        # keys from the settings UI, and a tracked copy in a public repo is one
+        # `git add -A` from publishing a live credential. CI therefore makes its
+        # own, exactly as CONFIGURATION.md tells a developer to. Without this,
+        # anything that loads config raises
+        # ConfigurationError('No data path configured').
+        run: cp config.yaml.example config.yaml
 
       - name: Start stub web server
         run: |
