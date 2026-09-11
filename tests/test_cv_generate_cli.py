@@ -480,6 +480,42 @@ class TestRequireCvBuilder(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# the gate must actually be wired into main()
+# ---------------------------------------------------------------------------
+
+class TestPreflightIsWiredIn(unittest.TestCase):
+    """Without these, replacing the _require_cv_builder call in main() with
+    `pass` leaves the whole suite green: the gate was tested in isolation and
+    its invocation was not tested at all."""
+
+    def _run_main(self, argv: list[str]):
+        old = sys.argv[:]
+        try:
+            sys.argv = ["cv_generate_cli.py"] + argv
+            cv_cli.main()
+        finally:
+            sys.argv = old
+
+    def test_gate_runs_on_a_real_run(self):
+        with patch.object(cv_cli, "_require_cv_builder",
+                          return_value={"alive": True}) as gate, \
+             patch.object(cv_cli, "run_generation", return_value={}):
+            self._run_main(["--mode", "comprehensive",
+                            "--summary-variant", "scientific_advisor"])
+        gate.assert_called_once()
+        self.assertEqual(gate.call_args[0][0], "http://127.0.0.1:5001")
+
+    def test_gate_is_skipped_on_dry_run(self):
+        """Also a control: if this passed while the one above failed, the gate
+        would be wired to the wrong branch."""
+        with patch.object(cv_cli, "_require_cv_builder") as gate, \
+             patch.object(cv_cli, "run_generation", return_value={}):
+            self._run_main(["--mode", "comprehensive",
+                            "--summary-variant", "scientific_advisor", "--dry-run"])
+        gate.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # the probe path must name a route the app actually serves
 # ---------------------------------------------------------------------------
 
