@@ -1902,6 +1902,22 @@ class TestEmploymentTypeEmptyGuard(unittest.TestCase):
             res = self._post(client, sid, {'title': 'Engineer', 'company': 'Acme'})
         self.assertNotEqual(res.status_code, 400)
 
+    def test_equity_only_is_accepted(self):
+        """An engagement compensated in equity with no salary.
+
+        Pinned by NAME rather than by iterating EMPLOYMENT_TYPES: a test that
+        loops over the constant passes vacuously for a value missing from it,
+        which is exactly the defect. exp_001 in live data holds this value and
+        could not be saved through the editor while the route rejected it.
+        """
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {
+                'title': 'Founder', 'company': 'MCKWCO',
+                'employment_type': 'equity_only',
+            })
+        self.assertNotEqual(res.status_code, 400, res.get_json())
+
     def test_every_served_vocabulary_value_is_accepted_by_the_route(self):
         """The endpoint and the gate must not drift apart.
 

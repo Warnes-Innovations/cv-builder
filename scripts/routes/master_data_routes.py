@@ -66,6 +66,7 @@ EMPLOYMENT_TYPES = (
     'joint_appointment',     # unpaid academic appointment held concurrently
     'volunteer',             # unpaid full-time service
     'founding_contributor',  # originating contribution, never an employment relationship
+    'equity_only',           # compensated in equity only, no salary
 )
 
 # BibTeX entry types the publication editor offers. bibtex_parser.py passes

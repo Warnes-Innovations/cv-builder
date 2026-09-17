@@ -239,7 +239,8 @@
             "self_employed",
             "joint_appointment",
             "volunteer",
-            "founding_contributor"
+            "founding_contributor",
+            "equity_only"
           ]
         },
         "tags": {
