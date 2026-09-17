@@ -190,6 +190,10 @@ Observed item fields:
 - `importance`: number
 - `relevant_for`: array
 - `show_for_roles`: array
+- `comment`: string, optional — free-text provenance: the reasoning behind a
+  figure or claim, often written by tooling rather than the editor. Never
+  rendered in generated CVs. The editor does not manage this field, so saving an
+  achievement through the UI preserves it.
 
 ### 4.5 `skills`
 

@@ -2130,6 +2130,83 @@ class TestExperienceDivisionDepartment(unittest.TestCase):
                 self.assertIn('division', res.get_json()['error'])
 
 
+class TestSelectedAchievementComment(unittest.TestCase):
+    """`comment` on a selected achievement: free-text provenance, never rendered.
+
+    It carries the reasoning behind a corrected figure, written by tooling
+    rather than the editor, so the property that matters is that an ordinary UI
+    edit does not erase it.
+
+    That property holds today only BY OMISSION: the update route mutates the
+    stored dict in place and touches only the fields it lists, so keys it does
+    not know about survive. A refactor that rebuilds the entry as a fresh dict
+    would silently delete every comment with nothing failing — which is what
+    the preservation test below exists to catch.
+    """
+
+    def _update(self, stored, req):
+        app, _, sid, stack = _make_app()
+        master = {'selected_achievements': [stored]}
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post('/api/master-data/update-achievement',
+                              json=dict(req, session_id=sid))
+        self.assertEqual(res.status_code, 200, res.get_json())
+        return mock_dump.call_args[0][0]['selected_achievements'][0]
+
+    def test_ui_edit_preserves_a_tooling_written_comment(self):
+        provenance = ('Headline excludes an archived package whose downloads were '
+                      'an automated-deployment spike.')
+        saved = self._update(
+            {'id': 'sa_008', 'title': 'Old title', 'importance': 7, 'comment': provenance},
+            {'id': 'sa_008', 'title': 'Edited in the UI', 'importance': 8},
+        )
+        self.assertEqual(saved['title'], 'Edited in the UI')
+        self.assertEqual(saved.get('comment'), provenance,
+                         'a UI edit erased the provenance comment')
+
+    def test_update_preserves_every_key_it_does_not_manage(self):
+        """The general form, so the guard is not specific to one field name."""
+        saved = self._update(
+            {'id': 'sa_1', 'title': 'T', 'comment': 'why', 'metrics': ['10x'],
+             'show_for_roles': ['lead']},
+            {'id': 'sa_1', 'title': 'T2'},
+        )
+        self.assertEqual(saved.get('comment'), 'why')
+        self.assertEqual(saved.get('metrics'), ['10x'])
+        self.assertEqual(saved.get('show_for_roles'), ['lead'])
+
+
+class TestSelectedAchievementCommentSchema(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from scripts.utils.master_data_validator import validate_master_data
+        cls.validate = staticmethod(validate_master_data)
+
+    def _sa(self, **fields):
+        return {'selected_achievements': [dict({'id': 'sa_1', 'title': 'T'}, **fields)]}
+
+    def test_control_schema_validation_is_actually_running(self):
+        self.assertFalse(
+            self.validate({'experience': [{'id': 'e', 'title': 'T', 'company': 'C',
+                                           'employment_type': 123}]}).valid,
+            'schema validation did not run — the assertions below would be vacuous',
+        )
+
+    def test_string_comment_is_valid(self):
+        self.assertTrue(self.validate(self._sa(comment='provenance')).valid)
+
+    def test_absent_comment_is_valid(self):
+        self.assertTrue(self.validate(self._sa()).valid)
+
+    def test_non_string_comment_is_invalid(self):
+        for bad in (123, ['x'], {'x': 1}):
+            with self.subTest(value=bad):
+                self.assertFalse(self.validate(self._sa(comment=bad)).valid)
+
+
 class TestExperienceDivisionDepartmentSchema(unittest.TestCase):
     """The validator enforces field types through the JSON schema.
 

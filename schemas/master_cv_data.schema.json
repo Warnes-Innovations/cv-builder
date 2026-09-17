@@ -273,6 +273,10 @@
         "id": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
+        "comment": {
+          "type": "string",
+          "description": "Optional free-text provenance: the reasoning behind a figure or claim, often written by tooling. Never rendered in generated CVs. Preserved across editor saves, which do not manage this field."
+        },
         "keywords": {
           "type": "array",
           "items": { "type": "string" }
