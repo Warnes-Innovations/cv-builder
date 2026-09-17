@@ -1989,5 +1989,173 @@ class TestVocabulariesEndpoint(unittest.TestCase):
         self.assertIn('full_time', body['employment_types'])
 
 
+# ---------------------------------------------------------------------------
+# division / department on experience entries
+# ---------------------------------------------------------------------------
+
+class TestExperienceDivisionDepartment(unittest.TestCase):
+    """Optional organisational-unit fields on an experience entry.
+
+    Both the create and the update paths in the experience route enumerate
+    the fields they persist — create builds a literal dict, update iterates a
+    fixed tuple — so a field missing from either is silently dropped or never
+    saved, with the request still returning ok. That is the failure these pin,
+    on BOTH paths, because fixing one and not the other passes any test that
+    only exercises one.
+
+    Absent and empty are deliberately different here, and differ from
+    employment_type. Both fields are optional free text where empty genuinely
+    means "unknown", so empty stores NO key rather than an empty string — the
+    editor sends every field on every save, and storing "" would stamp an empty
+    key onto every entry anyone touches. Absent from an update means "this
+    caller did not address the field", so the stored value must survive.
+    """
+
+    FIELDS = ('division', 'department')
+
+    def _post(self, client, sid, action, exp, exp_id=None):
+        body = {'action': action, 'experience': exp, 'session_id': sid}
+        if exp_id:
+            body['id'] = exp_id
+        return client.post('/api/master-data/experience', json=body)
+
+    def _run(self, master, action, exp, exp_id=None):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = self._post(client, sid, action, exp, exp_id)
+        self.assertEqual(res.status_code, 200, res.get_json())
+        return mock_dump.call_args[0][0]['experience'][0]
+
+    # -- create path --------------------------------------------------------
+
+    def test_add_persists_both_fields(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': 'Global Research and Development',
+            'department': 'Non-Clinical Statistics',
+        })
+        self.assertEqual(saved['division'], 'Global Research and Development')
+        self.assertEqual(saved['department'], 'Non-Clinical Statistics')
+
+    def test_add_with_empty_strings_stores_no_key(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': '', 'department': '   ',
+        })
+        for f in self.FIELDS:
+            self.assertNotIn(f, saved, f'{f} was stored for an empty value')
+
+    def test_add_without_the_fields_stores_no_key(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+        })
+        for f in self.FIELDS:
+            self.assertNotIn(f, saved)
+
+    # -- update path --------------------------------------------------------
+
+    def _existing(self, **extra):
+        return {'experience': [dict({'id': 'exp_1', 'title': 'Statistician',
+                                     'company': 'Pfizer'}, **extra)]}
+
+    def test_update_persists_both_fields(self):
+        saved = self._run(self._existing(), 'update', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': 'Research', 'department': 'Statistics and Data Science',
+        }, exp_id='exp_1')
+        self.assertEqual(saved['division'], 'Research')
+        self.assertEqual(saved['department'], 'Statistics and Data Science')
+
+    def test_update_empty_string_clears_the_stored_value(self):
+        """The user blanked the field in the editor: the key goes, not ''."""
+        saved = self._run(self._existing(division='Research', department='Stats'),
+                          'update', {'title': 'Statistician', 'company': 'Pfizer',
+                                     'division': '', 'department': ''},
+                          exp_id='exp_1')
+        for f in self.FIELDS:
+            self.assertNotIn(f, saved, f'{f} survived being cleared')
+
+    def test_update_absent_fields_leave_the_stored_value_alone(self):
+        """A caller that does not send the fields must not erase them.
+
+        The most important case: an API client or older editor that predates
+        these fields must never wipe data it did not know was there.
+        """
+        saved = self._run(self._existing(division='Research', department='Stats'),
+                          'update', {'title': 'Senior Statistician', 'company': 'Pfizer'},
+                          exp_id='exp_1')
+        self.assertEqual(saved['division'], 'Research')
+        self.assertEqual(saved['department'], 'Stats')
+        self.assertEqual(saved['title'], 'Senior Statistician')
+
+    def test_values_are_stripped(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': '  Research  ', 'department': '\tStats\n',
+        })
+        self.assertEqual(saved['division'], 'Research')
+        self.assertEqual(saved['department'], 'Stats')
+
+    def test_non_string_is_rejected_not_coerced(self):
+        """A list or number is a caller bug; str() would store '[...]'."""
+        for bad in (123, ['Research'], {'name': 'Research'}):
+            with self.subTest(value=bad):
+                app, _, sid, stack = _make_app()
+                with stack, app.test_client() as client, \
+                     patch('builtins.open', mock_open(read_data=json.dumps({'experience': []}))), \
+                     patch('json.dump'), patch('subprocess.run'):
+                    res = self._post(client, sid, 'add', {
+                        'title': 'Statistician', 'company': 'Pfizer', 'division': bad,
+                    })
+                self.assertEqual(res.status_code, 400)
+                self.assertIn('division', res.get_json()['error'])
+
+
+class TestExperienceDivisionDepartmentSchema(unittest.TestCase):
+    """The validator enforces field types through the JSON schema.
+
+    Guarded against the silent-skip case: validate_master_data runs schema
+    validation only when `jsonschema` imports, so under an interpreter without
+    it every type check below would pass vacuously. The control asserts a
+    known-bad value is rejected first, so a skipped schema fails loudly here.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from scripts.utils.master_data_validator import validate_master_data
+        cls.validate = staticmethod(validate_master_data)
+
+    def _entry(self, **fields):
+        return {'experience': [dict({'id': 'e1', 'title': 'T', 'company': 'C'}, **fields)]}
+
+    def test_control_schema_validation_is_actually_running(self):
+        self.assertFalse(
+            self.validate(self._entry(employment_type=123)).valid,
+            'schema validation did not run — every type assertion below is vacuous',
+        )
+
+    def test_string_values_are_valid(self):
+        self.assertTrue(self.validate(self._entry(division='Research',
+                                                  department='Stats')).valid)
+
+    def test_null_is_valid(self):
+        """null is accepted for consistency with start_date/end_date, and so a
+        writer marking a value explicitly unknown is not rejected."""
+        self.assertTrue(self.validate(self._entry(division=None, department=None)).valid)
+
+    def test_absent_is_valid(self):
+        """Every existing file predates these fields and must keep validating."""
+        self.assertTrue(self.validate(self._entry()).valid)
+
+    def test_non_string_is_invalid(self):
+        for f in ('division', 'department'):
+            for bad in (123, ['x'], {'x': 1}, True):
+                with self.subTest(field=f, value=bad):
+                    self.assertFalse(self.validate(self._entry(**{f: bad})).valid)
+
+
 if __name__ == '__main__':
     unittest.main()

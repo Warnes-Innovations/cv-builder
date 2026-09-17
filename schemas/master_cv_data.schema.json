@@ -204,6 +204,14 @@
         "comment": { "type": "string" },
         "title": { "type": "string" },
         "company": { "type": "string" },
+        "division": {
+          "type": ["string", "null"],
+          "description": "Optional. The major organisational unit the role sat in (e.g. \"Global Research and Development\"). Absent or null means unknown."
+        },
+        "department": {
+          "type": ["string", "null"],
+          "description": "Optional. The sub-unit, group or team inside the division (e.g. \"Non-Clinical Statistics\"). Absent or null means unknown."
+        },
         "location": {
           "oneOf": [
             { "type": "string" },

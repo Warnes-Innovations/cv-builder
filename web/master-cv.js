@@ -653,6 +653,16 @@ async function populateMasterTab(container = null) {
                   placeholder="e.g. Acme Corp" />
             </div>
             <div>
+              <label for="exp-division-input" style="display:block;font-weight:600;margin-bottom:4px;">Division</label>
+              <input type="text" id="exp-division-input" class="edit-input" style="width:100%;"
+                  placeholder="e.g. Global Research and Development" />
+            </div>
+            <div>
+              <label for="exp-department-input" style="display:block;font-weight:600;margin-bottom:4px;">Department</label>
+              <input type="text" id="exp-department-input" class="edit-input" style="width:100%;"
+                  placeholder="e.g. Non-Clinical Statistics" />
+            </div>
+            <div>
               <label for="exp-city-input" style="display:block;font-weight:600;margin-bottom:4px;">City</label>
               <input type="text" id="exp-city-input" class="edit-input" style="width:100%;" placeholder="Boston" />
             </div>
@@ -1004,6 +1014,12 @@ function _renderExperiencesList(experiences) {
   const rows = experiences.map((exp, idx) => {
     const title   = escapeHtml(exp.title || '');
     const company = escapeHtml(exp.company || '');
+    // Division and department are optional; render the line only when at least
+    // one is present, so entries without them look exactly as they did before.
+    const orgUnit = escapeHtml([exp.division, exp.department]
+      .map(v => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean)
+      .join(' · '));
     const loc     = exp.location || {};
     const location = escapeHtml([loc.city, loc.state].filter(Boolean).join(', '));
     const dates   = escapeHtml([exp.start_date, exp.end_date || 'Present'].filter(Boolean).join(' – '));
@@ -1015,6 +1031,7 @@ function _renderExperiencesList(experiences) {
           <strong>${title}</strong><br>
           <span style="color:#475569;">${company}</span>
           ${location ? `<span style="color:#94a3b8;font-size:0.85em;"> · ${location}</span>` : ''}
+          ${orgUnit ? `<br><span class="exp-org-unit" style="color:#64748b;font-size:0.85em;">${orgUnit}</span>` : ''}
         </td>
         <td style="font-size:0.85em;color:#475569;white-space:nowrap;">${dates}</td>
         <td style="text-align:center;color:#94a3b8;font-size:0.85em;">${achCount}</td>
@@ -2113,6 +2130,8 @@ function showAddExperienceModal() {
   document.getElementById('exp-modal-id').value        = '';
   document.getElementById('exp-title-input').value     = '';
   document.getElementById('exp-company-input').value   = '';
+  document.getElementById('exp-division-input').value  = '';
+  document.getElementById('exp-department-input').value = '';
   document.getElementById('exp-city-input').value      = '';
   document.getElementById('exp-state-input').value     = '';
   document.getElementById('exp-start-input').value     = '';
@@ -2210,6 +2229,8 @@ function editMasterExperience(id) {
   document.getElementById('exp-modal-id').value         = exp.id || '';
   document.getElementById('exp-title-input').value      = exp.title || '';
   document.getElementById('exp-company-input').value    = exp.company || '';
+  document.getElementById('exp-division-input').value   = exp.division || '';
+  document.getElementById('exp-department-input').value = exp.department || '';
   document.getElementById('exp-city-input').value       = loc.city || '';
   document.getElementById('exp-state-input').value      = loc.state || '';
   document.getElementById('exp-start-input').value      = exp.start_date || '';
@@ -2253,6 +2274,11 @@ async function saveMasterExperience() {
   _syncExpAchievementsFromInputs();
   const expData = {
     title, company,
+    // Always sent, even when blank: from the editor an empty field means the
+    // user cleared it, and the route removes the stored key in that case.
+    // Omitting blanks here would make clearing a division impossible.
+    division:          document.getElementById('exp-division-input').value.trim(),
+    department:        document.getElementById('exp-department-input').value.trim(),
     city:              document.getElementById('exp-city-input').value.trim(),
     state:             document.getElementById('exp-state-input').value.trim(),
     start_date:        document.getElementById('exp-start-input').value.trim(),

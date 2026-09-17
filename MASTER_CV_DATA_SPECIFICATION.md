@@ -140,6 +140,13 @@ Observed item fields:
 - `comment`: string
 - `title`: string
 - `company`: string
+- `division`: string, optional — the major organisational unit the role sat in
+  (e.g. "Global Research and Development"). Absent, empty or `null` means unknown.
+- `department`: string, optional — the sub-unit, group or team inside the
+  division (e.g. "Non-Clinical Statistics"). Absent, empty or `null` means unknown.
+  Both are stored only when non-empty: saving a blank value through the editor
+  removes the key rather than storing `""`. Neither is currently rendered in
+  generated CVs.
 - `location`: object (`city`, `state`)
 - `start_date`: string
 - `end_date`: string
@@ -426,6 +433,7 @@ Examples of input validation from master-data routes:
   - title and company required for add/update
   - `importance` integer 1..10
   - `employment_type` in allowed set
+  - `division` and `department`, when present, must be strings or `null`
   - extracted start/end year must be chronological
 - Education:
   - year bounds 1900..2100

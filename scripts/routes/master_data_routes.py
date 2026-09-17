@@ -109,6 +109,61 @@ def _vocabulary_with_values_in_use(permitted, values_in_use):
 
 
 # ---------------------------------------------------------------------------
+# Optional free-text fields on an experience entry
+# ---------------------------------------------------------------------------
+#
+# Every field listed here is persisted by BOTH the create and the update path
+# of the experience route. Those paths enumerate what they save — create builds
+# a literal dict, update iterates a fixed tuple — so a field added to the schema
+# and editor but not here is silently dropped on add, or silently ignored on
+# edit, while the request still returns ok. Add new optional text fields HERE;
+# do not add them to one path's inline list.
+#
+# EMPTY IS NOT THE SAME AS FOR employment_type, and must not be "harmonised"
+# with it. employment_type is a required controlled vocabulary, where an empty
+# value is the signature of a broken client and is rejected. These are optional
+# free text where empty genuinely means "unknown", so:
+#   - empty (or whitespace, or null) stores NO key, rather than "" — the editor
+#     sends every field on every save, so storing "" would stamp an empty key
+#     onto every entry anyone opens and saves;
+#   - on update, empty CLEARS a stored value (the user blanked it);
+#   - on update, ABSENT leaves the stored value alone (a caller that does not
+#     know about the field must never erase it).
+EXPERIENCE_OPTIONAL_TEXT_FIELDS = ('division', 'department')
+
+
+def _optional_text_field_error(exp_data):
+    """Return an error message if an optional text field has a non-string value.
+
+    Rejected rather than coerced: str(['Research']) would store the literal
+    text "['Research']", which is worse than refusing the request.
+    """
+    for field in EXPERIENCE_OPTIONAL_TEXT_FIELDS:
+        if field in exp_data:
+            value = exp_data[field]
+            if value is not None and not isinstance(value, str):
+                return f"{field} must be a string"
+    return None
+
+
+def _apply_optional_text_fields(target, exp_data, *, clear_on_empty):
+    """Copy the optional text fields from exp_data onto target.
+
+    Only fields PRESENT in exp_data are touched. A present, non-empty value is
+    stored stripped. A present empty value is removed from target when
+    clear_on_empty (update), and simply not stored otherwise (create).
+    """
+    for field in EXPERIENCE_OPTIONAL_TEXT_FIELDS:
+        if field not in exp_data:
+            continue
+        value = (exp_data[field] or '').strip()
+        if value:
+            target[field] = value
+        elif clear_on_empty:
+            target.pop(field, None)
+
+
+# ---------------------------------------------------------------------------
 # Module-level IO helpers (for testability)
 # ---------------------------------------------------------------------------
 
@@ -1141,6 +1196,10 @@ def create_blueprint(deps):
             if not exp_data.get('title') or not exp_data.get('company'):
                 return jsonify({"error": "title and company are required"}), 400
 
+            optional_text_error = _optional_text_field_error(exp_data)
+            if optional_text_error:
+                return jsonify({"error": optional_text_error}), 400
+
             try:
                 importance_val = int(exp_data.get('importance') or 5)
             except (TypeError, ValueError):
@@ -1232,6 +1291,7 @@ def create_blueprint(deps):
                     'domain_relevance': exp_data.get('domain_relevance') or [],
                     'achievements':     exp_data.get('achievements') or [],
                 }
+                _apply_optional_text_fields(new_exp, exp_data, clear_on_empty=False)
                 experiences.append(new_exp)
                 save_master(master, master_path)
                 return jsonify({"ok": True, "action": "added", "id": new_id})
@@ -1244,6 +1304,7 @@ def create_blueprint(deps):
             for field in ('title', 'company', 'start_date', 'end_date', 'employment_type'):
                 if field in exp_data:
                     existing_exp[field] = exp_data[field]
+            _apply_optional_text_fields(existing_exp, exp_data, clear_on_empty=True)
             if 'importance' in exp_data:
                 existing_exp['importance'] = int(exp_data['importance'])
             if 'city' in exp_data or 'state' in exp_data:
