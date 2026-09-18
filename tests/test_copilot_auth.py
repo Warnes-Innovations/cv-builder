@@ -11,15 +11,25 @@ Unit tests for Copilot OAuth authentication and LLM provider initialization.
 All HTTP calls are mocked; no network access required.
 """
 
+import os
+import stat
+import tempfile
 import time
 import sys
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from utils.copilot_auth import CopilotAuthManager, poll_for_github_token
+import utils.copilot_auth as copilot_auth
+from utils.copilot_auth import (
+    CopilotAuthManager,
+    _load_cache,
+    _save_cache,
+    poll_for_github_token,
+)
 from utils.llm_client import get_llm_provider, CopilotOAuthClient
 
 
@@ -235,6 +245,116 @@ class TestGetLLMProvider(unittest.TestCase):
     def test_unknown_provider_raises_value_error(self):
         with self.assertRaises(ValueError):
             get_llm_provider(provider="nonexistent-xyz", model=None, api_key=None)
+
+
+# ---------------------------------------------------------------------------
+# On-disk permissions of the token cache
+# ---------------------------------------------------------------------------
+
+# Where the live token lives. These tests must never write here.
+_LIVE_TOKEN_CACHE_PATH = Path.home() / ".config" / "cv-builder" / "copilot_oauth.json"
+
+
+@contextmanager
+def _umask(mask):
+    """Run the body under ``mask``, restoring the caller's umask afterwards."""
+    previous = os.umask(mask)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
+def _mode(path) -> int:
+    return stat.S_IMODE(os.stat(path).st_mode)
+
+
+@unittest.skipUnless(os.name == "posix", "POSIX file modes")
+class TestSaveCachePermissions(unittest.TestCase):
+    """_save_cache() persists the GitHub OAuth token, so no other account on the
+    machine may be able to read it: the file must be 0600 and its directory 0700.
+
+    Every other test in this file patches _save_cache out entirely, so until
+    these existed nothing exercised what it actually writes to disk. That is
+    how it shipped writing the token 0644 — world-readable — under the usual
+    022 umask. These run the REAL function against a temp directory.
+    """
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        # A subdirectory that does not exist yet, so _save_cache must create
+        # it: that is the path that decides the directory's own mode.
+        self.cache_dir = Path(tmp.name) / "cv-builder"
+        self.cache_path = self.cache_dir / "copilot_oauth.json"
+        patcher = patch("utils.copilot_auth.TOKEN_CACHE_PATH", self.cache_path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # These tests call the REAL _save_cache. Had the redirect above failed
+        # to take, they would overwrite the developer's live token file with
+        # test data and destroy it — so refuse to run rather than risk that.
+        self.assertEqual(copilot_auth.TOKEN_CACHE_PATH, self.cache_path)
+        self.assertNotEqual(copilot_auth.TOKEN_CACHE_PATH, _LIVE_TOKEN_CACHE_PATH)
+
+    def test_writes_the_cache_file_owner_only(self):
+        # Checked under the usual umask and under a fully permissive one: the
+        # protection must not depend on whatever umask the caller runs with.
+        for mask in (0o022, 0o000):
+            with self.subTest(umask=oct(mask)):
+                if self.cache_path.exists():
+                    self.cache_path.unlink()
+                with _umask(mask):
+                    _save_cache({"github_oauth_token": "gho_test"})
+                self.assertEqual(oct(_mode(self.cache_path)), oct(0o600))
+
+    def test_creates_the_cache_directory_owner_only(self):
+        with _umask(0o022):
+            _save_cache({"github_oauth_token": "gho_test"})
+        self.assertEqual(oct(_mode(self.cache_dir)), oct(0o700))
+
+    def test_tightens_an_existing_world_readable_file(self):
+        # A cache written by the old code is already 0644 on disk. The next
+        # save must correct it, not inherit it.
+        self.cache_dir.mkdir()
+        self.cache_path.write_text("{}")
+        os.chmod(self.cache_path, 0o644)
+        with _umask(0o022):
+            _save_cache({"github_oauth_token": "gho_test"})
+        self.assertEqual(oct(_mode(self.cache_path)), oct(0o600))
+
+    def test_tightens_an_existing_world_readable_directory(self):
+        self.cache_dir.mkdir()
+        os.chmod(self.cache_dir, 0o755)
+        with _umask(0o022):
+            _save_cache({"github_oauth_token": "gho_test"})
+        self.assertEqual(oct(_mode(self.cache_dir)), oct(0o700))
+
+    def test_file_is_born_owner_only_rather_than_chmodded_after(self):
+        # Write-then-chmod leaves the token on disk world-readable for the
+        # interval between the two calls. If the file's mode depended on a
+        # chmod, making chmod fail would leave it 0644 — so it must be created
+        # 0600 in the first place.
+        with _umask(0o022), patch("os.chmod", side_effect=PermissionError("denied")):
+            _save_cache({"github_oauth_token": "gho_test"})
+        self.assertEqual(oct(_mode(self.cache_path)), oct(0o600))
+
+    def test_round_trips_through_load_cache(self):
+        data = {"github_oauth_token": "gho_test", "copilot_expires_at": 123}
+        _save_cache(data)
+        self.assertEqual(_load_cache(), data)
+
+    def test_leaves_no_temp_file_behind(self):
+        _save_cache({"github_oauth_token": "gho_test"})
+        self.assertEqual(sorted(p.name for p in self.cache_dir.iterdir()),
+                         ["copilot_oauth.json"])
+
+    def test_removes_the_temp_file_if_the_swap_fails(self):
+        # The temp file holds the token too. If moving it into place fails it
+        # must not be left lying in the directory.
+        with patch("os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                _save_cache({"github_oauth_token": "gho_test"})
+        self.assertEqual(list(self.cache_dir.iterdir()), [])
 
 
 if __name__ == "__main__":
