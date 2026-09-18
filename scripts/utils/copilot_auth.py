@@ -25,6 +25,8 @@ VS Code extension and documented in multiple open-source Copilot clients.
 
 import json
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
 import requests
@@ -54,8 +56,50 @@ def _load_cache() -> dict:
 
 
 def _save_cache(data: dict) -> None:
-    TOKEN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_CACHE_PATH.write_text(json.dumps(data, indent=2))
+    """Persist the token cache so that only its owner can read it.
+
+    The cache holds the GitHub OAuth token, so the file must be 0600 and its
+    directory 0700.
+
+    Do NOT simplify this back to ``TOKEN_CACHE_PATH.write_text(...)``. That
+    creates the file under the process umask — 0644 with the usual 022, and
+    0666 with a permissive one — so every other account on the machine can
+    read the token, or even replace it.
+
+    Do NOT "fix" that by adding a chmod after the write, either. The token then
+    sits on disk world-readable for the interval between the two calls.
+
+    Instead the file is born 0600, because ``tempfile.mkstemp`` creates it that
+    way, and is then moved into place with ``os.replace``. The move is atomic,
+    so a reader sees either the old cache or the complete new one. It also
+    REPLACES an existing world-readable file rather than inheriting its mode,
+    which is how a cache written by the old code gets corrected.
+    """
+    cache_dir = TOKEN_CACHE_PATH.parent
+    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        # mkdir ignores ``mode`` when the directory already exists, and
+        # existing caches were created 0755. The file's own 0600 is what
+        # protects the token; this is the second layer, so a failure here is
+        # logged rather than allowed to abort the save.
+        os.chmod(cache_dir, 0o700)
+    except OSError:
+        logger.warning("Could not restrict %s to 0700", cache_dir, exc_info=True)
+
+    fd, tmp_name = tempfile.mkstemp(dir=cache_dir, prefix=".copilot_oauth.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, TOKEN_CACHE_PATH)
+    except BaseException:
+        # The temp file holds the token as well: never leave it behind.
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def clear_cache() -> None:

@@ -24,7 +24,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.config import get_config
 from utils.bibtex_parser import parse_bibtex_file, format_publication
-from utils.master_data_validator import validate_master_data_file
+from utils.master_data_validator import (
+    SchemaValidationUnavailable,
+    require_schema_validation,
+    validate_master_data_file,
+)
 from utils.scoring import (
     rank_content,
     select_best_summary,
@@ -356,6 +360,15 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # After argument parsing, so --help still works in a broken environment.
+    # Without schema validation the master data would be reported valid
+    # regardless of content; refuse rather than generate from unchecked data.
+    try:
+        require_schema_validation()
+    except SchemaValidationUnavailable as exc:
+        print(f"\nERROR: {exc}\n", file=sys.stderr)
+        sys.exit(2)
 
     # Resolve config values
     master_data = args.master_data or config.master_cv_path

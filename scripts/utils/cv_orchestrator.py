@@ -45,7 +45,7 @@ from .master_data_mutations import (
 from .master_data_validator import validate_master_data, validate_master_data_file
 from .session_data_view import SessionDataView
 from .prompt_safety import sanitize_instruction_text, scan_text_for_injection
-from .template_renderer import safe_css_size, safe_url
+from .template_renderer import company_line, safe_css_size, safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +304,7 @@ class CVOrchestrator:
         cv_data = {
             'personal_info': personal_info,
             'show_citizenship': self._should_show_citizenship(customizations),
+            'show_org_unit': self._should_show_org_unit(customizations),
             'professional_summary': professional_summary,
             'experiences': experiences,
             'achievements': achievements,
@@ -396,6 +397,30 @@ class CVOrchestrator:
             or ""
         )
         return str(variant).strip() in cls.CITIZENSHIP_DEFAULT_VARIANTS
+
+    _TRUTHY_OPTION_STRINGS = frozenset({'true', '1', 'yes', 'on'})
+
+    @classmethod
+    def _should_show_org_unit(cls, customizations: Optional[Dict]) -> bool:
+        """Whether an experience's division/department is printed on this CV.
+
+        A user option, OFF by default: generated CVs look exactly as they did
+        before these fields existed unless the user turns it on in the layout
+        panel. The fields are captured mainly for contract templates that ask
+        for them, not because every CV wants them.
+
+        Parses strings rather than calling bool(): the option arrives from the
+        UI, and bool("false") is True — an unchecked box would switch it ON.
+        Do not "simplify" this to bool(value).
+        """
+        if not isinstance(customizations, dict):
+            return False
+        value = customizations.get('include_division_department')
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in cls._TRUTHY_OPTION_STRINGS
+        return False
 
     @staticmethod
     def _resolve_human_skills_title(customizations: Optional[Dict]) -> str:
@@ -1273,6 +1298,8 @@ class CVOrchestrator:
             '<h2>Professional Experience</h2>'
         ]
 
+        from html import escape as _html_escape  # noqa: PLC0415
+
         # Add experiences
         for exp in cv_data['experiences']:
             location = exp.get('location', {})
@@ -1280,9 +1307,15 @@ class CVOrchestrator:
             if location.get('state'):
                 location_str += f", {location['state']}"
 
+            # This builder is an f-string, NOT the autoescaping template, so
+            # the employer line — which carries user-entered division and
+            # department text — must be escaped by hand here.
+            employer = _html_escape(
+                company_line(exp, cv_data.get('show_org_unit') is True)
+            )
             html_parts.extend([
                 '<div class="experience-item">',
-                f'<h3>{exp.get("company", "")} | {exp.get("title", "")}</h3>',
+                f'<h3>{employer} | {exp.get("title", "")}</h3>',
                 '<div class="experience-meta">',
                 f'{location_str} | {exp.get("start_date", "")} - {exp.get("end_date", "")}',
                 '</div>'
@@ -2245,6 +2278,7 @@ For manual generation:
         selected_content['skills_section_title'] = customizations.get('skills_section_title', 'Skills')
         selected_content['ai_attribution'] = bool(customizations.get('ai_attribution', False))
         selected_content['show_citizenship'] = self._should_show_citizenship(customizations)
+        selected_content['show_org_unit'] = self._should_show_org_unit(customizations)
         ats_file, ats_score_at_generation = self._generate_ats_docx(
             selected_content,
             job_analysis,
@@ -3992,6 +4026,7 @@ Include one entry per candidate. Do not omit any candidate."""
                 selected_skills,
                 float(max_cv_pages),
                 int(chars_per_page),
+                show_org_unit=self._should_show_org_unit(customizations),
             )
 
         # Select publications — honour user accept/reject decisions if present
@@ -4084,8 +4119,15 @@ Include one entry per candidate. Do not omit any candidate."""
         experiences: List[Dict],
         achievements: List[Dict],
         skills: List[Dict],
+        show_org_unit: bool = False,
     ) -> int:
-        """Estimate rendered body size using text length plus layout overhead."""
+        """Estimate rendered body size using text length plus layout overhead.
+
+        show_org_unit adds the division/department text the renderers print
+        when that option is on. It feeds _cap_cv_body_to_pages, which decides
+        how much content to CUT, so leaving it out would let a CV overflow by
+        exactly that text. Off (the default) leaves every estimate unchanged.
+        """
         total = len(str(summary or '').strip())
 
         for exp in experiences or []:
@@ -4094,6 +4136,10 @@ Include one entry per candidate. Do not omit any candidate."""
             total += 140  # entry-level layout overhead
             total += len(str(exp.get('title') or ''))
             total += len(str(exp.get('company') or ''))
+            if show_org_unit:
+                # Exactly the extra text the option prints, derived from the
+                # one formatter rather than re-typing its separator here.
+                total += len(company_line(exp, True)) - len(company_line(exp, False))
             total += len(str(exp.get('start_date') or exp.get('start') or ''))
             total += len(str(exp.get('end_date') or exp.get('end') or ''))
 
@@ -4193,6 +4239,7 @@ Include one entry per candidate. Do not omit any candidate."""
         skills: List[Dict],
         max_pages: float,
         chars_per_page: int = 2500,
+        show_org_unit: bool = False,
     ) -> Tuple[Any, List[Dict], List[Dict], List[Dict]]:
         """Trim body content until estimated size fits the requested page budget."""
         if max_pages is None:
@@ -4213,6 +4260,7 @@ Include one entry per candidate. Do not omit any candidate."""
                 out_experiences,
                 out_achievements,
                 out_skills,
+                show_org_unit=show_org_unit,
             )
 
         if _current() <= budget:
@@ -4490,7 +4538,8 @@ Include one entry per candidate. Do not omit any candidate."""
                 loc_parts.append(exp['location']['state'])
             location_str  = ', '.join(loc_parts) if loc_parts else ''
             date_range     = f"{exp.get('start_date', '')} – {exp.get('end_date', 'Present')}"
-            entry_parts    = [exp.get('title', ''), exp.get('company', '')]
+            entry_parts    = [exp.get('title', ''),
+                              company_line(exp, content.get('show_org_unit') is True)]
             if location_str:
                 entry_parts.append(location_str)
             entry_parts.append(date_range)
@@ -5446,7 +5495,7 @@ Include one entry per candidate. Do not omit any candidate."""
                 role_run = p.add_run(exp.get('title', ''))
                 role_run.bold = True
                 p.add_run('  ')
-                co_run = p.add_run(exp.get('company', ''))
+                co_run = p.add_run(company_line(exp, content.get('show_org_unit') is True))
                 co_run.italic = True
                 # Dates as right-aligned run (approximate via tab stop)
                 date_str = f"{exp.get('start_date', '')} – {exp.get('end_date', '')}"

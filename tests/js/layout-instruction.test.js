@@ -24,6 +24,7 @@ import {
   loadLayoutInstructionHistory,
   submitLayoutInstruction,
   pxToPt,
+  initiateLayoutInstructions,
 } from '../../web/layout-instruction.js'
 import { scheduleAtsRefresh } from '../../web/ats-refinement.js'
 import { apiCall } from '../../web/api-client.js'
@@ -40,6 +41,14 @@ vi.mock('../../web/message-queue.js', () => ({
 vi.mock('../../web/review-table-base.js', () => ({ switchTab: vi.fn() }))
 vi.mock('../../web/state-manager.js', () => ({
   GENERATION_STATE_EVENT: 'generation-state-change',
+  // layout-instruction.js imports this too; values match web/state-manager.js.
+  // Only reached once a test drives the full Apply → re-render path.
+  GENERATION_PHASES: {
+    IDLE: 'idle',
+    LAYOUT_REVIEW: 'layout_review',
+    CONFIRMED: 'confirmed',
+    FINAL_COMPLETE: 'final_complete',
+  },
   stateManager: {
     getGenerationState: vi.fn(() => ({})),
     getLayoutFreshness: vi.fn(() => ({ isStale: false })),
@@ -51,6 +60,11 @@ vi.mock('../../web/state-manager.js', () => ({
     setPhase: vi.fn(),
     getTabData: vi.fn(() => ({})),
     setTabData: vi.fn(),
+    // Needed once initiateLayoutInstructions() is exercised; shapes match the
+    // real web/state-manager.js (an empty array / null when nothing is dirty).
+    getDirtyPhases: vi.fn(() => []),
+    getEarliestDirtyStep: vi.fn(() => null),
+    setDirtyPhases: vi.fn(),
   },
 }))
 
@@ -565,5 +579,83 @@ describe('pxToPt', () => {
   it('rounds to one decimal place', () => {
     // 10.5px * 0.75 = 7.875 → rounds to 7.9
     expect(pxToPt(10.5)).toBe(7.9)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// "Show division / department" layout option
+// ---------------------------------------------------------------------------
+//
+// Driven through the real entry point and the real Apply button, not by
+// calling the (unexported) save function directly — so these exercise the
+// markup, the saved-state load, the listener wiring and the request body
+// together, the way a user's click does.
+
+describe('division/department layout option', () => {
+  function mockApi() {
+    apiCall.mockImplementation(async (method, url) => {
+      if (url === '/api/layout-settings') return { ok: true }
+      if (url === '/api/cv/generate-preview') return { ok: true }
+      return { instructions: [] }  // instruction history, and anything else
+    })
+  }
+
+  async function render(savedCustomizations = {}) {
+    document.body.insertAdjacentHTML('beforeend', '<div id="document-content"></div>')
+    stateManager.getTabData.mockReturnValue(savedCustomizations)
+    mockApi()
+    await initiateLayoutInstructions()
+    return document.getElementById('include-division-department-input')
+  }
+
+  async function clickApply() {
+    document.getElementById('base-font-size-input').value = '10'
+    document.getElementById('page-margin-input').value = '1'
+    document.getElementById('apply-layout-settings-btn').click()
+    await vi.runAllTimersAsync()
+    const call = apiCall.mock.calls.find(([, url]) => url === '/api/layout-settings')
+    expect(call, 'Apply did not POST /api/layout-settings').toBeTruthy()
+    return call[2]
+  }
+
+  it('renders the checkbox, off by default', async () => {
+    const box = await render()
+    expect(box).not.toBeNull()
+    expect(box.checked).toBe(false)
+  })
+
+  it('restores a saved true', async () => {
+    const box = await render({ include_division_department: true })
+    expect(box.checked).toBe(true)
+  })
+
+  it('does not tick the box for a saved "false" string', async () => {
+    // Boolean("false") is true — the load must parse, not coerce.
+    const box = await render({ include_division_department: 'false' })
+    expect(box.checked).toBe(false)
+  })
+
+  it('Apply sends true when ticked', async () => {
+    const box = await render()
+    box.checked = true
+    const body = await clickApply()
+    expect(body.include_division_department).toBe(true)
+  })
+
+  it('Apply sends false when unticked, so switching it off reaches the server', async () => {
+    const box = await render({ include_division_department: true })
+    box.checked = false
+    const body = await clickApply()
+    expect(body.include_division_department).toBe(false)
+  })
+
+  it('does not disturb the existing layout settings it is sent alongside', async () => {
+    const box = await render()
+    box.checked = true
+    const body = await clickApply()
+    expect(body.base_font_size).toBe('10px')
+    expect(body.page_margin).toBe('1in')
+    expect(body).toHaveProperty('publications_start_new_page')
+    expect(body).toHaveProperty('skills_show_experience')
   })
 })

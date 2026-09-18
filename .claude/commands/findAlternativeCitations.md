@@ -1,1 +1,0 @@
-../../../vscode-config/prompts/findAlternativeCitations.prompt.md

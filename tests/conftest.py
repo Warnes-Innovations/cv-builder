@@ -147,6 +147,12 @@ def require_server():
     if explicit_base_url:
         base_url = explicit_base_url.rstrip("/")
         if _server_is_up(base_url):
+            # Reuse path: this is someone else's already-running process, so
+            # the --log-dir isolation applied on the spawn path below cannot
+            # reach it. If CV_SERVER_URL points at a live app, that app's log
+            # collects this run's test traffic. Nothing here can prevent it --
+            # /api/status exposes no marker distinguishing a test server from
+            # a live one.
             yield base_url
             return
     else:
@@ -206,6 +212,10 @@ def require_server():
                 "--publications",
                 str(publications_path),
                 "--output-dir",
+                str(output_dir),
+                # --output-dir does not redirect logging; without --log-dir
+                # this run appends to the user's live ~/CV/cv-builder/logs.
+                "--log-dir",
                 str(output_dir),
             ],
             cwd=str(project_root),

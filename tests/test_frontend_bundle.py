@@ -316,6 +316,9 @@ class TestMainStartupBanner(unittest.TestCase):
             publications='/tmp/publications.bib',
             job_file=None,
             debug=False,
+            # main() passes this straight to setup_logging(); parse_args()
+            # always supplies it, so a hand-built Namespace must too.
+            log_dir=None,
         )
         config = argparse.Namespace(
             llm_provider='local',

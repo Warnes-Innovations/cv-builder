@@ -508,7 +508,8 @@ def validate_config(provider: Optional[str] = None) -> None:
         )
 
 
-def setup_logging(config: Optional[Config] = None) -> None:
+def setup_logging(config: Optional[Config] = None,
+                  log_dir: Optional[str] = None) -> None:
     """Configure Python logging from config settings.
 
     Sets up the root logger with a consistent format, optional file handler,
@@ -518,6 +519,9 @@ def setup_logging(config: Optional[Config] = None) -> None:
     Args:
         config: Config instance to read logging settings from.  Defaults to
                 the global config returned by ``get_config()``.
+        log_dir: Explicit log directory (the ``--log-dir`` CLI flag).  When
+                given it outranks every configured destination — see the
+                precedence comment on the file handler below.
     """
     cfg = config or get_config()
     level_name = cfg.log_level.upper()
@@ -553,19 +557,33 @@ def setup_logging(config: Optional[Config] = None) -> None:
     root.addHandler(ch)
 
     # Optionally add a rotating file handler.
+    #
+    # Destination-directory precedence:
+    #     explicit log_dir (--log-dir)  >  cfg.log_dir  >  (none: console only)
+    #
+    # An explicit log_dir also replaces the *directory* of an absolute
+    # logging.file, keeping only its basename.  Do not narrow that to "applies
+    # only when logging.file is relative", and do not let cfg.log_dir win here
+    # when both are set: a caller passing --log-dir to isolate its logs (the UI
+    # test harness) must be able to rely on nothing reaching the live log.  An
+    # override that is silently ignored is the exact defect this flag exists to
+    # fix — test runs wrote into the user's real ~/CV/cv-builder/logs because
+    # config.yaml sets logging.log_dir and nothing on the CLI could outrank it.
+    override_dir = str(Path(log_dir).expanduser()) if log_dir else None
+    effective_log_dir = override_dir or cfg.log_dir
+
     log_file = cfg.log_file
+    if override_dir and log_file:
+        log_file = Path(log_file).name
+
     if not log_file:
-        log_dir = cfg.log_dir
-        if log_dir:
-            Path(log_dir).mkdir(parents=True, exist_ok=True)
-            log_file = str(Path(log_dir) / "cv_builder.log")
+        if effective_log_dir:
+            log_file = str(Path(effective_log_dir) / "cv_builder.log")
     elif not Path(log_file).is_absolute():
-        # Bare filename or relative path — resolve against log_dir so the
-        # file lands in the configured directory rather than cwd.
-        log_dir = cfg.log_dir
-        if log_dir:
-            Path(log_dir).mkdir(parents=True, exist_ok=True)
-            log_file = str(Path(log_dir) / log_file)
+        # Bare filename or relative path — resolve against the effective log
+        # directory so the file lands there rather than in cwd.
+        if effective_log_dir:
+            log_file = str(Path(effective_log_dir) / log_file)
         else:
             log_file = str(Path(log_file).expanduser())
 

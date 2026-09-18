@@ -51,6 +51,7 @@ import {
   openFullDataPreviewModal,
   handleMasterCvImportFile,
   confirmMasterCvImport,
+  populateVocabularySelect,
 } from '../../web/master-cv.js'
 
 // ---------------------------------------------------------------------------
@@ -630,6 +631,8 @@ describe('experience achievements editor', () => {
       <input type="hidden" id="exp-modal-id" />
       <input id="exp-title-input" />
       <input id="exp-company-input" />
+      <input id="exp-division-input" />
+      <input id="exp-department-input" />
       <input id="exp-city-input" />
       <input id="exp-state-input" />
       <input id="exp-start-input" />
@@ -1864,6 +1867,8 @@ describe('Master CV editor workflow smoke test', () => {
       <input type="hidden" id="exp-modal-id" />
       <input id="exp-title-input" />
       <input id="exp-company-input" />
+      <input id="exp-division-input" />
+      <input id="exp-department-input" />
       <input id="exp-city-input" />
       <input id="exp-state-input" />
       <input id="exp-start-input" />
@@ -1935,5 +1940,280 @@ describe('Master CV editor workflow smoke test', () => {
     expect(showAlertModalMock).toHaveBeenCalledWith('✅ Undone', expect.any(String))
     const redoBtn = document.getElementById('master-cv-redo-btn')
     expect(redoBtn.disabled).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Controlled-vocabulary <select> population
+// ---------------------------------------------------------------------------
+//
+// The bug these pin: a <select> whose option list cannot represent the stored
+// value resolves .value to "" with selectedIndex -1 and throws NOTHING, and the
+// save path then writes that "" back. The Employment Type dropdown shipped 6
+// hardcoded options while live data held 9, so opening and saving any of the
+// other 3 rewrote it to 'full_time' with no error anywhere.
+//
+// These are deliberately weighted to the case where the value is ABSENT from
+// the offered list. A test that only checked a listed value would pass against
+// the hardcoded version that destroyed data.
+
+describe('populateVocabularySelect', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<select id="v"></select>'
+  })
+
+  it('demonstrates the underlying trap: assigning an absent value yields ""', () => {
+    // Negative control. Not testing our code — establishing that the platform
+    // behaviour this guard exists for is real, so the guard below is not
+    // protecting against an imagined failure.
+    document.body.innerHTML =
+      '<select id="v"><option value="full_time">Full-time</option></select>'
+    const sel = document.getElementById('v')
+    sel.value = 'volunteer'
+    expect(sel.value).toBe('')
+    expect(sel.selectedIndex).toBe(-1)
+  })
+
+  it('makes a value absent from the vocabulary selectable anyway', () => {
+    const added = populateVocabularySelect('v', ['full_time', 'part_time'], 'volunteer')
+    const sel = document.getElementById('v')
+    expect(sel.value).toBe('volunteer')
+    expect(sel.selectedIndex).toBeGreaterThanOrEqual(0)
+    expect(added).toBe(true)
+  })
+
+  it('reports false when the value was already in the vocabulary', () => {
+    const added = populateVocabularySelect('v', ['full_time', 'volunteer'], 'volunteer')
+    expect(added).toBe(false)
+    expect(document.getElementById('v').value).toBe('volunteer')
+  })
+
+  it('still represents the stored value when the vocabulary failed to load', () => {
+    // loadVocabularies() returning null must not degrade into data loss.
+    const added = populateVocabularySelect('v', null, 'founding_contributor')
+    expect(document.getElementById('v').value).toBe('founding_contributor')
+    expect(added).toBe(true)
+  })
+
+  it('offers every value the vocabulary lists', () => {
+    populateVocabularySelect('v', ['a', 'b', 'c'], 'b')
+    const values = [...document.getElementById('v').options].map(o => o.value)
+    expect(values).toEqual(['a', 'b', 'c'])
+  })
+
+  it('does not duplicate the current value when it is already listed', () => {
+    populateVocabularySelect('v', ['a', 'b'], 'b')
+    const values = [...document.getElementById('v').options].map(o => o.value)
+    expect(values).toEqual(['a', 'b'])
+  })
+
+  it('is a no-op on a missing element rather than throwing', () => {
+    expect(() => populateVocabularySelect('does-not-exist', ['a'], 'a')).not.toThrow()
+  })
+})
+
+describe('employment_type survives an edit round-trip', () => {
+  // The end-to-end regression: drives the real modal-open and the real save,
+  // and asserts on what would actually be POSTed.
+  function buildDom() {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-exp-modal-title"></h2>
+      <div id="master-exp-modal-overlay" style="display:none;"></div>
+      <input type="hidden" id="exp-modal-id" />
+      <input id="exp-title-input" />
+      <input id="exp-company-input" />
+      <input id="exp-division-input" />
+      <input id="exp-department-input" />
+      <input id="exp-city-input" />
+      <input id="exp-state-input" />
+      <input id="exp-start-input" />
+      <input id="exp-end-input" />
+      <select id="exp-type-input"><option value="full_time">Full-time</option></select>
+      <input id="exp-importance-input" value="5" />
+      <input id="exp-tags-input" />
+      <input id="exp-domain-relevance-input" />
+      <div id="exp-achievements-editor-list"></div>
+      <input id="exp-ach-new-input" />
+    `
+  }
+
+  it.each(['volunteer', 'joint_appointment', 'founding_contributor'])(
+    'saves %s unchanged instead of silently rewriting it to full_time',
+    async (empType) => {
+      buildDom()
+      window._masterExperienceFullData = [{
+        id: 'exp_1', title: 'Engineer', company: 'Acme',
+        employment_type: empType, achievements: [],
+      }]
+
+      editMasterExperience('exp_1')
+
+      // The dropdown must be able to show it before we even reach save.
+      expect(document.getElementById('exp-type-input').value).toBe(empType)
+
+      const mockFetch = vi.fn().mockImplementation(url => {
+        if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+        if (url === '/api/master-data/full') return Promise.resolve({
+          json: async () => ({
+            personal_info: {}, experience: [], skills: [], education: [],
+            awards: [], selected_achievements: [], professional_summaries: {},
+          }),
+        })
+        if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+        return Promise.resolve({ json: async () => ({ ok: true, action: 'updated' }) })
+      })
+      vi.stubGlobal('fetch', mockFetch)
+
+      await saveMasterExperience()
+
+      const call = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/experience')
+      const body = JSON.parse(call[1].body)
+      expect(body.experience.employment_type).toBe(empType)
+      // The specific corruption: never silently become full_time, never blank.
+      expect(body.experience.employment_type).not.toBe('full_time')
+      expect(body.experience.employment_type).not.toBe('')
+    },
+  )
+})
+
+// ---------------------------------------------------------------------------
+// Optional division / department on experience entries
+// ---------------------------------------------------------------------------
+
+describe('experience division and department', () => {
+  function buildDom() {
+    document.body.innerHTML = `
+      <div id="document-content"></div>
+      <h2 id="master-exp-modal-title"></h2>
+      <div id="master-exp-modal-overlay" style="display:none;"></div>
+      <input type="hidden" id="exp-modal-id" />
+      <input id="exp-title-input" />
+      <input id="exp-company-input" />
+      <input id="exp-division-input" />
+      <input id="exp-department-input" />
+      <input id="exp-city-input" />
+      <input id="exp-state-input" />
+      <input id="exp-start-input" />
+      <input id="exp-end-input" />
+      <select id="exp-type-input"><option value="full_time">Full-time</option></select>
+      <input id="exp-importance-input" value="5" />
+      <input id="exp-tags-input" />
+      <input id="exp-domain-relevance-input" />
+      <div id="exp-achievements-editor-list"></div>
+      <input id="exp-ach-new-input" />
+    `
+  }
+
+  function stubSaveFetch() {
+    const mockFetch = vi.fn().mockImplementation(url => {
+      if (url === '/api/master-data/overview') return Promise.resolve({ json: async () => ({}) })
+      if (url === '/api/master-data/full') return Promise.resolve({
+        json: async () => ({
+          personal_info: {}, experience: [], skills: [], education: [],
+          awards: [], selected_achievements: [], professional_summaries: {},
+        }),
+      })
+      if (url === '/api/master-data/publications') return Promise.resolve({ json: async () => ({ ok: true, publications: [] }) })
+      return Promise.resolve({ json: async () => ({ ok: true, action: 'updated' }) })
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    return mockFetch
+  }
+
+  function postedExperience(mockFetch) {
+    const call = mockFetch.mock.calls.find(([url]) => url === '/api/master-data/experience')
+    return JSON.parse(call[1].body).experience
+  }
+
+  // -- the editor round-trip ------------------------------------------------
+
+  it('editMasterExperience populates both inputs from the stored entry', () => {
+    buildDom()
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Statistician', company: 'Pfizer',
+      division: 'Global Research and Development',
+      department: 'Non-Clinical Statistics', achievements: [],
+    }]
+    editMasterExperience('exp_1')
+    expect(document.getElementById('exp-division-input').value).toBe('Global Research and Development')
+    expect(document.getElementById('exp-department-input').value).toBe('Non-Clinical Statistics')
+  })
+
+  it('showAddExperienceModal clears both inputs rather than leaking the last entry', () => {
+    buildDom()
+    document.getElementById('exp-division-input').value = 'left over from a previous edit'
+    document.getElementById('exp-department-input').value = 'also left over'
+    showAddExperienceModal()
+    expect(document.getElementById('exp-division-input').value).toBe('')
+    expect(document.getElementById('exp-department-input').value).toBe('')
+  })
+
+  it('saveMasterExperience sends both values', async () => {
+    buildDom()
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Statistician', company: 'Pfizer',
+      division: 'Research', department: 'Stats', achievements: [],
+    }]
+    editMasterExperience('exp_1')
+    const mockFetch = stubSaveFetch()
+    await saveMasterExperience()
+    const exp = postedExperience(mockFetch)
+    expect(exp.division).toBe('Research')
+    expect(exp.department).toBe('Stats')
+  })
+
+  it('saveMasterExperience sends an EMPTY string for a cleared field, not an omitted key', async () => {
+    // The route distinguishes these: empty clears the stored value, absent
+    // leaves it alone. If a cleared field were omitted from the payload, the
+    // user could never remove a division once set.
+    buildDom()
+    window._masterExperienceFullData = [{
+      id: 'exp_1', title: 'Statistician', company: 'Pfizer',
+      division: 'Research', department: 'Stats', achievements: [],
+    }]
+    editMasterExperience('exp_1')
+    document.getElementById('exp-division-input').value = ''
+    const mockFetch = stubSaveFetch()
+    await saveMasterExperience()
+    const exp = postedExperience(mockFetch)
+    expect(exp).toHaveProperty('division', '')
+    expect(exp.department).toBe('Stats')
+  })
+
+  // -- the summary card -----------------------------------------------------
+
+  it('the card shows division and department when both are present', () => {
+    const html = _renderExperiencesList([{
+      id: 'exp_1', title: 'Statistician', company: 'Pfizer',
+      division: 'Research', department: 'Stats',
+    }])
+    expect(html).toContain('Research · Stats')
+  })
+
+  it('the card shows just the division when department is absent', () => {
+    const html = _renderExperiencesList([{
+      id: 'exp_1', title: 'Statistician', company: 'Pfizer', division: 'Research',
+    }])
+    expect(html).toContain('Research')
+    expect(html).not.toContain('Research ·')
+  })
+
+  it('the card renders no org-unit line at all when both are absent', () => {
+    // Existing entries must look exactly as they did before the fields existed.
+    const html = _renderExperiencesList([{
+      id: 'exp_1', title: 'Statistician', company: 'Pfizer',
+    }])
+    expect(html).not.toContain('exp-org-unit')
+  })
+
+  it('the card escapes division and department rather than injecting them as HTML', () => {
+    const html = _renderExperiencesList([{
+      id: 'exp_1', title: 'Statistician', company: 'Pfizer',
+      division: '<img src=x onerror=alert(1)>', department: 'R&D',
+    }])
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
+    expect(html).toContain('R&amp;D')
   })
 })

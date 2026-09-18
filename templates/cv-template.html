@@ -678,7 +678,7 @@
                     <div class="job-entry">
                         <div class="job-header">
                             <h3 class="job-role">{{ exp.title }}</h3>
-                            <div class="job-company">{{ exp.company }}</div>
+                            <div class="job-company">{{ exp|company_line(show_org_unit) }}</div>
                         </div>
                         <div class="job-dates">{{ exp.start_date }} – {{ exp.end_date }}</div>
                         {% set ach_list = exp.ordered_achievements if exp.ordered_achievements is defined else exp.achievements %}
@@ -759,7 +759,7 @@ SELECTED ACHIEVEMENTS
 WORK EXPERIENCE
 --------------------------------------------------------------------------------
 {% for exp in experiences %}{{ exp.title }}
-{{ exp.company }}{% if exp.location %} | {{ exp.location.city }}{% if exp.location.state %}, {{ exp.location.state }}{% endif %}{% endif %}
+{{ exp|company_line(show_org_unit) }}{% if exp.location %} | {{ exp.location.city }}{% if exp.location.state %}, {{ exp.location.state }}{% endif %}{% endif %}
 {{ exp.start_date }} – {{ exp.end_date }}
 {% for ac in exp.achievements %}  * {{ ac.text if ac is mapping else ac }}
 {% endfor %}

@@ -111,18 +111,28 @@ def _playwright_browsers_installed() -> bool:
 @pytest.fixture(scope="session")
 def live_server():
     """
-    Start the Flask web app on port 5001 for the test session.
+    Start the Flask web app on BASE_URL's port for the test session.
+
+    BASE_URL defaults to http://127.0.0.1:5002 and is overridden by the
+    CV_SERVER_URL env var. (It is deliberately NOT 5001, the default port
+    of a developer's own running app.)
 
     Skips gracefully when:
     - Playwright Chromium is not installed, OR
     - A server cannot be started within the timeout.
 
-    If a server is already running on 5001 (e.g. started by the outer test
-    harness), it is reused without launching a new process.
+    If a server is already answering at BASE_URL (e.g. started by the outer
+    test harness), it is reused without launching a new process.
 
-    NOTE: when reusing an already-running server the output directory is not
-    controlled by this fixture; session directories may accumulate in that
-    server's configured output path.
+    NOTE: when reusing an already-running server, neither the output
+    directory NOR the log destination is controlled by this fixture. The
+    --log-dir flag passed below applies only on the spawn path; a reused
+    server is a separate process already running with its own config, so it
+    keeps logging wherever it was configured to. Point CV_SERVER_URL at a
+    live app and its log WILL collect this run's test traffic. There is
+    currently no way to tell a test server from a live one — /api/status
+    exposes no testing/env marker — so this is a real limit of the
+    mechanism, not an oversight to code around here.
     """
     if not _playwright_browsers_installed():
         pytest.skip(
@@ -148,6 +158,12 @@ def live_server():
             os.path.join(project_root, "scripts", "web_app.py"),
             "--llm-provider", "stub",
             "--output-dir", tmp_dir.name,
+            # --output-dir does NOT redirect logging: config.yaml sets
+            # logging.log_dir to the user's real ~/CV/cv-builder/logs, which
+            # outranks the output_dir-derived default. Without this flag every
+            # test run appended its session_id=test-session-id traffic to the
+            # user's live log. Keep both flags pointed at the temp dir.
+            "--log-dir", tmp_dir.name,
             "--port", str(server_port),
         ]
         env = os.environ.copy()
