@@ -63,6 +63,76 @@ def _default_schema_path() -> Path:
     )
 
 
+class SchemaValidationUnavailable(RuntimeError):
+    """Schema validation cannot run in this environment.
+
+    Raised at startup so the process refuses to run, rather than letting every
+    validation call quietly return valid=True. See require_schema_validation().
+    """
+
+
+def schema_validation_unavailable_reason(
+    schema_path: Optional[str | Path] = None,
+) -> Optional[str]:
+    """Return why schema validation cannot run here, or None if it can.
+
+    WHY THIS EXISTS: when schema validation cannot run, validate_master_data()
+    does not fail — it appends a warning and reports valid=True. No application
+    caller reads the warnings, so the post-write rollback in _save_master became
+    a no-op without the jsonschema package: invalid data was written and KEPT,
+    with no error anywhere. The fix is to refuse to START in that state, which is
+    what require_schema_validation() does with this answer.
+
+    THESE CONDITIONS MUST MATCH _validate_against_schema() EXACTLY. If the two
+    drift, this can pass while the validator still skips, and the startup check
+    becomes the same false assurance one layer up. Their agreement on every
+    condition is pinned by tests/test_schema_validation_startup.py — do not
+    change one without the other.
+    """
+    # Resolved exactly as validate_master_data() resolves it, expanduser()
+    # included — a "~/..." path must mean the same file to both.
+    path = Path(schema_path).expanduser() if schema_path else _default_schema_path()
+
+    if not path.exists():
+        return f"schema file not found: {path}"
+    try:
+        json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"schema file is unreadable or not valid JSON: {path} ({exc})"
+
+    try:
+        jsonschema_mod = importlib.import_module("jsonschema")
+    except ImportError as exc:
+        # ImportError, not just ModuleNotFoundError: a broken install whose own
+        # dependency is missing raises plain ImportError, and that is no more
+        # able to validate than an absent package.
+        return f"the jsonschema package cannot be imported ({exc})"
+    if not hasattr(jsonschema_mod, "Draft202012Validator"):
+        return (
+            "the installed jsonschema is too old: it has no "
+            "Draft202012Validator (jsonschema>=4.0 is required)"
+        )
+    return None
+
+
+def require_schema_validation(schema_path: Optional[str | Path] = None) -> None:
+    """Raise SchemaValidationUnavailable unless schema validation can run.
+
+    Call this at process STARTUP — the web app, generate_cv.py, and the
+    validate_master_data CLI all do. Failing at startup is loud and immediate;
+    the alternative was a validator that silently waved everything through.
+    """
+    reason = schema_validation_unavailable_reason(schema_path)
+    if reason:
+        raise SchemaValidationUnavailable(
+            "Master CV data cannot be validated: " + reason + ".\n"
+            "Refusing to start: without schema validation, invalid data would be "
+            "saved and kept with no error. Install the project requirements "
+            "(scripts/requirements.txt) into the interpreter running this "
+            "process, and confirm schemas/master_cv_data.schema.json is present."
+        )
+
+
 def _validate_top_level_structure(master: Any) -> list[str]:
     """Validate top-level structure used throughout cv-builder."""
     errors: list[str] = []

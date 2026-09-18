@@ -10,6 +10,9 @@
 Exit codes:
 - 0: validation passed
 - 1: validation failed
+- 2: validation could not run (jsonschema missing or too old, or the schema
+     file missing or unreadable). Distinct from 1 so a caller can tell "the
+     data is bad" from "nothing was checked". Skipped with --no-schema.
 """
 
 from __future__ import annotations
@@ -22,8 +25,8 @@ import sys
 from pathlib import Path
 
 
-def _load_validate_master_data_file():
-    """Load validator function without importing the full utils package."""
+def _load_validator_module():
+    """Load the validator module without importing the full utils package."""
     module_path = Path(__file__).parent / "utils" / "master_data_validator.py"
     spec = importlib.util.spec_from_file_location(
         "master_data_validator",
@@ -37,7 +40,12 @@ def _load_validate_master_data_file():
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module.validate_master_data_file
+    return module
+
+
+def _load_validate_master_data_file():
+    """Load the validator function. Name kept: tests patch it by this name."""
+    return _load_validator_module().validate_master_data_file
 
 
 def _default_master_path() -> str:
@@ -80,6 +88,20 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     """Run validation and return process exit code."""
     args = parse_args()
+
+    # A validation tool that reports VALID when it could not validate is the
+    # worst version of this failure, so refuse outright — unless the user
+    # explicitly asked for structural checks only with --no-schema. Checks the
+    # schema path the user actually named. Errors go to stderr so that --json
+    # output on stdout stays parseable.
+    if not args.no_schema:
+        validator = _load_validator_module()
+        try:
+            validator.require_schema_validation(args.schema)
+        except validator.SchemaValidationUnavailable as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+
     validate_master_data_file = _load_validate_master_data_file()
     result = validate_master_data_file(
         args.master_data,

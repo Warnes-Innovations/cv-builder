@@ -63,7 +63,12 @@ from utils.copilot_auth import CopilotAuthManager
 from utils.pricing_cache import (
     maybe_refresh_in_background,
 )
-from utils.master_data_validator import MasterDataSaveError, validate_master_data_file
+from utils.master_data_validator import (
+    MasterDataSaveError,
+    SchemaValidationUnavailable,
+    require_schema_validation,
+    validate_master_data_file,
+)
 from utils.backup_helpers import prune_backups as _prune_backups
 from utils.session_registry import (
     SessionRegistry, SessionNotFoundError
@@ -546,6 +551,14 @@ def _web_app_build_objects(args, auth_manager):
 
 
 def create_app(args) -> Flask:
+    # Refuse to build the app at all if master-data schema validation cannot
+    # run. Without it the validator reports every write as valid, so the
+    # post-write rollback in _save_master silently stops protecting the data.
+    # Checked HERE rather than in main() because every way of starting the app
+    # — main(), a WSGI server, the tests — goes through this factory; main()
+    # alone would leave a WSGI deployment unguarded. Do not move it to main().
+    require_schema_validation()
+
     app = Flask(__name__, static_folder=None)
 
     # ── Keycloak OIDC auth (enabled when KEYCLOAK_URL env var is set) ────────
@@ -1276,7 +1289,14 @@ def main():
     # Set up logging before anything else
     setup_logging(config, log_dir=args.log_dir)
 
-    app = create_app(args)
+    try:
+        app = create_app(args)
+    except SchemaValidationUnavailable as exc:
+        # Loud and clean rather than a traceback: this is an environment
+        # problem the operator must fix, not a bug. Exit 2 = "could not run".
+        print(f"\nERROR: {exc}\n", file=sys.stderr)
+        logger.critical("Refusing to start: %s", exc)
+        sys.exit(2)
     bundle_status = app.config.get('FRONTEND_BUNDLE_STATUS', 'unknown')
     bundle_built_at = app.config.get('FRONTEND_BUNDLE_BUILT_AT', 'unknown')
 
