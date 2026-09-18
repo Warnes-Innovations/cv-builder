@@ -377,6 +377,11 @@ async function initiateLayoutInstructions() {
               <option value="always">Always</option>
               <option value="never">Never</option>
             </select>
+            <label for="include-division-department-input" style="display:inline-flex; align-items:center; gap:6px; font-size:0.83em; color:#334155; margin-left:8px;"
+                title="Print each role's division and department after the employer, e.g. “Pfizer — Global Research and Development, Non-Clinical Statistics”. Only affects roles that have them.">
+              <input id="include-division-department-input" type="checkbox" />
+              Show division / department
+            </label>
             <button id="apply-layout-settings-btn" class="btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
             <span id="layout-settings-status" style="font-size:0.8em; color:#64748b;"></span>
           </div>
@@ -488,6 +493,19 @@ async function initiateLayoutInstructions() {
     const valid = ['always', 'never', 'individual'];
     skillsShowExperienceSelect.value = valid.includes(savedSkillsExp) ? savedSkillsExp : 'individual';
   }
+  const includeDivisionDepartmentInput = document.getElementById('include-division-department-input');
+  if (includeDivisionDepartmentInput) {
+    const sessionState = stateManager?.getSessionState?.() || {};
+    const customizationState = stateManager?.getTabData?.('customizations') || {};
+    const savedIncludeOrgUnit =
+      sessionState.include_division_department
+      ?? sessionState?.customizations?.include_division_department
+      ?? customizationState.include_division_department
+      ?? false;
+    // Off by default. coerceBoolean, not Boolean(): a saved "false" string
+    // must not tick the box.
+    includeDivisionDepartmentInput.checked = coerceBoolean(savedIncludeOrgUnit, false);
+  }
 
   renderPreviewOutputStatus(getPreviewOutputs());
 
@@ -593,6 +611,9 @@ function setupLayoutInstructionListeners() {
   const pageMarginInput   = document.getElementById('page-margin-input');
   const publicationsStartInput = document.getElementById('publications-start-new-page-input');
   const skillsShowExperienceSelect = document.getElementById('skills-show-experience-select');
+  // Deliberately NOT part of the guard below: it is optional, and adding it
+  // would disable the whole Apply button if this one checkbox were absent.
+  const includeDivisionDepartmentInput = document.getElementById('include-division-department-input');
 
   if (applySettingsBtn && fontSizeInput && pageMarginInput && publicationsStartInput) {
     applySettingsBtn.addEventListener(
@@ -602,6 +623,7 @@ function setupLayoutInstructionListeners() {
         pageMarginInput.value,
         publicationsStartInput.checked,
         skillsShowExperienceSelect?.value || 'individual',
+        includeDivisionDepartmentInput?.checked === true,
       ),
     );
     fontSizeInput.addEventListener('input', () => {
@@ -618,6 +640,7 @@ function setupLayoutInstructionListeners() {
           pageMarginInput.value,
           publicationsStartInput.checked,
           skillsShowExperienceSelect?.value || 'individual',
+          includeDivisionDepartmentInput?.checked === true,
         );
       }
     });
@@ -628,6 +651,7 @@ function setupLayoutInstructionListeners() {
           pageMarginInput.value,
           publicationsStartInput.checked,
           skillsShowExperienceSelect?.value || 'individual',
+          includeDivisionDepartmentInput?.checked === true,
         );
       }
     });
@@ -702,7 +726,9 @@ function setupLayoutInstructionListeners() {
 /**
  * Save layout display settings to session state, then re-render the preview.
  */
-async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsStartNewPage = false, skillsShowExperience = 'individual') {
+// Positional, so new options are APPENDED with a default and never inserted:
+// inserting one would silently shift every argument at the three call sites.
+async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsStartNewPage = false, skillsShowExperience = 'individual', includeDivisionDepartment = false) {
   const statusEl = document.getElementById('layout-settings-status');
   const parsedFontSize = parseFloat(fontSizeValue);
   const parsedPageMargin = parseFloat(pageMarginValue);
@@ -721,6 +747,7 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsS
       page_margin: `${parsedPageMargin}in`,
       publications_start_new_page: Boolean(publicationsStartNewPage),
       skills_show_experience: skillsShowExperience,
+      include_division_department: includeDivisionDepartment === true,
     });
     if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
 

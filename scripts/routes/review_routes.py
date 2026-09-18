@@ -2310,6 +2310,16 @@ def create_blueprint(deps):
                     if raw in {'always', 'never', 'individual'}:
                         conversation.state['skills_show_experience'] = raw
                         customizations['skills_show_experience'] = raw
+                if 'include_division_department' in body:
+                    # Stored as a real bool. Parsed, not bool()-ed: bool("false")
+                    # is True, so a string "false" would switch the option ON.
+                    raw = body['include_division_department']
+                    if isinstance(raw, str):
+                        raw = raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+                    else:
+                        raw = raw is True
+                    conversation.state['include_division_department'] = raw
+                    customizations['include_division_department'] = raw
                 conversation._save_session()
             _trigger_render_snapshot_refresh(
                 conversation,
@@ -2359,6 +2369,7 @@ def create_blueprint(deps):
                 content.get('experiences', []),
                 content.get('achievements', []),
                 content.get('skills', []),
+                show_org_unit=orc._should_show_org_unit(customizations),
             )
             estimated_pages = round(total_chars / int(chars_per_page), 1)
             domain = job_analysis.get('domain', '')
