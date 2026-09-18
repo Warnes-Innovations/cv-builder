@@ -1,1 +1,0 @@
-../../../vscode-config/prompts/duckflow.prompt.md
