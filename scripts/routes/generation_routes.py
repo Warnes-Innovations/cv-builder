@@ -1994,6 +1994,11 @@ def create_blueprint(deps):
             selected_content['show_citizenship'] = (
                 conv.orchestrator._should_show_citizenship(customizations)
             )
+            # Stamped at BOTH DOCX call sites (here and in the orchestrator):
+            # miss one and DOCX files built through that path ignore the option.
+            selected_content['show_org_unit'] = (
+                conv.orchestrator._should_show_org_unit(customizations)
+            )
             ats_file, _ats_score_at_generation = conv.orchestrator._generate_ats_docx(
                 selected_content, job_analysis, output_dir,
             )

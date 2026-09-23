@@ -69,6 +69,49 @@ def safe_css_size(value: Any, default: str = '10px') -> str:
     return default
 
 
+def org_unit_text(exp: Any) -> str:
+    """Division and department of an experience entry as one display string.
+
+    "Global Research and Development, Non-Clinical Statistics"; just the
+    division, or just the department, when only one is set; "" when neither.
+
+    This is the ONLY implementation of that formatting. It is registered as the
+    Jinja filter `org_unit` for the HTML template AND imported by the DOCX
+    renderers in cv_orchestrator, so every output format prints identical text.
+    Do not re-implement the join in the template or in a renderer: five copies
+    of it are how the formats would drift apart.
+
+    Returns a plain str, never Markup, so the autoescaping template escapes it.
+    It is user-entered text; a caller building HTML by hand must escape it.
+    """
+    if not isinstance(exp, dict):
+        return ''
+    parts = []
+    for key in ('division', 'department'):
+        value = exp.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return ', '.join(parts)
+
+
+def company_line(exp: Any, show_org_unit: Any = False) -> str:
+    """The employer as printed on a CV: "Company — Division, Department".
+
+    Just the company when show_org_unit is off or the entry has neither
+    field, so CVs with the option off are byte-identical to before it existed.
+
+    Every renderer prints the employer through THIS function — the Jinja
+    filter `company_line` in the template, and a direct call in each DOCX
+    renderer — so the separator and ordering cannot differ between formats.
+    Plain str, not Markup: see org_unit_text.
+    """
+    if not isinstance(exp, dict):
+        return ''
+    company = str(exp.get('company') or '').strip()
+    unit = org_unit_text(exp) if show_org_unit is True else ''
+    return ' — '.join(part for part in (company, unit) if part)
+
+
 def citation_markdown_to_html(value: Any) -> Markup:
     """Render markdown-style *italic* spans safely for citation strings."""
     escaped_text = str(escape(str(value or '')))
@@ -99,7 +142,21 @@ def load_template(template_path: str) -> Template:
         ),
     )
 
-    # Add custom filters
+    register_template_filters(env)
+
+    return env.get_template(template_name)
+
+
+def register_template_filters(env: Environment) -> Environment:
+    """Register every custom filter the templates use. The ONLY list of them.
+
+    Any Jinja environment that renders a project template must call this —
+    production's load_template() does, and so does the test harness in
+    tests/test_cv_template.py. Do NOT hand-copy filter registrations into
+    another environment: that test once kept its own copy, which silently
+    drifted (it lacked format_date, format_phone and escape_latex), and the
+    first new filter added after that made 31 of its tests fail at once.
+    """
     env.filters['format_date'] = format_date
     env.filters['format_phone'] = format_phone
     env.filters['escape_latex'] = escape_latex
@@ -107,8 +164,9 @@ def load_template(template_path: str) -> Template:
     env.filters['safe_url'] = safe_url
     env.filters['safe_css_size'] = safe_css_size
     env.filters['citation_markdown_to_html'] = citation_markdown_to_html
-
-    return env.get_template(template_name)
+    env.filters['org_unit'] = org_unit_text
+    env.filters['company_line'] = company_line
+    return env
 
 
 def render_template(

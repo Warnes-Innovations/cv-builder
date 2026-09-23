@@ -22,27 +22,24 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from jinja2 import Environment, FileSystemLoader, Undefined  # noqa: E402
-from utils.template_renderer import (  # noqa: E402
-    citation_markdown_to_html,
-    json_script,
-    safe_css_size,
-    safe_url,
-)
+from utils.template_renderer import register_template_filters  # noqa: E402
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / 'templates'
 
 
 def _make_env() -> Environment:
-    """Return a Jinja2 environment that ignores undefined variables."""
+    """Return a Jinja2 environment that ignores undefined variables.
+
+    Filters come from production's register_template_filters(), never a local
+    copy: a hand-kept list here drifted from production and broke 31 tests the
+    moment a new filter was added. The Environment settings below still differ
+    from production on purpose (undefined=Undefined), so leave those alone.
+    """
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATES_DIR)),
         undefined=Undefined,
     )
-    env.filters['json_script'] = json_script
-    env.filters['safe_css_size'] = safe_css_size
-    env.filters['safe_url'] = safe_url
-    env.filters['citation_markdown_to_html'] = citation_markdown_to_html
-    return env
+    return register_template_filters(env)
 
 
 def _minimal_context(**overrides) -> dict:

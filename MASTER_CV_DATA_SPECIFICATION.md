@@ -140,10 +140,23 @@ Observed item fields:
 - `comment`: string
 - `title`: string
 - `company`: string
+- `division`: string, optional — the major organisational unit the role sat in
+  (e.g. "Global Research and Development"). Absent, empty or `null` means unknown.
+- `department`: string, optional — the sub-unit, group or team inside the
+  division (e.g. "Non-Clinical Statistics"). Absent, empty or `null` means unknown.
+  Both are stored only when non-empty: saving a blank value through the editor
+  removes the key rather than storing `""`. Neither is currently rendered in
+  generated CVs.
 - `location`: object (`city`, `state`)
 - `start_date`: string
 - `end_date`: string
-- `employment_type`: string
+- `employment_type`: string — kind of engagement. The authoritative vocabulary
+  is `EMPLOYMENT_TYPES` in `scripts/routes/master_data_routes.py`; do not retype
+  the list anywhere else. `GET /api/master-data/vocabularies` serves it (unioned
+  with any value already present in this file) and every editor dropdown is
+  populated from that response. The schema deliberately does not constrain this
+  to an enum: this file is the source of truth, so a value it already holds must
+  never fail validation.
 - `tags`: array
 - `audience`: array
 - `domain_relevance`: array
@@ -177,6 +190,10 @@ Observed item fields:
 - `importance`: number
 - `relevant_for`: array
 - `show_for_roles`: array
+- `comment`: string, optional — free-text provenance: the reasoning behind a
+  figure or claim, often written by tooling rather than the editor. Never
+  rendered in generated CVs. The editor does not manage this field, so saving an
+  achievement through the UI preserves it.
 
 ### 4.5 `skills`
 
@@ -420,6 +437,7 @@ Examples of input validation from master-data routes:
   - title and company required for add/update
   - `importance` integer 1..10
   - `employment_type` in allowed set
+  - `division` and `department`, when present, must be strings or `null`
   - extracted start/end year must be chronological
 - Education:
   - year bounds 1900..2100

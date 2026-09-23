@@ -1849,5 +1849,406 @@ class TestMasterDataExport(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Controlled vocabularies, and the empty-value guard
+# ---------------------------------------------------------------------------
+
+class TestEmploymentTypeEmptyGuard(unittest.TestCase):
+    """An EMPTY employment_type must be rejected, not repaired.
+
+    This is the interesting half, and it is the half that was missing. The
+    route previously read `str(exp_data.get('employment_type') or 'full_time')`,
+    which cannot distinguish "the caller did not set this" from "the client
+    sent an empty string because its dropdown could not represent the stored
+    value". It resolved both to 'full_time' — an allowlisted value — so a UI
+    round-trip silently rewrote the user's data and every layer reported
+    success.
+
+    A test that only asserted the valid values are accepted would pass just as
+    happily against that broken version, which is why these are written as
+    negative cases.
+    """
+
+    def _post(self, client, sid, exp):
+        return client.post(
+            '/api/master-data/experience',
+            json={'action': 'add', 'experience': exp, 'session_id': sid},
+        )
+
+    def test_empty_string_is_rejected_not_defaulted(self):
+        """The regression, pinned. '' must 400 rather than become 'full_time'."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {
+                'title': 'Engineer', 'company': 'Acme', 'employment_type': '',
+            })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('employment_type', res.get_json()['error'])
+
+    def test_whitespace_only_is_rejected(self):
+        """'   ' strips to empty and must be treated identically to ''."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {
+                'title': 'Engineer', 'company': 'Acme', 'employment_type': '   ',
+            })
+        self.assertEqual(res.status_code, 400)
+
+    def test_absent_still_defaults(self):
+        """Absent is NOT the same as empty: an API caller that never sets the
+        field is not a broken client, and must keep working."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {'title': 'Engineer', 'company': 'Acme'})
+        self.assertNotEqual(res.status_code, 400)
+
+    def test_equity_only_is_accepted(self):
+        """An engagement compensated in equity with no salary.
+
+        Pinned by NAME rather than by iterating EMPLOYMENT_TYPES: a test that
+        loops over the constant passes vacuously for a value missing from it,
+        which is exactly the defect. exp_001 in live data holds this value and
+        could not be saved through the editor while the route rejected it.
+        """
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client:
+            res = self._post(client, sid, {
+                'title': 'Founder', 'company': 'MCKWCO',
+                'employment_type': 'equity_only',
+            })
+        self.assertNotEqual(res.status_code, 400, res.get_json())
+
+    def test_every_served_vocabulary_value_is_accepted_by_the_route(self):
+        """The endpoint and the gate must not drift apart.
+
+        Asserted against the route's own constant rather than a list retyped
+        here — a hand-copied list would silently stop covering a tenth value.
+        """
+        from scripts.routes.master_data_routes import EMPLOYMENT_TYPES
+        for emp_type in EMPLOYMENT_TYPES:
+            with self.subTest(employment_type=emp_type):
+                app, _, sid, stack = _make_app()
+                with stack, app.test_client() as client:
+                    res = self._post(client, sid, {
+                        'title': 'Engineer', 'company': 'Acme',
+                        'employment_type': emp_type,
+                    })
+                self.assertNotEqual(
+                    res.status_code, 400,
+                    f'{emp_type} is served to the dropdown but rejected by the route',
+                )
+
+
+class TestVocabulariesEndpoint(unittest.TestCase):
+    """The endpoint every editor <select> is populated from."""
+
+    def test_serves_the_permitted_employment_types(self):
+        from scripts.routes.master_data_routes import EMPLOYMENT_TYPES
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'experience': []}))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        body = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        for t in EMPLOYMENT_TYPES:
+            self.assertIn(t, body['employment_types'])
+
+    def test_unions_in_a_stored_value_the_vocabulary_does_not_know(self):
+        """The whole point. A value already in the data MUST be offered, or the
+        dropdown cannot represent it and saving destroys it."""
+        master = {'experience': [{'id': 'e1', 'employment_type': 'secondment'}],
+                  'publications': []}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        self.assertIn('secondment', res.get_json()['employment_types'])
+
+    def test_unions_in_an_imported_bibtex_entry_type(self):
+        """bibtex_parser passes ENTRYTYPE through unconstrained, so the data can
+        hold a publication type no fixed list anticipated."""
+        master = {'experience': [],
+                  'publications': [{'key': 'k1', 'type': 'booklet'}]}
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        self.assertIn('booklet', res.get_json()['publication_types'])
+
+    def test_offers_conference_and_manual_which_the_dropdown_used_to_omit(self):
+        """Both are handled elsewhere in this codebase and were missing from the
+        hardcoded publication dropdown."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps({'publications': []}))):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        types = res.get_json()['publication_types']
+        self.assertIn('conference', types)
+        self.assertIn('manual', types)
+
+    def test_unreadable_master_degrades_rather_than_500s(self):
+        """A dropdown with the standard options is degraded; one with NO options
+        would make every save destructive, which is worse than the failure it
+        would be reporting."""
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', side_effect=IOError('disk error')):
+            res = client.get('/api/master-data/vocabularies',
+                             query_string={'session_id': sid})
+        body = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(body['degraded'])
+        self.assertIn('full_time', body['employment_types'])
+
+
+# ---------------------------------------------------------------------------
+# division / department on experience entries
+# ---------------------------------------------------------------------------
+
+class TestExperienceDivisionDepartment(unittest.TestCase):
+    """Optional organisational-unit fields on an experience entry.
+
+    Both the create and the update paths in the experience route enumerate
+    the fields they persist — create builds a literal dict, update iterates a
+    fixed tuple — so a field missing from either is silently dropped or never
+    saved, with the request still returning ok. That is the failure these pin,
+    on BOTH paths, because fixing one and not the other passes any test that
+    only exercises one.
+
+    Absent and empty are deliberately different here, and differ from
+    employment_type. Both fields are optional free text where empty genuinely
+    means "unknown", so empty stores NO key rather than an empty string — the
+    editor sends every field on every save, and storing "" would stamp an empty
+    key onto every entry anyone touches. Absent from an update means "this
+    caller did not address the field", so the stored value must survive.
+    """
+
+    FIELDS = ('division', 'department')
+
+    def _post(self, client, sid, action, exp, exp_id=None):
+        body = {'action': action, 'experience': exp, 'session_id': sid}
+        if exp_id:
+            body['id'] = exp_id
+        return client.post('/api/master-data/experience', json=body)
+
+    def _run(self, master, action, exp, exp_id=None):
+        app, _, sid, stack = _make_app()
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = self._post(client, sid, action, exp, exp_id)
+        self.assertEqual(res.status_code, 200, res.get_json())
+        return mock_dump.call_args[0][0]['experience'][0]
+
+    # -- create path --------------------------------------------------------
+
+    def test_add_persists_both_fields(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': 'Global Research and Development',
+            'department': 'Non-Clinical Statistics',
+        })
+        self.assertEqual(saved['division'], 'Global Research and Development')
+        self.assertEqual(saved['department'], 'Non-Clinical Statistics')
+
+    def test_add_with_empty_strings_stores_no_key(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': '', 'department': '   ',
+        })
+        for f in self.FIELDS:
+            self.assertNotIn(f, saved, f'{f} was stored for an empty value')
+
+    def test_add_without_the_fields_stores_no_key(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+        })
+        for f in self.FIELDS:
+            self.assertNotIn(f, saved)
+
+    # -- update path --------------------------------------------------------
+
+    def _existing(self, **extra):
+        return {'experience': [dict({'id': 'exp_1', 'title': 'Statistician',
+                                     'company': 'Pfizer'}, **extra)]}
+
+    def test_update_persists_both_fields(self):
+        saved = self._run(self._existing(), 'update', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': 'Research', 'department': 'Statistics and Data Science',
+        }, exp_id='exp_1')
+        self.assertEqual(saved['division'], 'Research')
+        self.assertEqual(saved['department'], 'Statistics and Data Science')
+
+    def test_update_empty_string_clears_the_stored_value(self):
+        """The user blanked the field in the editor: the key goes, not ''."""
+        saved = self._run(self._existing(division='Research', department='Stats'),
+                          'update', {'title': 'Statistician', 'company': 'Pfizer',
+                                     'division': '', 'department': ''},
+                          exp_id='exp_1')
+        for f in self.FIELDS:
+            self.assertNotIn(f, saved, f'{f} survived being cleared')
+
+    def test_update_absent_fields_leave_the_stored_value_alone(self):
+        """A caller that does not send the fields must not erase them.
+
+        The most important case: an API client or older editor that predates
+        these fields must never wipe data it did not know was there.
+        """
+        saved = self._run(self._existing(division='Research', department='Stats'),
+                          'update', {'title': 'Senior Statistician', 'company': 'Pfizer'},
+                          exp_id='exp_1')
+        self.assertEqual(saved['division'], 'Research')
+        self.assertEqual(saved['department'], 'Stats')
+        self.assertEqual(saved['title'], 'Senior Statistician')
+
+    def test_values_are_stripped(self):
+        saved = self._run({'experience': []}, 'add', {
+            'title': 'Statistician', 'company': 'Pfizer',
+            'division': '  Research  ', 'department': '\tStats\n',
+        })
+        self.assertEqual(saved['division'], 'Research')
+        self.assertEqual(saved['department'], 'Stats')
+
+    def test_non_string_is_rejected_not_coerced(self):
+        """A list or number is a caller bug; str() would store '[...]'."""
+        for bad in (123, ['Research'], {'name': 'Research'}):
+            with self.subTest(value=bad):
+                app, _, sid, stack = _make_app()
+                with stack, app.test_client() as client, \
+                     patch('builtins.open', mock_open(read_data=json.dumps({'experience': []}))), \
+                     patch('json.dump'), patch('subprocess.run'):
+                    res = self._post(client, sid, 'add', {
+                        'title': 'Statistician', 'company': 'Pfizer', 'division': bad,
+                    })
+                self.assertEqual(res.status_code, 400)
+                self.assertIn('division', res.get_json()['error'])
+
+
+class TestSelectedAchievementComment(unittest.TestCase):
+    """`comment` on a selected achievement: free-text provenance, never rendered.
+
+    It carries the reasoning behind a corrected figure, written by tooling
+    rather than the editor, so the property that matters is that an ordinary UI
+    edit does not erase it.
+
+    That property holds today only BY OMISSION: the update route mutates the
+    stored dict in place and touches only the fields it lists, so keys it does
+    not know about survive. A refactor that rebuilds the entry as a fresh dict
+    would silently delete every comment with nothing failing — which is what
+    the preservation test below exists to catch.
+    """
+
+    def _update(self, stored, req):
+        app, _, sid, stack = _make_app()
+        master = {'selected_achievements': [stored]}
+        with stack, app.test_client() as client, \
+             patch('builtins.open', mock_open(read_data=json.dumps(master))), \
+             patch('json.dump') as mock_dump, \
+             patch('subprocess.run'):
+            res = client.post('/api/master-data/update-achievement',
+                              json=dict(req, session_id=sid))
+        self.assertEqual(res.status_code, 200, res.get_json())
+        return mock_dump.call_args[0][0]['selected_achievements'][0]
+
+    def test_ui_edit_preserves_a_tooling_written_comment(self):
+        provenance = ('Headline excludes an archived package whose downloads were '
+                      'an automated-deployment spike.')
+        saved = self._update(
+            {'id': 'sa_008', 'title': 'Old title', 'importance': 7, 'comment': provenance},
+            {'id': 'sa_008', 'title': 'Edited in the UI', 'importance': 8},
+        )
+        self.assertEqual(saved['title'], 'Edited in the UI')
+        self.assertEqual(saved.get('comment'), provenance,
+                         'a UI edit erased the provenance comment')
+
+    def test_update_preserves_every_key_it_does_not_manage(self):
+        """The general form, so the guard is not specific to one field name."""
+        saved = self._update(
+            {'id': 'sa_1', 'title': 'T', 'comment': 'why', 'metrics': ['10x'],
+             'show_for_roles': ['lead']},
+            {'id': 'sa_1', 'title': 'T2'},
+        )
+        self.assertEqual(saved.get('comment'), 'why')
+        self.assertEqual(saved.get('metrics'), ['10x'])
+        self.assertEqual(saved.get('show_for_roles'), ['lead'])
+
+
+class TestSelectedAchievementCommentSchema(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from scripts.utils.master_data_validator import validate_master_data
+        cls.validate = staticmethod(validate_master_data)
+
+    def _sa(self, **fields):
+        return {'selected_achievements': [dict({'id': 'sa_1', 'title': 'T'}, **fields)]}
+
+    def test_control_schema_validation_is_actually_running(self):
+        self.assertFalse(
+            self.validate({'experience': [{'id': 'e', 'title': 'T', 'company': 'C',
+                                           'employment_type': 123}]}).valid,
+            'schema validation did not run — the assertions below would be vacuous',
+        )
+
+    def test_string_comment_is_valid(self):
+        self.assertTrue(self.validate(self._sa(comment='provenance')).valid)
+
+    def test_absent_comment_is_valid(self):
+        self.assertTrue(self.validate(self._sa()).valid)
+
+    def test_non_string_comment_is_invalid(self):
+        for bad in (123, ['x'], {'x': 1}):
+            with self.subTest(value=bad):
+                self.assertFalse(self.validate(self._sa(comment=bad)).valid)
+
+
+class TestExperienceDivisionDepartmentSchema(unittest.TestCase):
+    """The validator enforces field types through the JSON schema.
+
+    Guarded against the silent-skip case: validate_master_data runs schema
+    validation only when `jsonschema` imports, so under an interpreter without
+    it every type check below would pass vacuously. The control asserts a
+    known-bad value is rejected first, so a skipped schema fails loudly here.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from scripts.utils.master_data_validator import validate_master_data
+        cls.validate = staticmethod(validate_master_data)
+
+    def _entry(self, **fields):
+        return {'experience': [dict({'id': 'e1', 'title': 'T', 'company': 'C'}, **fields)]}
+
+    def test_control_schema_validation_is_actually_running(self):
+        self.assertFalse(
+            self.validate(self._entry(employment_type=123)).valid,
+            'schema validation did not run — every type assertion below is vacuous',
+        )
+
+    def test_string_values_are_valid(self):
+        self.assertTrue(self.validate(self._entry(division='Research',
+                                                  department='Stats')).valid)
+
+    def test_null_is_valid(self):
+        """null is accepted for consistency with start_date/end_date, and so a
+        writer marking a value explicitly unknown is not rejected."""
+        self.assertTrue(self.validate(self._entry(division=None, department=None)).valid)
+
+    def test_absent_is_valid(self):
+        """Every existing file predates these fields and must keep validating."""
+        self.assertTrue(self.validate(self._entry()).valid)
+
+    def test_non_string_is_invalid(self):
+        for f in ('division', 'department'):
+            for bad in (123, ['x'], {'x': 1}, True):
+                with self.subTest(field=f, value=bad):
+                    self.assertFalse(self.validate(self._entry(**{f: bad})).valid)
+
+
 if __name__ == '__main__':
     unittest.main()

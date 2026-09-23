@@ -54,6 +54,7 @@ if env_path.exists():
 # Ensure scripts are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
+from utils.app_identity import UNKNOWN_VERSION
 from utils.config import get_config, validate_config, setup_logging
 from utils.llm_client import get_llm_provider, PROVIDER_MODELS
 from utils.cv_orchestrator import CVOrchestrator, validate_ats_report
@@ -62,7 +63,12 @@ from utils.copilot_auth import CopilotAuthManager
 from utils.pricing_cache import (
     maybe_refresh_in_background,
 )
-from utils.master_data_validator import MasterDataSaveError, validate_master_data_file
+from utils.master_data_validator import (
+    MasterDataSaveError,
+    SchemaValidationUnavailable,
+    require_schema_validation,
+    validate_master_data_file,
+)
 from utils.backup_helpers import prune_backups as _prune_backups
 from utils.session_registry import (
     SessionRegistry, SessionNotFoundError
@@ -135,6 +141,11 @@ class StatusResponse:
     session_last_modified: Optional[str] = None
     ats_checks: Optional[List[Any]] = None
     notes: Optional[str] = None
+    # Identity markers, mirroring the no-session probe branch of /api/status so
+    # the answer does not depend on whether the caller happens to hold a
+    # session. See utils/app_identity.py for why `testing` must default False.
+    testing: bool = False
+    version: str = UNKNOWN_VERSION
 
 
 @dataclass
@@ -540,6 +551,14 @@ def _web_app_build_objects(args, auth_manager):
 
 
 def create_app(args) -> Flask:
+    # Refuse to build the app at all if master-data schema validation cannot
+    # run. Without it the validator reports every write as valid, so the
+    # post-write rollback in _save_master silently stops protecting the data.
+    # Checked HERE rather than in main() because every way of starting the app
+    # — main(), a WSGI server, the tests — goes through this factory; main()
+    # alone would leave a WSGI deployment unguarded. Do not move it to main().
+    require_schema_validation()
+
     app = Flask(__name__, static_folder=None)
 
     # ── Keycloak OIDC auth (enabled when KEYCLOAK_URL env var is set) ────────
@@ -1247,6 +1266,12 @@ def parse_args():
                        help="Path to publications.bib")
     parser.add_argument("--output-dir", default=config.output_dir,
                        help="Output directory")
+    parser.add_argument("--log-dir", default=None,
+                       help="Directory to write the log file into. Overrides "
+                            "logging.log_dir in config.yaml and the CV_LOG_DIR "
+                            "env var. Note that --output-dir does NOT affect "
+                            "the log destination; pass this to isolate logs "
+                            "(e.g. so a test run does not write to the live log).")
     parser.add_argument("--llm-provider", choices=["copilot-oauth", "copilot", "github", "openai", "anthropic", "gemini", "groq", "local", "copilot-sdk", "stub"],
                        default=config.llm_provider,
                        help=f"LLM provider (default: {config.llm_provider})")
@@ -1262,9 +1287,16 @@ def main():
     config = get_config()
 
     # Set up logging before anything else
-    setup_logging(config)
+    setup_logging(config, log_dir=args.log_dir)
 
-    app = create_app(args)
+    try:
+        app = create_app(args)
+    except SchemaValidationUnavailable as exc:
+        # Loud and clean rather than a traceback: this is an environment
+        # problem the operator must fix, not a bug. Exit 2 = "could not run".
+        print(f"\nERROR: {exc}\n", file=sys.stderr)
+        logger.critical("Refusing to start: %s", exc)
+        sys.exit(2)
     bundle_status = app.config.get('FRONTEND_BUNDLE_STATUS', 'unknown')
     bundle_built_at = app.config.get('FRONTEND_BUNDLE_BUILT_AT', 'unknown')
 

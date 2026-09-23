@@ -432,8 +432,16 @@ python scripts/web_app.py [options]
   --master-data    Path to Master_CV_Data.json
   --publications   Path to publications.bib
   --output-dir     Output directory for generated files
+  --log-dir        Directory to write the log file into
   --debug          Run Flask in debug mode
 ```
+
+`--log-dir` overrides `logging.log_dir` in `config.yaml` and the `CV_LOG_DIR`
+environment variable. Note that `--output-dir` does **not** affect where logs
+go — the two are independent, so a run given only `--output-dir` still writes
+to the configured live log. Pass `--log-dir` whenever a run needs its logging
+isolated (the test harnesses do this so a test run cannot append to your real
+`~/CV/cv-builder/logs/cv-builder.log`).
 
 ## Project Structure
 

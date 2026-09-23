@@ -19,7 +19,9 @@ no test noticing.
 
 import io
 import logging
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from scripts.utils.config import setup_logging
@@ -101,6 +103,98 @@ class TestSetupLoggingUserIdFilter(unittest.TestCase):
                 "_RequestContextFilter", filter_names,
                 f"{handler} is missing the user_id-injecting filter",
             )
+
+
+class TestSetupLoggingLogDirOverride(unittest.TestCase):
+    """An explicit log_dir (--log-dir) must outrank every configured path.
+
+    Guards against a real defect: the UI test harness spawned the server
+    with --output-dir pointing at a temp dir and believed itself isolated,
+    but config.yaml sets logging.log_dir to the user's real
+    ~/CV/cv-builder/logs, and log_dir's precedence chain
+    (CV_LOG_DIR -> logging.log_dir -> output_dir/logs) meant --output-dir
+    never reached a rung that could win. Every test run appended its
+    session_id=test-session-id traffic to the user's live log.
+    """
+
+    def setUp(self):
+        self._root = logging.getLogger()
+        self._orig_handlers = list(self._root.handlers)
+        self._orig_level = self._root.level
+        self._root.handlers = []
+
+    def tearDown(self):
+        for handler in self._root.handlers:
+            if isinstance(handler, logging.FileHandler):
+                handler.close()
+        self._root.handlers = self._orig_handlers
+        self._root.setLevel(self._orig_level)
+
+    def _file_handler_path(self) -> Path:
+        """Absolute path of the installed rotating file handler.
+
+        Fails the test rather than returning None, so each caller can use
+        the result directly instead of re-asserting it is not None.
+        """
+        for handler in self._root.handlers:
+            if isinstance(handler, logging.FileHandler):
+                return Path(handler.baseFilename)
+        self.fail("setup_logging() installed no file handler")
+
+    def _config(self, log_dir, log_file):
+        cfg = MagicMock()
+        cfg.log_level = "DEBUG"
+        cfg.log_dir = log_dir
+        cfg.log_file = log_file
+        return cfg
+
+    def test_explicit_log_dir_overrides_configured_log_dir(self):
+        """The exact production shape: config.yaml log_dir + bare filename."""
+        with tempfile.TemporaryDirectory() as live, \
+             tempfile.TemporaryDirectory() as isolated:
+            setup_logging(
+                self._config(live, "cv-builder.log"),
+                log_dir=isolated,
+            )
+
+            written = self._file_handler_path()
+            self.assertEqual(Path(isolated), written.parent)
+            self.assertEqual("cv-builder.log", written.name)
+            # The live log must not even be created.
+            self.assertEqual(
+                [], list(Path(live).iterdir()),
+                "explicit log_dir was ignored; the live log dir was written to",
+            )
+
+    def test_explicit_log_dir_overrides_absolute_log_file(self):
+        """An absolute logging.file must not escape the override.
+
+        If this regresses, --log-dir silently does nothing for anyone who
+        configured an absolute logging.file -- the same silent-ignore
+        failure the flag was added to fix, one layer down.
+        """
+        with tempfile.TemporaryDirectory() as live, \
+             tempfile.TemporaryDirectory() as isolated:
+            absolute = str(Path(live) / "cv-builder.log")
+            setup_logging(
+                self._config(live, absolute),
+                log_dir=isolated,
+            )
+
+            written = self._file_handler_path()
+            self.assertEqual(Path(isolated), written.parent)
+            self.assertFalse(
+                Path(absolute).exists(),
+                "absolute logging.file escaped the explicit log_dir override",
+            )
+
+    def test_configured_log_dir_still_used_when_no_override(self):
+        """Without --log-dir, configured behaviour is unchanged."""
+        with tempfile.TemporaryDirectory() as live:
+            setup_logging(self._config(live, "cv-builder.log"))
+
+            written = self._file_handler_path()
+            self.assertEqual(Path(live), written.parent)
 
 
 if __name__ == "__main__":

@@ -304,29 +304,134 @@ async function onboardingCreateEmptyProfile() {
 // Session creation
 // ---------------------------------------------------------------------------
 
-async function createNewSessionAndNavigate() {
-  const data = await createSession();
+// Creating a session costs noticeably more than a normal call: POST
+// /api/sessions/new builds a ConversationManager and a CVOrchestrator per
+// session, measuring ~0.6s steady state against ~0.01s for /api/status
+// (2026-09-11, on a loaded machine — treat it as an upper-ish bound), with
+// occasional multi-second outliers. Both entry points below therefore have to
+// show progress and report failure themselves: they are wired to inline
+// onclick= handlers in index.html, and an inline handler discards the returned
+// promise, so a rejection becomes an unhandled rejection the user never sees.
+function _reportSessionCreateFailure(err) {
+  const message = `Could not create a new session: ${(err && err.message) || 'unknown error'}`;
+  log.error(message);
+  if (typeof showToast === 'function') showToast(message, 'error', 6000);
+  else if (typeof showAlertModal === 'function') showAlertModal('New session failed', message);
+}
+
+// Disable the header button while a create is in flight, so the wait cannot be
+// turned into several concurrent sessions by an impatient second click.
+// NOTE: this reaches only #new-session-header-btn. The landing-panel buttons
+// below (search this file for createNewSessionInNewTab/createNewSessionAndNavigate
+// in onclick=) carry no id and are NOT disabled, so the double-click window is
+// still open on that screen.
+function _setNewSessionBusy(busy) {
+  const btn = document.getElementById('new-session-header-btn');
+  if (!btn) return;
+  btn.disabled = busy;
+  if (busy) {
+    btn.dataset.prevLabel = btn.textContent;
+    btn.textContent = 'Creating…';
+  } else if (btn.dataset.prevLabel !== undefined) {
+    btn.textContent = btn.dataset.prevLabel;
+    delete btn.dataset.prevLabel;
+  }
+}
+
+// Shared by both entry points. Resolves to the session data, or to null when
+// the master CV is missing (handled here by showing the onboarding modal —
+// that is a normal outcome, not a failure). Any error it throws has ALREADY
+// been reported to the user; it is rethrown so programmatic callers such as
+// onboardingCreateEmptyProfile can still react to it.
+async function _createSessionOrReport() {
+  let data;
+  try {
+    data = await createSession();
+  } catch (err) {
+    _reportSessionCreateFailure(err);
+    throw err;
+  }
   if (data.error === 'master_cv_missing') {
     showOnboardingModal(data.master_cv_path || '');
-    return;
+    return null;
   }
-  if (!data.session_id) throw new Error('Failed to create session');
-  // Clear any stale session path — the new session has no saved file yet.
-  // If SESSION_PATH were left pointing at a previous session's file, the
-  // disk-restore guard in restoreBackendState could load the wrong session
-  // on the next visit once SESSION_ID is updated by the beforeunload handler.
-  try { localStorage.removeItem('cv-builder-session-path'); } catch (_) {}
-  window.location.assign(data.redirect_url || `/?session=${data.session_id}`);
+  if (!data.session_id) {
+    const err = new Error('Failed to create session');
+    _reportSessionCreateFailure(err);
+    throw err;
+  }
+  return data;
+}
+
+async function createNewSessionAndNavigate() {
+  _setNewSessionBusy(true);
+  try {
+    const data = await _createSessionOrReport();
+    if (!data) return;
+    // Clear any stale session path — the new session has no saved file yet.
+    // If SESSION_PATH were left pointing at a previous session's file, the
+    // disk-restore guard in restoreBackendState could load the wrong session
+    // on the next visit once SESSION_ID is updated by the beforeunload handler.
+    try { localStorage.removeItem('cv-builder-session-path'); } catch (_) {}
+    window.location.assign(data.redirect_url || `/?session=${data.session_id}`);
+  } finally {
+    _setNewSessionBusy(false);
+  }
 }
 
 async function createNewSessionInNewTab() {
-  const data = await createSession();
-  if (data.error === 'master_cv_missing') {
-    showOnboardingModal(data.master_cv_path || '');
-    return;
+  // Open the tab HERE, synchronously, while the click's user activation is
+  // still live. Do NOT move this below the await. Browsers sever user
+  // activation across ANY await, however fast it resolves — this does not
+  // depend on how slow session creation happens to be, so "the endpoint got
+  // faster" is never a reason to relax it. A window.open() after the await is
+  // blocked silently, which was exactly the "New Session button does nothing"
+  // bug this fixes.
+  //
+  // Deliberately NOT passing 'noopener': that option forces window.open() to
+  // return null, and the handle is needed to navigate the tab once the session
+  // id arrives. The opener reference is severed by hand below, which buys the
+  // same protection.
+  let tab = window.open('', '_blank');
+  if (tab) {
+    try {
+      tab.document.write(
+        '<!doctype html><title>Creating session…</title>'
+        + '<body style="font-family:system-ui;padding:2rem">Creating your new session…</body>',
+      );
+      tab.document.close();
+    } catch (_) { /* placeholder is cosmetic; never block the create on it */ }
   }
-  if (!data.session_id) throw new Error('Failed to create session');
-  window.open(data.redirect_url || `/?session=${data.session_id}`, '_blank', 'noopener');
+  _setNewSessionBusy(true);
+  try {
+    const data = await _createSessionOrReport();
+    if (!data) {
+      if (tab) tab.close();
+      return;
+    }
+    const url = data.redirect_url || `/?session=${data.session_id}`;
+    if (tab) {
+      try { tab.opener = null; } catch (_) { /* not settable in every browser */ }
+      tab.location.replace(url);
+      // Drop the handle once the tab is no longer our blank placeholder, so the
+      // catch below can only ever close a tab that never got anywhere. Nothing
+      // awaits after this line today, which is the only reason that catch is
+      // currently safe — this keeps it safe by construction rather than by
+      // accident if an await is ever added here. Same guard as the Copilot
+      // device-auth flow in ui-core.js, where the equivalent gap was live.
+      tab = null;
+    } else {
+      // The popup was blocked outright (popups disabled for this site), so the
+      // synchronous open above could not help. Fall back to this tab rather
+      // than leaving the click with no visible effect at all.
+      window.location.assign(url);
+    }
+  } catch (err) {
+    if (tab) tab.close();
+    throw err;
+  } finally {
+    _setNewSessionBusy(false);
+  }
 }
 
 // ---------------------------------------------------------------------------

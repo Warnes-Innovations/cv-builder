@@ -1,1 +1,0 @@
-../../../vscode-config/prompts/committee-review.prompt.md

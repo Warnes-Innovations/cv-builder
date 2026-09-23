@@ -33,6 +33,138 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Controlled vocabularies
+# ---------------------------------------------------------------------------
+#
+# These are the ONLY definitions of these vocabularies. Serve them to the
+# frontend via /api/master-data/vocabularies and populate every <select> from
+# that response.
+#
+# DO NOT hardcode these values into a <select> in web/*.js, and do not "just
+# add the missing option" if you find a dropdown out of step — put the dropdown
+# back on the endpoint instead. A hardcoded option list silently destroys data,
+# and it does so at a site that looks completely innocent:
+#
+#   select.value = entry.employment_type    // no matching <option>
+#   -> select.value === ""  and  selectedIndex === -1, with NO exception
+#
+# The save path then reads that "" straight back out. This is not theoretical:
+# the Employment Type dropdown shipped 6 options while live data held 9, so
+# editing any experience with one of the other 3 rewrote it to 'full_time'
+# without an error anywhere. Fixed 2026-09-11.
+#
+# The list is expected to grow — a career record holds more kinds of engagement
+# than an HR dropdown does. Growing it here is enough; nothing else needs
+# editing, which is the entire point.
+EMPLOYMENT_TYPES = (
+    'full_time',
+    'part_time',
+    'contract',
+    'consulting',
+    'internship',
+    'self_employed',
+    'joint_appointment',     # unpaid academic appointment held concurrently
+    'volunteer',             # unpaid full-time service
+    'founding_contributor',  # originating contribution, never an employment relationship
+    'equity_only',           # compensated in equity only, no salary
+)
+
+# BibTeX entry types the publication editor offers. bibtex_parser.py passes
+# ENTRYTYPE through UNCONSTRAINED, so an imported .bib can introduce a type
+# that is not listed here — 'conference' and 'manual' are both handled
+# elsewhere in this codebase and were both missing from the dropdown. The
+# vocabularies endpoint therefore unions this list with the types actually
+# present in the data; see _vocabulary_with_values_in_use().
+PUBLICATION_TYPES = (
+    'article',
+    'inproceedings',
+    'conference',
+    'book',
+    'incollection',
+    'techreport',
+    'phdthesis',
+    'mastersthesis',
+    'manual',
+    'unpublished',
+    'misc',
+)
+
+
+def _vocabulary_with_values_in_use(permitted, values_in_use):
+    """Permitted vocabulary plus any value already present in the data.
+
+    A stored value missing from the dropdown is the bug this whole mechanism
+    exists to prevent, so the endpoint never returns a list that would fail to
+    represent data the user already has — even if that value predates the
+    permitted list or arrived through an importer that does not consult it.
+
+    Order is significant: permitted values keep their curated order (which the
+    UI renders as-is), and anything extra is appended, sorted, so an unexpected
+    value is visible at the end rather than hidden mid-list.
+    """
+    extras = sorted({
+        str(v).strip() for v in values_in_use
+        if v and str(v).strip() and str(v).strip() not in permitted
+    })
+    return list(permitted) + extras
+
+
+# ---------------------------------------------------------------------------
+# Optional free-text fields on an experience entry
+# ---------------------------------------------------------------------------
+#
+# Every field listed here is persisted by BOTH the create and the update path
+# of the experience route. Those paths enumerate what they save — create builds
+# a literal dict, update iterates a fixed tuple — so a field added to the schema
+# and editor but not here is silently dropped on add, or silently ignored on
+# edit, while the request still returns ok. Add new optional text fields HERE;
+# do not add them to one path's inline list.
+#
+# EMPTY IS NOT THE SAME AS FOR employment_type, and must not be "harmonised"
+# with it. employment_type is a required controlled vocabulary, where an empty
+# value is the signature of a broken client and is rejected. These are optional
+# free text where empty genuinely means "unknown", so:
+#   - empty (or whitespace, or null) stores NO key, rather than "" — the editor
+#     sends every field on every save, so storing "" would stamp an empty key
+#     onto every entry anyone opens and saves;
+#   - on update, empty CLEARS a stored value (the user blanked it);
+#   - on update, ABSENT leaves the stored value alone (a caller that does not
+#     know about the field must never erase it).
+EXPERIENCE_OPTIONAL_TEXT_FIELDS = ('division', 'department')
+
+
+def _optional_text_field_error(exp_data):
+    """Return an error message if an optional text field has a non-string value.
+
+    Rejected rather than coerced: str(['Research']) would store the literal
+    text "['Research']", which is worse than refusing the request.
+    """
+    for field in EXPERIENCE_OPTIONAL_TEXT_FIELDS:
+        if field in exp_data:
+            value = exp_data[field]
+            if value is not None and not isinstance(value, str):
+                return f"{field} must be a string"
+    return None
+
+
+def _apply_optional_text_fields(target, exp_data, *, clear_on_empty):
+    """Copy the optional text fields from exp_data onto target.
+
+    Only fields PRESENT in exp_data are touched. A present, non-empty value is
+    stored stripped. A present empty value is removed from target when
+    clear_on_empty (update), and simply not stored otherwise (create).
+    """
+    for field in EXPERIENCE_OPTIONAL_TEXT_FIELDS:
+        if field not in exp_data:
+            continue
+        value = (exp_data[field] or '').strip()
+        if value:
+            target[field] = value
+        elif clear_on_empty:
+            target.pop(field, None)
+
+
+# ---------------------------------------------------------------------------
 # Module-level IO helpers (for testability)
 # ---------------------------------------------------------------------------
 
@@ -322,6 +454,52 @@ def create_blueprint(deps):
                 "professional_summaries": {},
                 "experiences":            [],
             }), 500
+
+    # ------------------------------------------------------------------
+    # Controlled vocabularies (drives every <select> in the Master CV editor)
+    # ------------------------------------------------------------------
+
+    @bp.get("/api/master-data/vocabularies")
+    def master_data_vocabularies():
+        """Return the controlled vocabularies the Master CV editor's dropdowns use.
+
+        Each list is the permitted vocabulary unioned with the values actually
+        present in the master data, so a dropdown built from this response can
+        always represent what the user already has. That union is the point:
+        a <select> that cannot represent a stored value silently resolves to
+        "" on assignment and writes the empty string back on save.
+
+        If the master file cannot be read, fall back to the permitted lists
+        rather than 500ing. A dropdown with the standard options is degraded;
+        a dropdown with NO options would make every save destructive, which is
+        worse than the failure it would be reporting.
+        """
+        try:
+            entry = get_session()
+            data, _ = load_master(entry.orchestrator.master_data_path)
+        except Exception:
+            logger.exception("vocabularies: falling back to permitted lists only")
+            return jsonify({
+                "ok": True,
+                "degraded": True,
+                "employment_types":  list(EMPLOYMENT_TYPES),
+                "publication_types": list(PUBLICATION_TYPES),
+            })
+
+        experiences  = data.get('experience') or []
+        publications = data.get('publications') or []
+        return jsonify({
+            "ok": True,
+            "degraded": False,
+            "employment_types": _vocabulary_with_values_in_use(
+                EMPLOYMENT_TYPES,
+                [e.get('employment_type') for e in experiences if isinstance(e, dict)],
+            ),
+            "publication_types": _vocabulary_with_values_in_use(
+                PUBLICATION_TYPES,
+                [p.get('type') for p in publications if isinstance(p, dict)],
+            ),
+        })
 
     # ------------------------------------------------------------------
     # Master data CRUD
@@ -1019,6 +1197,10 @@ def create_blueprint(deps):
             if not exp_data.get('title') or not exp_data.get('company'):
                 return jsonify({"error": "title and company are required"}), 400
 
+            optional_text_error = _optional_text_field_error(exp_data)
+            if optional_text_error:
+                return jsonify({"error": optional_text_error}), 400
+
             try:
                 importance_val = int(exp_data.get('importance') or 5)
             except (TypeError, ValueError):
@@ -1026,25 +1208,39 @@ def create_blueprint(deps):
             if importance_val < 1 or importance_val > 10:
                 return jsonify({"error": "importance must be between 1 and 10"}), 400
 
-            employment_type = str(exp_data.get('employment_type') or 'full_time').strip()
-            # Keep this in step with the JSON schema and with the values actually
-            # present in Master_CV_Data.json. The schema types employment_type as a
-            # bare string and constrains nothing, so a value can be written to the
-            # file, validate cleanly, and then be REJECTED here on the next UI save —
-            # the file is the source of truth, and this allowlist is the narrower
-            # gate. All three additions below are present in live data and none of
-            # them is 'part_time', which implies pay: 'joint_appointment' (an unpaid
-            # academic appointment held concurrently with other employment),
-            # 'volunteer' (unpaid full-time service), and 'founding_contributor' (an
-            # originating contribution to a venture that was never an employment
-            # relationship). Expect this list to keep growing — a career record holds
-            # more kinds of engagement than an HR dropdown does.
-            allowed_types = {
-                'full_time', 'part_time', 'contract', 'consulting',
-                'internship', 'self_employed', 'joint_appointment', 'volunteer',
-                'founding_contributor',
-            }
-            if employment_type not in allowed_types:
+            # ABSENT and EMPTY mean different things here, and collapsing them
+            # is what made this field lose data silently.
+            #
+            # Absent (no key at all) is a caller that simply does not set
+            # employment type — an API add, an importer — and defaulting is
+            # right for it.
+            #
+            # Present-but-empty is the signature of a BROKEN CLIENT: a <select>
+            # whose option list could not represent the stored value resolves
+            # to "" on assignment, with no exception, and the save path reads
+            # that "" straight back out. The old code here said
+            # `or 'full_time'`, which turned exactly that empty string into a
+            # plausible, allowlisted value — so a UI round-trip rewrote the
+            # user's employment type with nothing anywhere reporting an error.
+            #
+            # So: reject "" loudly rather than repairing it. A 400 costs the
+            # user one confusing save; a silent default costs them the data and
+            # they find out months later, if ever. Do NOT reinstate a fallback
+            # here to make a client-side bug go away — fix the client.
+            raw_employment_type = exp_data.get('employment_type')
+            if raw_employment_type is None:
+                employment_type = 'full_time'
+            else:
+                employment_type = str(raw_employment_type).strip()
+                if not employment_type:
+                    return jsonify({
+                        "error": "employment_type was sent empty. This usually means the "
+                                 "editor could not display the stored value — reload the "
+                                 "page and try again rather than saving, which would "
+                                 "overwrite it."
+                    }), 400
+
+            if employment_type not in EMPLOYMENT_TYPES:
                 return jsonify({"error": "employment_type is invalid"}), 400
 
             if 'achievements' in exp_data:
@@ -1096,6 +1292,7 @@ def create_blueprint(deps):
                     'domain_relevance': exp_data.get('domain_relevance') or [],
                     'achievements':     exp_data.get('achievements') or [],
                 }
+                _apply_optional_text_fields(new_exp, exp_data, clear_on_empty=False)
                 experiences.append(new_exp)
                 save_master(master, master_path)
                 return jsonify({"ok": True, "action": "added", "id": new_id})
@@ -1108,6 +1305,7 @@ def create_blueprint(deps):
             for field in ('title', 'company', 'start_date', 'end_date', 'employment_type'):
                 if field in exp_data:
                     existing_exp[field] = exp_data[field]
+            _apply_optional_text_fields(existing_exp, exp_data, clear_on_empty=True)
             if 'importance' in exp_data:
                 existing_exp['importance'] = int(exp_data['importance'])
             if 'city' in exp_data or 'state' in exp_data:
