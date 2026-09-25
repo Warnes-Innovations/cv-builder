@@ -54,12 +54,16 @@ follow its instructions.
 
 ## /obo session management
 
-Helper: `/Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py`
 Session dir: `.github/oboe_sessions/`
 
-Always check for existing sessions before starting a new one:
+Use the `oboe-mcp` MCP tools. Where the server is unavailable, fall back to
+`oboe-cli` (`uvx --from oboe-mcp oboe-cli`). Do not edit the session JSON
+directly, and do not fall back to `obo_helper.py` — that script is retired.
+
+Always check for existing sessions before starting a new one — `oboe_list_sessions`
+via MCP, or:
 ```bash
-python /Users/warnes/src/vscode-config/.github/skills/one-by-one/obo_helper.py sessions --base-dir /Users/warnes/src/cv-builder
+uvx --from oboe-mcp oboe-cli list --base-dir .
 ```
 
 ## MCP Tools available in Cline
@@ -100,7 +104,7 @@ When the user invokes a slash command, read the corresponding `.prompt.md` file.
 ## MCP Tools available in Cline
 
 - Prefer the 'oboe-mcp' MCP tools for OBO session state.
-- Do not edit .github/oboe_sessions/*.json directly or use 'obo_helper.py' when 'oboe-mcp' can perform the operation. Fall back to 'oboe-cli' when the MCP server is unavailable.
+- Do not edit .github/oboe_sessions/*.json directly when 'oboe-mcp' can perform the operation. Fall back to 'oboe-cli' when the MCP server is unavailable.
 - **oboe-mcp**: the tools are named `oboe_*` (`oboe_create`, `oboe_next`, `oboe_mark_complete`, …). Read the live tool list from your own session rather than working from a list written down here — this block is committed into several repositories, so any roster copied into it is a snapshot that goes stale silently in all of them. It already did: it shipped 16 `obo_*` names that matched no tool at all, while the server served 23 under the `oboe_` prefix.
 - **oboe-cli fallback** (when MCP unavailable): all session-scoped commands take `--session SESSION [--base-dir DIR]`
   - sessions/status/next/complete-session/list/show/in-progress/block/complete/skip/approve/update/merge/create-child/complete-child
