@@ -5,7 +5,7 @@
 #          to avoid macOS compilation issues). Includes LLM API clients.
 #
 # EXECUTION ORDER (local conda setup):
-#   1. conda create -n cvgen python=3.9 spacy language-tool-python -c conda-forge --override-channels -y
+#   1. conda create -n cvgen python=3.12 spacy language-tool-python -c conda-forge --override-channels -y
 #   2. conda activate cvgen
 #   3. pip install -r scripts/requirements-conda.txt
 #
@@ -56,7 +56,7 @@ flask>=2.3.0
 
 # CLI & MCP
 click>=8.0
-mcp>=1.8
+mcp>=2.0,<3
 
 # HTML/Template Processing
 jinja2>=3.1.2

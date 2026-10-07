@@ -1,7 +1,7 @@
 # requirements.txt — CV Builder dependencies for CI and pure-pip environments
 #
 # PURPOSE: Full dependency list including ALL packages. Used by GitHub Actions
-#          workflows (pip-only, no conda). Includes spacy and blis which are
+#          workflows (pip-only, no conda). Includes spacy (which pulls in blis), which are
 #          installed via conda-forge in the local dev environment.
 #
 # EXECUTION ORDER (CI / pure-pip):
@@ -28,7 +28,6 @@ mammoth>=1.6.0
 # Text Processing & NLP
 transformers>=4.30.0
 spacy>=3.6.0
-blis==0.7.9
 nltk>=3.8
 language-tool-python>=3.3.0
 
@@ -71,7 +70,7 @@ psycopg2-binary>=2.9.0
 
 # CLI & MCP
 click>=8.0
-mcp>=1.8
+mcp>=2.0,<3
 
 # Environment
 python-dotenv>=1.0.0

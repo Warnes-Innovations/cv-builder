@@ -51,7 +51,7 @@ from typing import Any, Dict, List, Optional, Union
 # Ensure the scripts/ directory is importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from utils.agent_bridge import (
     InvalidResultError,
@@ -74,10 +74,10 @@ logging.basicConfig(
 logger = logging.getLogger("cv_mcp")
 
 # ---------------------------------------------------------------------------
-# FastMCP application
+# MCPServer application (MCP Python SDK 2.x; was FastMCP in 1.x)
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("cv-builder")
+mcp = MCPServer("cv-builder")
 
 # ---------------------------------------------------------------------------
 # In-process session cache — LRU with TTL
