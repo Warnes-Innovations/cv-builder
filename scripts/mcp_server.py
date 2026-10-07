@@ -45,6 +45,7 @@ import os
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -239,8 +240,14 @@ def session_new() -> Dict[str, Any]:
     """
     session = HeadlessSession(provider=_effective_provider(), model=_effective_model())
     sf = session.save()
-    if session.session_id:
-        _sessions.put(session.session_id, session)
+    # save() deliberately skips a session with no job description, and the id
+    # is otherwise assigned only on first save — so without this, session_new
+    # returns session_id=None and no later tool can address the session.
+    # Assign it now and keep the session in the cache; the first save after
+    # job_submit_* persists it under this same id.
+    if not session.session_id:
+        session._manager.session_id = uuid.uuid4().hex
+    _sessions.put(session.session_id, session)
     return {
         "ok":           True,
         "session_id":   session.session_id,
