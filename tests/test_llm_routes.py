@@ -508,5 +508,81 @@ class TestHeadlessSessionFromConversationManager(unittest.TestCase):
         self.assertIsNone(hs._model)
 
 
+class TestHeadlessRewritePrompt(unittest.TestCase):
+
+    def test_prepare_rewrite_returns_prompt_bundle_and_restores_clients(self):
+        from types import SimpleNamespace
+        from utils.headless_session import HeadlessSession
+
+        original_manager_llm = object()
+        original_orchestrator_llm = object()
+        manager = SimpleNamespace(
+            config=None,
+            llm=original_manager_llm,
+            state={
+                "job_analysis": {
+                    "ats_keywords": ["data pipelines"],
+                    "required_skills": ["Python"],
+                    "domain": "data science",
+                },
+                "customizations": {"summary": "Raw session customization."},
+                "experience_decisions": {"exp_001": "include"},
+                "approved_rewrites": [],
+                "spell_audit": [],
+                "max_skills": 8,
+            },
+            conversation_history=[],
+        )
+        render_ready_content = {
+            "summary": "Render-ready summary from selected CV data.",
+            "experiences": [],
+            "skills": [],
+        }
+        build_render_ready_content = MagicMock(return_value=render_ready_content)
+        orchestrator = SimpleNamespace(
+            llm=original_orchestrator_llm,
+            master_data={"selected_achievements": []},
+            build_render_ready_content=build_render_ready_content,
+        )
+        session = HeadlessSession.from_conversation_manager(manager, orchestrator)
+
+        bundle = session.prepare_llm_call(OperationType.REWRITE)
+
+        self.assertEqual(bundle.operation, OperationType.REWRITE)
+        self.assertEqual(bundle.context_hint, "Propose CV text rewrites")
+        self.assertIn("Propose targeted text rewrites", bundle.messages[-1]["content"])
+        self.assertIn(
+            "Render-ready summary from selected CV data.",
+            bundle.messages[-1]["content"],
+        )
+        self.assertNotIn("Raw session customization.", bundle.messages[-1]["content"])
+        build_render_ready_content.assert_called_once()
+        self.assertEqual(
+            build_render_ready_content.call_args.args[1]["recommended_experiences"],
+            ["exp_001"],
+        )
+        self.assertEqual(
+            build_render_ready_content.call_args.kwargs,
+            {
+                "approved_rewrites": [],
+                "spell_audit": [],
+                "max_skills": 8,
+                "use_semantic_match": False,
+            },
+        )
+        self.assertIs(manager.llm, original_manager_llm)
+        self.assertIs(orchestrator.llm, original_orchestrator_llm)
+
+    def test_provider_error_still_returns_empty_rewrite_list(self):
+        from utils.agent_bridge import PassthroughLLMClient
+
+        client = PassthroughLLMClient()
+        with patch.object(client, "chat", side_effect=RuntimeError("provider failed")):
+            with self.assertWarns(UserWarning):
+                result = client.propose_rewrites({}, {"ats_keywords": []})
+
+        self.assertEqual(result, [])
+
+
 if __name__ == "__main__":
     unittest.main()

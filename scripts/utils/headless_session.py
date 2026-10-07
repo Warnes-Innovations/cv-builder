@@ -55,6 +55,7 @@ from .config import get_config
 from .conversation_manager import ConversationManager
 from .cv_orchestrator import CVOrchestrator
 from .llm_client import get_llm_provider
+from .session_data_view import SessionDataView
 
 logger = logging.getLogger(__name__)
 
@@ -345,10 +346,22 @@ class HeadlessSession:
                 raise ValueError(
                     "No job analysis in session.  Complete JOB_ANALYSIS first."
                 )
-            customizations = state.get("customizations") or {}
+            customizations = SessionDataView(
+                self._orchestrator.master_data,
+                state,
+                state.get("customizations"),
+            ).materialize_generation_customizations()
+            content = self._orchestrator.build_render_ready_content(
+                job_analysis,
+                customizations,
+                approved_rewrites=state.get("approved_rewrites") or [],
+                spell_audit=state.get("spell_audit") or [],
+                max_skills=state.get("max_skills"),
+                use_semantic_match=False,
+            )
             passthrough.set_context(operation, context_hint="Propose CV text rewrites")
             passthrough.propose_rewrites(
-                content=customizations,
+                content=content,
                 job_analysis=job_analysis,
                 conversation_history=self._manager.conversation_history,
                 user_preferences=kwargs.get("user_preferences"),

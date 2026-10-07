@@ -349,6 +349,22 @@ describe('renderRewritePanel', () => {
     expect(document.getElementById('document-content').textContent).toContain('this application only')
     expect(document.getElementById('document-content').textContent).toContain('Update Master CV')
   })
+
+  it('shows source evidence separately from an added bullet', () => {
+    renderRewritePanel([{
+      id: 'rw-add-1',
+      type: 'bullet_add',
+      location: 'exp_001.achievements',
+      original: 'Built a model to predict trial outcomes',
+      proposed: 'Predicted trial outcomes with a custom model',
+    }], [])
+
+    const card = document.getElementById('rw-card-rw-add-1')
+    expect(card.textContent).toContain('Source bullet')
+    expect(card.textContent).toContain('Built a model to predict trial outcomes')
+    expect(card.textContent).toContain('New bullet')
+    expect(card.textContent).toContain('Predicted trial outcomes with a custom model')
+  })
 })
 
 describe('fetchAndReviewRewrites', () => {
