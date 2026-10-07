@@ -1786,6 +1786,19 @@ For manual generation:
             proposed = item.get('proposed', '')
             kind     = item.get('type', '')
             item_id  = item.get('id', '<unknown>')
+            evidence = item.get('evidence')
+
+            if kind == 'bullet_add' and not (
+                isinstance(loc, str)
+                and isinstance(original, str)
+                and isinstance(proposed, str)
+                and isinstance(evidence, str)
+            ):
+                logger.warning(
+                    "apply_approved_rewrites: invalid bullet_add field types (id=%r)",
+                    item_id,
+                )
+                continue
 
             # Guard: validate constraint — skip if numbers/dates/names lost.
             if not LLMClient.apply_rewrite_constraints(original, proposed):
@@ -1846,6 +1859,92 @@ For manual generation:
                         "apply_approved_rewrites: experience %r not found (id=%r)",
                         exp_id, item_id
                     )
+
+            elif kind == 'bullet_add':
+                target_match = re.match(r'^([^.]+)\.achievements$', loc)
+                source_match = re.match(
+                    r'^([^.]+)\.achievements\[(\d+)\]$', evidence
+                )
+                new_text = proposed.strip()
+                if (
+                    not target_match
+                    or not source_match
+                    or target_match.group(1) != source_match.group(1)
+                    or not original.strip()
+                    or not new_text
+                ):
+                    logger.warning(
+                        "apply_approved_rewrites: invalid bullet_add evidence "
+                        "(location=%r, evidence=%r, id=%r)",
+                        loc, item.get('evidence'), item_id,
+                    )
+                    continue
+
+                exp_id = target_match.group(1)
+                exp = next(
+                    (
+                        candidate
+                        for candidate in result.get('experiences', [])
+                        if candidate.get('id') == exp_id
+                    ),
+                    None,
+                )
+                if exp is None:
+                    logger.warning(
+                        "apply_approved_rewrites: experience %r not found (id=%r)",
+                        exp_id, item_id
+                    )
+                    continue
+
+                achievements = exp.get('achievements')
+                try:
+                    source_idx = int(source_match.group(2))
+                except ValueError:
+                    logger.warning(
+                        "apply_approved_rewrites: invalid bullet_add index "
+                        "(evidence=%r, id=%r)",
+                        item.get('evidence'), item_id,
+                    )
+                    continue
+                if (
+                    not isinstance(achievements, list)
+                    or source_idx >= len(achievements)
+                ):
+                    logger.warning(
+                        "apply_approved_rewrites: bullet_add source not found "
+                        "(evidence=%r, id=%r)",
+                        item.get('evidence'), item_id,
+                    )
+                    continue
+
+                source = achievements[source_idx]
+                if isinstance(source, dict):
+                    source_text = source.get('text')
+                elif isinstance(source, str):
+                    source_text = source
+                else:
+                    source_text = None
+                if (
+                    not isinstance(source_text, str)
+                    or source_text.strip() != original.strip()
+                ):
+                    logger.warning(
+                        "apply_approved_rewrites: bullet_add source mismatch "
+                        "(evidence=%r, id=%r)",
+                        item.get('evidence'), item_id,
+                    )
+                    continue
+
+                existing_texts = {
+                    (
+                        str(achievement.get('text') or '')
+                        if isinstance(achievement, dict)
+                        else str(achievement)
+                    ).strip().casefold()
+                    for achievement in achievements
+                }
+                if new_text.casefold() not in existing_texts:
+                    achievements.append({'text': new_text})
 
             elif kind == 'skill_rename':
                 skills  = result.get('skills', [])

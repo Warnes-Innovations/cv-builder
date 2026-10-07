@@ -40,6 +40,10 @@ _M = TypeVar("_M", bound=BaseModel)
 
 # ── Typed LLM error hierarchy ─────────────────────────────────────────────────
 
+class _LLMControlFlow(Exception):
+    """Internal control signals that LLM helpers must not convert to fallbacks."""
+
+
 class LLMError(RuntimeError):
     """Base class for all LLM provider errors. Carries provider name and original exception."""
     def __init__(self, message: str, provider: str = '', original: Optional[Exception] = None):
@@ -1974,19 +1978,26 @@ Return ONLY a JSON array — no prose, no markdown fences.
             '{\n'
             '  "id":                  "<unique label, e.g. \'summary\', '
             '\'bullet_exp001_0\', \'skill_3\'>",\n'
-            '  "type":                "summary" | "bullet" | "skill_rename" | "skill_add",\n'
+            '  "type":                "summary" | "bullet" | "bullet_add" | "skill_rename" | "skill_add",\n'
             '  "location":            "<path, e.g. \'summary\', '
-            '\'exp_001.achievements[2]\', \'skills.core[1]\'>",\n'
+            '\'exp_001.achievements[2]\', \'exp_001.achievements\', '
+            '\'skills.core[1]\'>",\n'
             '  "original":            "<exact original text>",\n'
             '  "proposed":            "<proposed replacement text>",\n'
             '  "keywords_introduced": ["<kw1>", "<kw2>"],\n'
-            '  "evidence":            "<comma-separated exp IDs, skill_add only>",\n'
+            '  "evidence":            "<source bullet path for bullet_add; '
+            'comma-separated exp IDs for skill_add>",\n'
             '  "evidence_strength":   "strong" | "weak",\n'
             '  "rationale":           "<one sentence covering: (1) the ATS keyword(s) '
             'introduced and (2) how the proposed wording satisfies or trades off the '
             'quality criteria above — e.g. \'Replaces passive phrase with active verb '
             '\\\"Led\\\"; introduces keyword \\\"bioinformatics\\\">"\n'
             '}\n\n'
+            'For bullet_add, location must be "exp_ID.achievements"; evidence '
+            'must identify a source bullet in that same experience as '
+            '"exp_ID.achievements[index]"; original must exactly match that '
+            'source. Add a bullet only when it states a distinct fact already '
+            'present in the source, without inventing details.\n'
             'Only propose rewrites where keyword alignment genuinely improves ATS '
             'scoring.  Return [] if no meaningful changes are needed.\n'
             'Return ONLY the JSON array, with no surrounding prose or markdown '
@@ -2021,6 +2032,8 @@ Return ONLY a JSON array — no prose, no markdown fences.
                         f"(id={item.get('id')!r})"
                     )
             return valid
+        except _LLMControlFlow:
+            raise
         except Exception as exc:
             warnings.warn(
                 f"propose_rewrites: failed to produce proposals: {exc}"

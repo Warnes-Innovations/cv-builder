@@ -1465,6 +1465,89 @@ class TestApplyApprovedRewrites(unittest.TestCase):
             "Improved accuracy from 85% to 96% using ensemble methods",
         )
 
+    def test_bullet_add_requires_exact_source_and_appends_once(self):
+        approved = [
+            {
+                "id": "bullet_add_exp001_0",
+                "type": "bullet_add",
+                "location": "exp_001.achievements",
+                "evidence": "exp_001.achievements[0]",
+                "original": "Built a model to predict clinical trial outcomes",
+                "proposed": "Predicted clinical trial outcomes with a custom model",
+            }
+        ]
+
+        once = self._apply(approved)
+        twice = self.orch.apply_approved_rewrites(once, approved)
+
+        achievements = twice["experiences"][0]["achievements"]
+        self.assertEqual(len(achievements), 3)
+        self.assertEqual(
+            achievements[-1]["text"],
+            "Predicted clinical trial outcomes with a custom model",
+        )
+        self.assertEqual(
+            len(_REWRITE_CONTENT["experiences"][0]["achievements"]),
+            2,
+        )
+
+    def test_bullet_add_rejects_mismatched_evidence(self):
+        approved = [
+            {
+                "id": "bullet_add_bad_evidence",
+                "type": "bullet_add",
+                "location": "exp_001.achievements",
+                "evidence": "exp_001.achievements[1]",
+                "original": "Built a model to predict clinical trial outcomes",
+                "proposed": "Predicted clinical trial outcomes with a custom model",
+            }
+        ]
+
+        result = self._apply(approved)
+
+        self.assertEqual(
+            result["experiences"][0]["achievements"],
+            _REWRITE_CONTENT["experiences"][0]["achievements"],
+        )
+
+    def test_bullet_add_rejects_null_evidence(self):
+        approved = [
+            {
+                "id": "bullet_add_null_evidence",
+                "type": "bullet_add",
+                "location": "exp_001.achievements",
+                "evidence": None,
+                "original": "Built a model to predict clinical trial outcomes",
+                "proposed": "Predicted clinical trial outcomes with a custom model",
+            }
+        ]
+
+        result = self._apply(approved)
+
+        self.assertEqual(
+            result["experiences"][0]["achievements"],
+            _REWRITE_CONTENT["experiences"][0]["achievements"],
+        )
+
+    def test_bullet_add_rejects_non_text_source(self):
+        content = {
+            "experiences": [{"id": "exp_001", "achievements": [123]}],
+        }
+        approved = [
+            {
+                "id": "bullet_add_non_text_source",
+                "type": "bullet_add",
+                "location": "exp_001.achievements",
+                "evidence": "exp_001.achievements[0]",
+                "original": "123",
+                "proposed": "123 improved outcomes",
+            }
+        ]
+
+        result = self.orch.apply_approved_rewrites(content, approved)
+
+        self.assertEqual(result["experiences"][0]["achievements"], [123])
+
     # ── 2.2.6 (b) skill rename ───────────────────────────────────────────
 
     def test_skill_rename_updates_name(self):

@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Generator, List, Optional, Union
 
-from .llm_client import LLMClient
+from .llm_client import LLMClient, _LLMControlFlow
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,8 @@ _SCHEMAS: Dict[OperationType, Dict[str, Any]] = {
                 "original":            {"type": "string"},
                 "proposed":            {"type": "string"},
                 "keywords_introduced": {"type": "array"},
+                "evidence":            {"type": "string"},
+                "evidence_strength":   {"type": "string"},
                 "rationale":           {"type": "string"},
             },
         },
@@ -224,7 +226,8 @@ _INSTRUCTIONS: Dict[OperationType, str] = {
     OperationType.REWRITE: (
         "Propose CV text rewrites that align terminology with job keywords.  "
         "Return a JSON array matching output_schema.  Each item must include id, type, "
-        "location, original, proposed, keywords_introduced, and rationale.  "
+        "location, original, proposed, keywords_introduced, evidence, "
+        "evidence_strength, and rationale.  "
         "Return ONLY raw JSON."
     ),
     OperationType.SPELL_CHECK: (
@@ -310,7 +313,7 @@ class PromptBundle:
 # Exceptions
 # ---------------------------------------------------------------------------
 
-class PromptBundleReady(Exception):
+class PromptBundleReady(_LLMControlFlow):
     """Raised by :class:`PassthroughLLMClient` when a prompt bundle is ready.
 
     The caller catches this, serialises ``bundle`` as JSON, sends it to the

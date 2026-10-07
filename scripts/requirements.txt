@@ -71,7 +71,7 @@ psycopg2-binary>=2.9.0
 
 # CLI & MCP
 click>=8.0
-mcp>=1.8
+mcp>=1.8,<2
 
 # Environment
 python-dotenv>=1.0.0
