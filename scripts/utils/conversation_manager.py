@@ -2150,17 +2150,23 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 return True
         return False
 
-    def save_session(self):
+    def save_session(self, force: bool = False):
         """Public alias for _save_session."""
-        self._save_session()
+        self._save_session(force=force)
 
-    def _save_session(self):
-        """Save conversation session."""
+    def _save_session(self, force: bool = False):
+        """Save conversation session.
+
+        ``force=True`` writes the session even when it is still empty.  Use it
+        only when the caller must hand out a session id that another process
+        will look up on disk (``cv-cli session new``); every other caller keeps
+        the default so empty pending_ folders are not created.
+        """
         try:
             # Don't create a pending_ folder if the session has no meaningful content yet.
             # A session with no job_description and no existing directory is an empty
             # in-memory shell — there's nothing worth persisting to disk.
-            if not self.session_dir and not self.state.get('job_description'):
+            if not force and not self.session_dir and not self.state.get('job_description'):
                 logger.debug(
                     "_save_session: skipping (no session_dir and no job_description)"
                 )

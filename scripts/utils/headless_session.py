@@ -190,8 +190,14 @@ class HeadlessSession:
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
-    def save(self) -> Optional[str]:
+    def save(self, force: bool = False) -> Optional[str]:
         """Save the session to disk.
+
+        Parameters
+        ----------
+        force:
+            Persist even an empty session (no job description yet), so its
+            ``session_id`` can be looked up by a later process.
 
         Returns
         -------
@@ -199,7 +205,7 @@ class HeadlessSession:
             Absolute path to the saved ``session.json``, or ``None`` if the
             session was empty and ``_save_session`` skipped it.
         """
-        self._manager.save_session()
+        self._manager.save_session(force=force)
         if self._manager.session_dir:
             return str(self._manager.session_dir / "session.json")
         return None
