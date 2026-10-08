@@ -747,6 +747,10 @@ function _hydrateStatusTabState(statusData) {
 
   stateManager.setTabData('analysis', hasAnalysis ? statusData.job_analysis : null);
   stateManager.setTabData('customizations', hasCustomizations ? statusData.customizations : null);
+  // The server's EFFECTIVE citizenship decision (explicit choice, else on only
+  // for federal variants). The layout checkbox displays this rather than
+  // re-deriving the federal rule client-side, so the two cannot disagree.
+  stateManager.setTabData('citizenshipEffective', statusData.show_citizenship === true);
   stateManager.setTabData('cv', hasGeneratedFiles ? statusData.generated_files : null);
   window.pendingRecommendations = hasCustomizations ? statusData.customizations : null;
 

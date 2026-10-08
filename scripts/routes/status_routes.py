@@ -25,6 +25,7 @@ import yaml
 
 from utils.app_identity import get_app_version, is_testing_server
 from utils.config import get_config
+from utils.cv_orchestrator import CVOrchestrator
 from utils.llm_client import PROVIDER_MODELS
 from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
@@ -796,6 +797,14 @@ def create_blueprint(deps):
             notes=session_notes,
             testing=is_testing_server(),
             version=get_app_version(),
+            # The EFFECTIVE decision, from the same gate the renderers use, so
+            # the checkbox cannot disagree with the CV. Called on the CLASS:
+            # it is a pure function of the customizations. Do not call it
+            # through the session's orchestrator — that object can be None, a
+            # test fake without the method, or a mock whose return value is
+            # not JSON-serialisable, and each of those broke this route.
+            show_citizenship=CVOrchestrator._should_show_citizenship(
+                conversation.state.get("customizations")),
         )))
 
     @bp.get("/api/context-stats")

@@ -146,6 +146,12 @@ class StatusResponse:
     # session. See utils/app_identity.py for why `testing` must default False.
     testing: bool = False
     version: str = UNKNOWN_VERSION
+    # Whether citizenship will ACTUALLY be printed on this session's CV — the
+    # effective result of CVOrchestrator._should_show_citizenship, i.e. the
+    # explicit choice if the user made one, else on only for federal variants.
+    # Served so the layout panel's checkbox shows what the CV will do, without
+    # a second copy of the federal-variant rule in JavaScript.
+    show_citizenship: bool = False
 
 
 @dataclass

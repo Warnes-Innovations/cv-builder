@@ -387,10 +387,20 @@ class CVOrchestrator:
         if not isinstance(customizations, dict):
             return False
         explicit = customizations.get("include_citizenship")
-        if explicit is not None:
-            # An explicit choice wins in BOTH directions, so a federal variant
-            # can still be told to leave it off.
-            return bool(explicit)
+        # An explicit choice wins in BOTH directions, so a federal variant can
+        # still be told to leave it off. Parsed rather than bool()-ed: the value
+        # comes from a UI checkbox, and bool("false") is True — that would PRINT
+        # citizenship on an application where the user had switched it off.
+        # Anything unrecognised (None, "", another type) is "no explicit
+        # choice" and falls through to the variant default below.
+        if isinstance(explicit, bool):
+            return explicit
+        if isinstance(explicit, str):
+            word = explicit.strip().lower()
+            if word in cls._TRUTHY_OPTION_STRINGS:
+                return True
+            if word in cls._FALSY_OPTION_STRINGS:
+                return False
         variant = (
             customizations.get("selected_summary_key")
             or customizations.get("summary_focus_override")
@@ -399,6 +409,7 @@ class CVOrchestrator:
         return str(variant).strip() in cls.CITIZENSHIP_DEFAULT_VARIANTS
 
     _TRUTHY_OPTION_STRINGS = frozenset({'true', '1', 'yes', 'on'})
+    _FALSY_OPTION_STRINGS = frozenset({'false', '0', 'no', 'off'})
 
     @classmethod
     def _should_show_org_unit(cls, customizations: Optional[Dict]) -> bool:
