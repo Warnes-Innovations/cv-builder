@@ -153,6 +153,13 @@ class _SessionCache:
 
 _sessions = _SessionCache()
 
+# Type for MCP parameters that carry JSON.  Clients may send it as a JSON
+# string OR already decoded (Claude Code decodes JSON-looking arguments), and
+# some payloads are arrays.  Parse every such value with validate_agent_json,
+# which accepts all three.  A bare `str` annotation rejected decoded objects at
+# the MCP validation layer before the tool ran (GitHub #159).
+JSONInput = Union[str, Dict[str, Any], List[Any]]
+
 # Provider/model set via --provider/--model at server startup.  When None the
 # server is in passthrough mode: the calling agent is the LLM and sessions use
 # PassthroughLLMClient.  Do NOT fall back to config.yaml's llm.default_provider
@@ -486,7 +493,7 @@ def analysis_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def analysis_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def analysis_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit fulfilled job analysis JSON.  Validates compliance and advances phase.
 
     Parameters
@@ -519,7 +526,7 @@ def analysis_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict
 @mcp.tool()
 def recommendations_prepare(
     session_id: str,
-    user_preferences: Optional[str] = None,
+    user_preferences: Optional[JSONInput] = None,
 ) -> Dict[str, Any]:
     """Prepare a PromptBundle for CV customization recommendations.
 
@@ -544,6 +551,8 @@ def recommendations_prepare(
                 prefs = validate_agent_json(user_preferences)
             except InvalidResultError:
                 return _error("user_preferences is not valid JSON", error_code="invalid_result")
+            if not isinstance(prefs, dict):
+                return _error("user_preferences must be a JSON object", error_code="invalid_result")
         bundle = session.prepare_llm_call(
             OperationType.RECOMMENDATIONS,
             user_preferences=prefs,
@@ -554,7 +563,7 @@ def recommendations_prepare(
 
 
 @mcp.tool()
-def recommendations_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def recommendations_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit fulfilled recommendations JSON.  Validates and stores customizations.
 
     Parameters
@@ -615,7 +624,7 @@ def summary_prepare(
 
 
 @mcp.tool()
-def summary_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def summary_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit a generated professional summary.
 
     Parameters
@@ -664,7 +673,7 @@ def questions_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def questions_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def questions_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit post-analysis questions from the agent.
 
     Parameters
@@ -714,7 +723,7 @@ def rewrites_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def rewrites_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def rewrites_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit rewrite proposals from the agent.
 
     Parameters
@@ -746,7 +755,7 @@ def rewrites_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict
 
 
 @mcp.tool()
-def rewrites_approve(session_id: str, approved_ids: str) -> Dict[str, Any]:
+def rewrites_approve(session_id: str, approved_ids: JSONInput) -> Dict[str, Any]:
     """Approve a subset of pending rewrite proposals.
 
     Parameters
@@ -801,7 +810,7 @@ def spell_check_prepare(session_id: str, text: Optional[str] = None) -> Dict[str
 
 
 @mcp.tool()
-def spell_check_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def spell_check_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit spell-check corrections.
 
     Parameters
@@ -861,7 +870,7 @@ def persuasion_check_prepare(
 
 
 @mcp.tool()
-def persuasion_check_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def persuasion_check_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit persuasion-quality warnings.
 
     Parameters
@@ -916,7 +925,7 @@ def interview_prep_prepare(session_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def interview_prep_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def interview_prep_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit interview preparation questions.
 
     Parameters
@@ -978,7 +987,7 @@ def cover_letter_prepare(
 
 
 @mcp.tool()
-def cover_letter_submit(session_id: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def cover_letter_submit(session_id: str, result: JSONInput) -> Dict[str, Any]:
     """Submit a generated cover letter.
 
     Parameters
@@ -1029,7 +1038,7 @@ def chat_prepare(session_id: str, message: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def chat_submit(session_id: str, user_message: str, result: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+def chat_submit(session_id: str, user_message: str, result: JSONInput) -> Dict[str, Any]:
     """Store a chat exchange (user message + agent response).
 
     Parameters
@@ -1109,7 +1118,7 @@ def run_analysis(session_id: str) -> Dict[str, Any]:
 @mcp.tool()
 def run_recommendations(
     session_id: str,
-    user_preferences: Optional[str] = None,
+    user_preferences: Optional[JSONInput] = None,
 ) -> Dict[str, Any]:
     """Generate CV recommendations using the server's configured LLM provider.
 
@@ -1134,6 +1143,8 @@ def run_recommendations(
                 prefs = validate_agent_json(user_preferences)
             except InvalidResultError:
                 return _error("user_preferences is not valid JSON", error_code="invalid_result")
+            if not isinstance(prefs, dict):
+                return _error("user_preferences must be a JSON object", error_code="invalid_result")
         session = _get_session(session_id)
         recs    = session.run_with_llm(OperationType.RECOMMENDATIONS, user_preferences=prefs)
         session.save()
@@ -1151,11 +1162,11 @@ def run_recommendations(
 @mcp.tool()
 def decisions_submit(
     session_id: str,
-    experience_decisions: Optional[str] = None,
-    skill_decisions: Optional[str] = None,
-    achievement_decisions: Optional[str] = None,
-    publication_decisions: Optional[str] = None,
-    extra_skills: Optional[str] = None,
+    experience_decisions: Optional[JSONInput] = None,
+    skill_decisions: Optional[JSONInput] = None,
+    achievement_decisions: Optional[JSONInput] = None,
+    publication_decisions: Optional[JSONInput] = None,
+    extra_skills: Optional[JSONInput] = None,
     summary_focus_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Submit user include/exclude decisions for CV content.
@@ -1187,7 +1198,7 @@ def decisions_submit(
     try:
         session = _get_session(session_id)
 
-        def _parse_opt(raw: Optional[str]) -> Optional[Any]:
+        def _parse_opt(raw: Optional[JSONInput]) -> Optional[Any]:
             if raw is None:
                 return None
             return validate_agent_json(raw)
@@ -1304,7 +1315,7 @@ def master_data_read(section: Optional[str] = None) -> Dict[str, Any]:
 def master_data_update_section(
     session_id: str,
     section: str,
-    data: str,
+    data: JSONInput,
 ) -> Dict[str, Any]:
     """Update a top-level section of the master CV data.
 
