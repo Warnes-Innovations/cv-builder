@@ -138,6 +138,13 @@ class _SessionCache:
                 self._cache[session_id] = session
             self._timestamps[session_id] = time.monotonic()
 
+    def pop(self, session_id: str, default: Any = None) -> Any:
+        """Remove and return a cached session, or *default* if absent."""
+        with self._lock:
+            session = self._cache.get(session_id, default)
+            self._evict(session_id)
+            return session
+
     def _evict(self, session_id: str) -> None:
         """Remove an entry (caller must hold lock)."""
         self._cache.pop(session_id, None)
