@@ -146,21 +146,24 @@ class _SessionCache:
 
 _sessions = _SessionCache()
 
-# Optional provider/model overrides set via CLI args on server startup.
-# When None, _effective_provider()/_effective_model() fall back to config.yaml
-# at call time so live changes to config.yaml take effect without a restart.
+# Provider/model set via --provider/--model at server startup.  When None the
+# server is in passthrough mode: the calling agent is the LLM and sessions use
+# PassthroughLLMClient.  Do NOT fall back to config.yaml's llm.default_provider
+# here — that built a real provider client for every passthrough session, which
+# failed when the provider's package was absent and could bill that provider
+# without the agent asking (GitHub #152).
 _DEFAULT_PROVIDER: Optional[str] = None
 _DEFAULT_MODEL:    Optional[str] = None
 
 
 def _effective_provider() -> Optional[str]:
-    """CLI-arg provider override, or config.yaml default read lazily at call time."""
-    return _DEFAULT_PROVIDER or get_config().llm_provider
+    """Provider from --provider, or None for passthrough mode."""
+    return _DEFAULT_PROVIDER
 
 
 def _effective_model() -> Optional[str]:
-    """CLI-arg model override, or config.yaml default read lazily at call time."""
-    return _DEFAULT_MODEL or get_config().llm_model
+    """Model from --model, or None for passthrough mode."""
+    return _DEFAULT_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -238,26 +241,29 @@ def session_new() -> Dict[str, Any]:
     dict
         ``{"session_id": str, "phase": "init", "session_file": str|null}``
     """
-    session = HeadlessSession(provider=_effective_provider(), model=_effective_model())
-    sf = session.save()
-    # save() deliberately skips a session with no job description, and the id
-    # is otherwise assigned only on first save — so without this, session_new
-    # returns session_id=None and no later tool can address the session.
-    # Assign it now and keep the session in the cache; the first save after
-    # job_submit_* persists it under this same id.
-    if not session.session_id:
-        session._manager.session_id = uuid.uuid4().hex
-    _sessions.put(session.session_id, session)
-    return {
-        "ok":           True,
-        "session_id":   session.session_id,
-        "phase":        session.phase,
-        "session_file": sf,
-    }
+    try:
+        session = HeadlessSession(provider=_effective_provider(), model=_effective_model())
+        sf = session.save()
+        # save() deliberately skips a session with no job description, and the id
+        # is otherwise assigned only on first save — so without this, session_new
+        # returns session_id=None and no later tool can address the session.
+        # Assign it now and keep the session in the cache; the first save after
+        # job_submit_* persists it under this same id.
+        if not session.session_id:
+            session._manager.session_id = uuid.uuid4().hex
+        _sessions.put(session.session_id, session)
+        return {
+            "ok":           True,
+            "session_id":   session.session_id,
+            "phase":        session.phase,
+            "session_file": sf,
+        }
+    except Exception as exc:
+        return _error(str(exc))
 
 
 @mcp.tool()
-def session_list() -> List[Dict[str, Any]]:
+def session_list() -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     """List all saved cv-builder sessions.
 
     Returns
@@ -265,8 +271,12 @@ def session_list() -> List[Dict[str, Any]]:
     list of dict
         Each item has ``session_id``, ``phase``, ``position_name``,
         ``session_file``, and ``last_modified`` (UNIX timestamp).
+        On failure, an ``{"ok": false, "error": ...}`` dict instead.
     """
-    return HeadlessSession.list_sessions()
+    try:
+        return HeadlessSession.list_sessions()
+    except Exception as exc:
+        return _error(str(exc))
 
 
 @mcp.tool()
@@ -344,8 +354,11 @@ def session_evict(session_id: str) -> Dict[str, Any]:
     session_id:
         Session to evict from memory.
     """
-    removed = _sessions.pop(session_id, None)
-    return {"ok": True, "evicted": removed is not None}
+    try:
+        removed = _sessions.pop(session_id, None)
+        return {"ok": True, "evicted": removed is not None}
+    except Exception as exc:
+        return _error(str(exc))
 
 
 @mcp.tool()
