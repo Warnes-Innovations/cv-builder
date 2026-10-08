@@ -2144,6 +2144,7 @@ For manual generation:
         max_skills: Optional[int] = None,
         max_achievements: Optional[int] = None,
         max_publications: Optional[int] = None,
+        use_semantic_match: bool = True,
     ) -> Dict:
         """
         Generate CV files based on LLM analysis and recommendations.
@@ -2207,6 +2208,7 @@ For manual generation:
             max_skills=max_skills,
             max_achievements=max_achievements,
             max_publications=max_publications,
+            use_semantic_match=use_semantic_match,
         )
 
         date_overlap_warnings = self._detect_date_overlaps(
@@ -2405,6 +2407,7 @@ For manual generation:
         max_skills: Optional[int] = None,
         max_achievements: Optional[int] = None,
         max_publications: Optional[int] = None,
+        use_semantic_match: bool = True,
     ) -> Dict:
         """Generate HTML preview only — no PDF, no DOCX.
 
@@ -2440,6 +2443,7 @@ For manual generation:
             max_skills=max_skills,
             max_achievements=max_achievements,
             max_publications=max_publications,
+            use_semantic_match=use_semantic_match,
         )
 
         cv_data = self._prepare_cv_data_for_template(

@@ -2489,6 +2489,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         max_skills: Optional[int] = None,
         max_achievements: Optional[int] = None,
         max_publications: Optional[int] = None,
+        use_semantic_match: bool = True,
     ) -> Dict:
         """Generate CV artifacts from the currently loaded session state.
 
@@ -2505,6 +2506,9 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 (no PDF, no ATS DOCX, no human DOCX).  Used by the Alt-A
                 workflow step 6 (Preview).  Final format generation happens
                 at step 8 via POST /api/cv/generate-final.
+            use_semantic_match: When True, score content relevance with the
+                LLM (one call per experience/skill).  Pass False when there
+                is no LLM to call, e.g. MCP passthrough mode.
         """
         has_customizations = bool(self.state.get('customizations'))
         has_decisions = bool(
@@ -2607,6 +2611,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 max_skills=max_skills if max_skills is not None else self.state.get('max_skills'),
                 max_achievements=max_achievements,
                 max_publications=max_publications,
+                use_semantic_match=use_semantic_match,
             )
         else:
             result = self.orchestrator.generate_cv(
@@ -2619,6 +2624,7 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
                 max_skills=max_skills if max_skills is not None else self.state.get('max_skills'),
                 max_achievements=max_achievements,
                 max_publications=max_publications,
+                use_semantic_match=use_semantic_match,
             )
         self.state['generated_files'] = result
         self.state['generation_progress'] = result.get('generation_progress', [])
