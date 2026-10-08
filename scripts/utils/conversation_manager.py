@@ -2580,130 +2580,18 @@ Return ONLY a JSON object with this exact structure — no prose, no markdown fe
         if customizations is None:
             raise ValueError('Please generate customizations first')
 
-        if has_decisions:
-            if exp_decisions:
-                emphasized = [
-                    key for key, value in exp_decisions.items()
-                    if value == 'emphasize'
-                ]
-                included = [
-                    key for key, value in exp_decisions.items()
-                    if value == 'include'
-                ]
-                deemphasized = [
-                    key for key, value in exp_decisions.items()
-                    if value == 'de-emphasize'
-                ]
-                omitted = [
-                    key for key, value in exp_decisions.items()
-                    if value in ('omit', 'exclude')
-                ]
-                customizations['recommended_experiences'] = (
-                    emphasized + included + deemphasized
-                )
-                customizations['omitted_experiences'] = omitted
-
-            if skill_decisions:
-                emphasized = [
-                    key for key, value in skill_decisions.items()
-                    if value == 'emphasize'
-                ]
-                included = [
-                    key for key, value in skill_decisions.items()
-                    if value == 'include'
-                ]
-                deemphasized = [
-                    key for key, value in skill_decisions.items()
-                    if value == 'de-emphasize'
-                ]
-                omitted = [
-                    key for key, value in skill_decisions.items()
-                    if value in ('omit', 'exclude')
-                ]
-                customizations['recommended_skills'] = (
-                    emphasized + included + deemphasized
-                )
-                customizations['omitted_skills'] = omitted
-
-            ach_decisions = self.state.get('achievement_decisions', {})
-            if isinstance(ach_decisions, str):
-                try:
-                    ach_decisions = json.loads(ach_decisions)
-                except Exception:
-                    ach_decisions = {}
-            if ach_decisions:
-                included_achs = [
-                    key for key, value in ach_decisions.items()
-                    if value in ('include', 'emphasize', 'de-emphasize')
-                ]
-                omitted_achs = [
-                    key for key, value in ach_decisions.items()
-                    if value in ('omit', 'exclude')
-                ]
-                customizations['recommended_achievements'] = included_achs
-                customizations['omitted_achievements'] = omitted_achs
-
-            extra_achievements = self.state.get(
-                'accepted_suggested_achievements',
-                [],
-            )
-            if extra_achievements:
-                customizations['extra_achievements'] = extra_achievements
-
-            extra_skills = self.state.get('extra_skills', [])
-            if extra_skills:
-                customizations['extra_skills'] = extra_skills
-
-            base_font_size = self.state.get('base_font_size')
-            if base_font_size:
-                customizations['base_font_size'] = base_font_size
-
-            page_margin = self.state.get('page_margin')
-            if page_margin:
-                customizations['page_margin'] = page_margin
-
-            self.state['customizations'] = customizations
-
-        summary_view = SessionDataView(
+        # Use the same materializer as the web generation routes so every
+        # session-only edit (decisions, achievement_edits, row/bullet order,
+        # publication answers, layout settings) reaches headless/MCP output.
+        # Do not hand-copy individual state keys here: a parallel copy is how
+        # achievement_edits and the "omit publications" answer were silently
+        # dropped (GitHub #155).
+        customizations = SessionDataView(
             self.orchestrator.master_data,
             self.state,
             customizations,
-        )
-        customizations = summary_view.materialize_customizations()
+        ).materialize_generation_customizations()
         self.state['customizations'] = customizations
-
-        achievement_orders = self.state.get('achievement_orders', {})
-        if achievement_orders:
-            customizations['achievement_orders'] = achievement_orders
-
-        experience_row_order = self.state.get('experience_row_order', [])
-        if experience_row_order:
-            customizations['experience_row_order'] = experience_row_order
-        skill_row_order = self.state.get('skill_row_order', [])
-        if skill_row_order:
-            customizations['skill_row_order'] = skill_row_order
-
-        pub_decisions: dict = self.state.get('publication_decisions') or {}
-        if pub_decisions:
-            customizations['accepted_publications'] = [
-                key for key, value in pub_decisions.items()
-                if value not in (False, 'reject', 0)
-            ]
-            customizations['rejected_publications'] = [
-                key for key, value in pub_decisions.items()
-                if value in (False, 'reject', 0)
-            ]
-
-        post_answers = self.state.get('post_analysis_answers') or {}
-        accepted_str = post_answers.get('publication_accepted', '')
-        rejected_str = post_answers.get('publication_rejected', '')
-        if accepted_str or rejected_str:
-            customizations['accepted_publications'] = [
-                key.strip() for key in accepted_str.split(',') if key.strip()
-            ]
-            customizations['rejected_publications'] = [
-                key.strip() for key in rejected_str.split(',') if key.strip()
-            ]
 
         tagline_override = str(self.state.get('tagline_override') or '').strip()
         if tagline_override:
