@@ -3662,17 +3662,28 @@ Include one entry per candidate. Do not omit any candidate."""
         recommended_achievement_ids  = set(customizations.get('recommended_achievements', []))
         recommended_skills           = set(customizations.get('recommended_skills', []))
 
-        # Also honour per-item recommendation dicts (LLM structured output)
+        # Also honour per-item recommendation dicts (LLM structured output), but
+        # ONLY for items the user has not decided.  recommended_*/omitted_* above
+        # carry the user's include/omit decisions; an LLM "Omit" must never undo
+        # a user's include, nor an LLM "Include" a user's omit (GitHub #156).
+        decided_exp_ids     = recommended_exp_ids | omitted_exp_ids
+        decided_skill_names = recommended_skills | omitted_skill_names
         for rec in customizations.get('experience_recommendations', []):
-            if isinstance(rec, dict):
+            if isinstance(rec, dict) and rec.get('id', '') not in decided_exp_ids:
                 if rec.get('recommendation', '').lower() == 'omit':
                     omitted_exp_ids.add(rec.get('id', ''))
                 elif rec.get('recommendation', '').lower() in ('emphasize', 'include', 'de-emphasize'):
                     recommended_exp_ids.add(rec.get('id', ''))
         for rec in customizations.get('skill_recommendations', []):
             if isinstance(rec, dict):
+                # The schema key is `skill` (SkillRecommendation); `name` is a
+                # legacy fallback.  Reading only `name` silently ignored every
+                # LLM skill "Omit".
+                skill_name = rec.get('skill') or rec.get('name') or ''
+                if skill_name in decided_skill_names:
+                    continue
                 if rec.get('recommendation', '').lower() == 'omit':
-                    omitted_skill_names.add(rec.get('name', ''))
+                    omitted_skill_names.add(skill_name)
 
         # Get all content
         all_experiences  = self.master_data.get('experience', [])
