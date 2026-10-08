@@ -2492,6 +2492,20 @@ Acronyms: expand every acronym on first use (e.g., "Applicant Tracking System (A
         return jsonify({'ok': True, 'text': letter_text,
                         'persuasion_warnings': conversation.state.get('cover_letter_persuasion_warnings', [])})
 
+    @bp.get("/api/interview-prep")
+    def interview_prep_get():
+        """Return interview-prep questions already stored in the session.
+
+        The Interview Prep tab calls this on open so questions survive a page
+        reload or session switch, and so questions generated outside the web
+        UI (MCP server, CLI) are shown (GitHub #134).
+        """
+        entry = get_session()
+        validate_owner(entry)
+        with entry.lock:
+            questions = entry.manager.state.get('interview_prep') or []
+        return jsonify({'ok': True, 'questions': questions})
+
     @bp.post("/api/interview-prep/generate")
     def interview_prep_generate():
         """Generate 10 AI interview-prep questions tailored to the role and CV."""
