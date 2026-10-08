@@ -2368,6 +2368,7 @@ For manual generation:
             'rewrite_audit_mismatches': rewrite_audit_mismatches,
             'summary_warnings': selected_content.get('summary_warnings', []),
             'publication_warnings': selected_content.get('publication_warnings', []),
+            'skill_limit_warnings': selected_content.get('skill_limit_warnings', []),
             'ats_validation': {
                 'checks': _ats_checks,
                 'page_count': _ats_page_count,
@@ -3653,8 +3654,10 @@ Include one entry per candidate. Do not omit any candidate."""
             relevance score (Emphasize items first) so the most relevant
             content appears first in the generated document.
         Achievements: same blacklist rule.
-        Skills      : same blacklist rule; LLM-recommended skills are listed
-            first, remaining non-omitted skills follow by score.
+        Skills      : skills the user marked Emphasize/Include are always
+            kept, even past max_skills (a skill_limit_warning is emitted);
+            other recommended skills, then the rest by score, fill up to
+            max_skills.
         """
         # IDs/names explicitly omitted by the user
         omitted_exp_ids      = set(customizations.get('omitted_experiences', []))
@@ -3897,16 +3900,24 @@ Include one entry per candidate. Do not omit any candidate."""
             selected_achievements = (prepend_achs + selected_achievements)[:max_ach]
 
         # ── Skills ────────────────────────────────────────────────────────────
-        # Include all non-omitted skills; recommended ones appear first.
+        # max_skills is the user's limit (Goals tab).  Skills the user marked
+        # Emphasize or Include ("guaranteed") are ALWAYS shown, even past the
+        # limit — the user is warned instead (GitHub #158).  Other recommended
+        # skills (De-emphasize, LLM-only) come next, then the rest by score,
+        # filling only up to the limit.  Do not cap the guaranteed list.
+        guaranteed_skill_names = set(customizations.get('guaranteed_skills', []))
         selected_skills: List[Dict] = []
+        preferred_skills: List[Dict] = []
         remaining_skills: List[tuple] = []
 
         for skill in all_skills:
             skill_name = skill.get('name', '')
             if skill_name in omitted_skill_names:
                 continue
-            if skill_name in recommended_skills:
+            if skill_name in guaranteed_skill_names:
                 selected_skills.append(skill)
+            elif skill_name in recommended_skills:
+                preferred_skills.append(skill)
             else:
                 skill_score = calculate_skill_score(
                     skill,
@@ -3916,10 +3927,10 @@ Include one entry per candidate. Do not omit any candidate."""
                 remaining_skills.append((skill, skill_score))
 
         remaining_skills.sort(key=lambda x: x[1], reverse=True)
-        for skill, _ in remaining_skills:
-            selected_skills.append(skill)
+        for skill in preferred_skills + [s for s, _ in remaining_skills]:
             if len(selected_skills) >= max_skills:
                 break
+            selected_skills.append(skill)
 
         # Prepend extra_skills: LLM-suggested skills not in master CV that the user approved
         # and derive years from matched experience entries (user-edited if provided).
@@ -4116,6 +4127,18 @@ Include one entry per candidate. Do not omit any candidate."""
 
         summary_warnings = self._validate_summary(selected_summary, job_analysis)
 
+        # Only skills the user emphasized/included (plus approved extra skills)
+        # can push the list past max_skills, so an overflow is always the user's
+        # own choices outnumbering their limit: say so instead of cutting them.
+        skill_limit_warnings = []
+        if len(selected_skills) > max_skills:
+            skill_limit_warnings.append(
+                f"{len(selected_skills)} skills are shown, more than your limit of "
+                f"{max_skills}, because every skill you marked Emphasize or Include "
+                "is always kept. Raise the limit on the Goals tab, or change some "
+                "skills to De-emphasize, to shorten the list."
+            )
+
         publication_warnings = []
         for pub in selected_publications:
             raw = self.publications.get(pub.get('key') or '')
@@ -4131,6 +4154,7 @@ Include one entry per candidate. Do not omit any candidate."""
             'experiences': selected_experiences,
             'achievements': selected_achievements,
             'skills': selected_skills,
+            'skill_limit_warnings': skill_limit_warnings,
             'skill_category_order': customizations.get('skill_category_order', []),
             'education': self.master_data.get('education', []),
             'certifications': self.master_data.get('certifications', []),
@@ -4712,7 +4736,7 @@ Include one entry per candidate. Do not omit any candidate."""
         return summary
 
     def _optimize_skills_for_ats(self, skills: List[Dict], job_analysis: Dict) -> List[str]:
-        """Return a score-ordered, deduplicated subset of skill names.
+        """Return the given skill names, deduplicated and ordered by ATS relevance.
 
         Synonym expansion is applied so that a skill named 'ML' scores a
         match against job keyword 'Machine Learning' and vice versa.
@@ -4757,8 +4781,11 @@ Include one entry per candidate. Do not omit any candidate."""
         # Sort by score and return top skills
         skill_scores.sort(key=lambda x: x[1], reverse=True)
 
-        # Return optimized skill names (top 15 for ATS readability)
-        return [skill[0] for skill in skill_scores[:15]]
+        # Return EVERY selected skill, ordered by ATS relevance.  The count is
+        # already the user's max_skills limit plus any skills they emphasized or
+        # included (see _select_content_hybrid).  Do not re-cap here: a fixed
+        # top-15 silently dropped skills the user had chosen (GitHub #158).
+        return [skill[0] for skill in skill_scores]
 
     def _enhance_achievement_for_ats(self, achievement: str, job_analysis: Dict) -> str:
         """Return the achievement text unchanged.

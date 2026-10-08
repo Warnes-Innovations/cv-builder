@@ -28,7 +28,7 @@ const escapeHtmlImpl = s =>
 vi.stubGlobal('escapeHtml', escapeHtmlImpl)
 vi.stubGlobal('getSessionIdFromURL', () => null)
 
-const { _renderDownloadGrid, _NON_BLOCKING_CHECKS } = await import('../../web/download-tab.js')
+const { _renderDownloadGrid, _NON_BLOCKING_CHECKS, _renderSkillLimitWarnings } = await import('../../web/download-tab.js')
 
 function makeFile(overrides = {}) {
   return {
@@ -77,5 +77,26 @@ describe('_renderDownloadGrid', () => {
   it('renders the empty-state message and returns early when there are no files', () => {
     const html = _renderDownloadGrid([], [], { pass: 0, warn: 0, fail: 0 })
     expect(html).toContain('No downloadable files found')
+  })
+})
+
+// GitHub #158: emphasized/included skills can exceed the user's limit; say so.
+describe('_renderSkillLimitWarnings', () => {
+  it('shows each skill-limit warning from generation metadata', () => {
+    const html = _renderSkillLimitWarnings({
+      metadata: { skill_limit_warnings: ['22 skills are shown, more than your limit of 20'] },
+    })
+    expect(html).toContain('longer than your limit')
+    expect(html).toContain('more than your limit of 20')
+  })
+
+  it('renders nothing when there is no warning', () => {
+    expect(_renderSkillLimitWarnings({ metadata: {} })).toBe('')
+    expect(_renderSkillLimitWarnings({})).toBe('')
+  })
+
+  it('escapes warning text', () => {
+    const html = _renderSkillLimitWarnings({ metadata: { skill_limit_warnings: ['<b>x</b>'] } })
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;')
   })
 })
