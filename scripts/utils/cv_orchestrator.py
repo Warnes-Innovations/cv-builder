@@ -26,7 +26,12 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, date as _date
 from urllib.parse import urlparse
 import subprocess
-import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
+# DO NOT REMOVE as "unused" (pyflakes flags it; pyflakes ignores noqa).
+# tests/test_cv_orchestrator.py::TestRenderCvHtmlPdf.setUp patches
+# f"{ORCHESTRATOR_MODULE}.weasyprint.HTML" — an f-string, so grepping for
+# "cv_orchestrator.weasyprint" misses it.  Removing this import breaks that
+# patch.  Already removed once and restored in 5e53eed.
+import weasyprint  # noqa: F401
 from collections import Counter, defaultdict
 from bs4 import BeautifulSoup, Comment
 
