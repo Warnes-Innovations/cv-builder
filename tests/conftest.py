@@ -258,3 +258,26 @@ def require_server():
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+
+
+# ---------------------------------------------------------------------------
+# Master data for tests that create sessions
+# ---------------------------------------------------------------------------
+
+EXAMPLE_MASTER_DATA = (
+    Path(__file__).parent / "fixtures" / "example_profiles" / "simple"
+    / "Master_CV_Data.json"
+)
+
+
+@pytest.fixture
+def example_master_data(monkeypatch):
+    """Point CV_MASTER_DATA_PATH at the bundled example profile.
+
+    Session creation loads master data, which defaults to
+    ~/CV/Master_CV_Data.json. That file exists on a developer machine and
+    not on a CI runner, so a test that relies on it passes locally and
+    fails in CI.
+    """
+    monkeypatch.setenv("CV_MASTER_DATA_PATH", str(EXAMPLE_MASTER_DATA))
+    return EXAMPLE_MASTER_DATA
