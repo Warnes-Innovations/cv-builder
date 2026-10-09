@@ -162,7 +162,7 @@ conda handles spaCy/blis compilation, avoiding common macOS/Linux toolchain issu
 
 ```bash
 # Create environment — conda-forge builds spaCy and blis natively
-conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
+conda create -n cvgen python=3.12 spacy -c conda-forge --override-channels -y
 conda activate cvgen
 pip install -r scripts/requirements-conda.txt
 ```
@@ -172,7 +172,7 @@ pip install -r scripts/requirements-conda.txt
 Run the following in **Anaconda Prompt** or a PowerShell session with conda initialized:
 
 ```powershell
-conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
+conda create -n cvgen python=3.12 spacy -c conda-forge --override-channels -y
 conda activate cvgen
 pip install -r scripts/requirements-conda.txt
 ```
@@ -646,7 +646,7 @@ lsof -ti tcp:5001
 **Conda environment issues:**
 ```bash
 conda env remove -n cvgen
-conda create -n cvgen python=3.9 spacy -c conda-forge --override-channels -y
+conda create -n cvgen python=3.12 spacy -c conda-forge --override-channels -y
 conda activate cvgen
 pip install -r scripts/requirements-conda.txt
 ```

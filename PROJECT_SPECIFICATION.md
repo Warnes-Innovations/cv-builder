@@ -1464,7 +1464,7 @@ A **History** panel (accessible from the ▾ dropdown or a dedicated "Manage His
 ### 8.1 Software Dependencies
 
 **Already Installed**:
-- Python 3.9+ with conda environment
+- Python 3.10+ (3.12 recommended) with conda environment
 - Flask web server
 - LLM client libraries (openai, anthropic)
 - DataTables, jQuery (CDN)

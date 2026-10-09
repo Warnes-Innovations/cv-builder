@@ -55,6 +55,7 @@ from .config import get_config
 from .conversation_manager import ConversationManager
 from .cv_orchestrator import CVOrchestrator
 from .llm_client import get_llm_provider
+from .session_data_view import SessionDataView
 
 logger = logging.getLogger(__name__)
 
@@ -190,8 +191,14 @@ class HeadlessSession:
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
-    def save(self) -> Optional[str]:
+    def save(self, force: bool = False) -> Optional[str]:
         """Save the session to disk.
+
+        Parameters
+        ----------
+        force:
+            Persist even an empty session (no job description yet), so its
+            ``session_id`` can be looked up by a later process.
 
         Returns
         -------
@@ -199,7 +206,7 @@ class HeadlessSession:
             Absolute path to the saved ``session.json``, or ``None`` if the
             session was empty and ``_save_session`` skipped it.
         """
-        self._manager.save_session()
+        self._manager.save_session(force=force)
         if self._manager.session_dir:
             return str(self._manager.session_dir / "session.json")
         return None
@@ -345,10 +352,24 @@ class HeadlessSession:
                 raise ValueError(
                     "No job analysis in session.  Complete JOB_ANALYSIS first."
                 )
-            customizations = state.get("customizations") or {}
+            # Build the same render-ready CV content the web rewrite route uses;
+            # the raw recommendations dict has no bullets to rewrite (#153).
+            customizations = SessionDataView(
+                self._orchestrator.master_data,
+                state,
+                state.get("customizations") or {},
+            ).materialize_generation_customizations()
+            content = self._orchestrator.build_render_ready_content(
+                job_analysis,
+                customizations,
+                approved_rewrites=state.get("approved_rewrites") or [],
+                spell_audit=state.get("spell_audit") or [],
+                max_skills=state.get("max_skills"),
+                use_semantic_match=False,
+            )
             passthrough.set_context(operation, context_hint="Propose CV text rewrites")
             passthrough.propose_rewrites(
-                content=customizations,
+                content=content,
                 job_analysis=job_analysis,
                 conversation_history=self._manager.conversation_history,
                 user_preferences=kwargs.get("user_preferences"),
@@ -734,6 +755,11 @@ class HeadlessSession:
     ) -> Dict[str, Any]:
         """Generate CV documents from current session state.
 
+        In passthrough mode (no provider) generation makes no LLM calls:
+        relevance scoring falls back to keywords and recommendations, and a
+        session with decisions but no customizations is an error rather than
+        a hidden LLM request (GitHub #157).
+
         Returns
         -------
         dict
@@ -745,9 +771,16 @@ class HeadlessSession:
         if self._manager.session_dir:
             output_dir = self._manager.session_dir
 
+        # Decide from the client actually in use, not self._provider:
+        # from_conversation_manager() wraps a web session's real LLM client
+        # while leaving _provider None.
+        llm = getattr(self._orchestrator, "llm", None)
+        has_llm = llm is not None and not isinstance(llm, PassthroughLLMClient)
         self._manager.generate_cv_from_session_state(
             output_dir=output_dir,
             html_preview_only=html_preview_only,
+            allow_llm_recommendations=has_llm,
+            use_semantic_match=has_llm,
         )
         state["phase"] = Phase.GENERATION
         return state.get("generated_files") or {}

@@ -867,6 +867,29 @@ describe('restoreBackendState', () => {
     expect(stateManager.getAtsScore()).toEqual({ overall: 88, basis: 'review_checkpoint' })
   })
 
+  // The layout panel's "Show citizenship" checkbox reads this cached value, so
+  // it must mirror the server's EFFECTIVE decision from /api/status.
+  it('caches the server citizenship decision for the layout checkbox', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ show_citizenship: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, phase: 'layout_review' }) })
+
+    await restoreBackendState()
+
+    expect(stateManager.getTabData('citizenshipEffective')).toBe(true)
+  })
+
+  it('treats a missing citizenship decision as off', async () => {
+    stateManager.setTabData('citizenshipEffective', true)
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, phase: 'layout_review' }) })
+
+    await restoreBackendState()
+
+    expect(stateManager.getTabData('citizenshipEffective')).toBe(false)
+  })
+
   it('clears stale staged generation state and ATS score when backend has none', async () => {
     stateManager.setGenerationState({
       phase: 'layout_review',

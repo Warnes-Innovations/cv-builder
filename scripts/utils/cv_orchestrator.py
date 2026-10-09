@@ -26,7 +26,12 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, date as _date
 from urllib.parse import urlparse
 import subprocess
-import weasyprint  # noqa: F401  -- kept for test mock path (patch cv_orchestrator.weasyprint.HTML)
+# DO NOT REMOVE as "unused" (pyflakes flags it; pyflakes ignores noqa).
+# tests/test_cv_orchestrator.py::TestRenderCvHtmlPdf.setUp patches
+# f"{ORCHESTRATOR_MODULE}.weasyprint.HTML" — an f-string, so grepping for
+# "cv_orchestrator.weasyprint" misses it.  Removing this import breaks that
+# patch.  Already removed once and restored in 5e53eed.
+import weasyprint  # noqa: F401
 from collections import Counter, defaultdict
 from bs4 import BeautifulSoup, Comment
 
@@ -387,10 +392,20 @@ class CVOrchestrator:
         if not isinstance(customizations, dict):
             return False
         explicit = customizations.get("include_citizenship")
-        if explicit is not None:
-            # An explicit choice wins in BOTH directions, so a federal variant
-            # can still be told to leave it off.
-            return bool(explicit)
+        # An explicit choice wins in BOTH directions, so a federal variant can
+        # still be told to leave it off. Parsed rather than bool()-ed: the value
+        # comes from a UI checkbox, and bool("false") is True — that would PRINT
+        # citizenship on an application where the user had switched it off.
+        # Anything unrecognised (None, "", another type) is "no explicit
+        # choice" and falls through to the variant default below.
+        if isinstance(explicit, bool):
+            return explicit
+        if isinstance(explicit, str):
+            word = explicit.strip().lower()
+            if word in cls._TRUTHY_OPTION_STRINGS:
+                return True
+            if word in cls._FALSY_OPTION_STRINGS:
+                return False
         variant = (
             customizations.get("selected_summary_key")
             or customizations.get("summary_focus_override")
@@ -399,6 +414,7 @@ class CVOrchestrator:
         return str(variant).strip() in cls.CITIZENSHIP_DEFAULT_VARIANTS
 
     _TRUTHY_OPTION_STRINGS = frozenset({'true', '1', 'yes', 'on'})
+    _FALSY_OPTION_STRINGS = frozenset({'false', '0', 'no', 'off'})
 
     @classmethod
     def _should_show_org_unit(cls, customizations: Optional[Dict]) -> bool:
@@ -2133,6 +2149,7 @@ For manual generation:
         max_skills: Optional[int] = None,
         max_achievements: Optional[int] = None,
         max_publications: Optional[int] = None,
+        use_semantic_match: bool = True,
     ) -> Dict:
         """
         Generate CV files based on LLM analysis and recommendations.
@@ -2196,6 +2213,7 @@ For manual generation:
             max_skills=max_skills,
             max_achievements=max_achievements,
             max_publications=max_publications,
+            use_semantic_match=use_semantic_match,
         )
 
         date_overlap_warnings = self._detect_date_overlaps(
@@ -2355,6 +2373,7 @@ For manual generation:
             'rewrite_audit_mismatches': rewrite_audit_mismatches,
             'summary_warnings': selected_content.get('summary_warnings', []),
             'publication_warnings': selected_content.get('publication_warnings', []),
+            'skill_limit_warnings': selected_content.get('skill_limit_warnings', []),
             'ats_validation': {
                 'checks': _ats_checks,
                 'page_count': _ats_page_count,
@@ -2394,6 +2413,7 @@ For manual generation:
         max_skills: Optional[int] = None,
         max_achievements: Optional[int] = None,
         max_publications: Optional[int] = None,
+        use_semantic_match: bool = True,
     ) -> Dict:
         """Generate HTML preview only — no PDF, no DOCX.
 
@@ -2429,6 +2449,7 @@ For manual generation:
             max_skills=max_skills,
             max_achievements=max_achievements,
             max_publications=max_publications,
+            use_semantic_match=use_semantic_match,
         )
 
         cv_data = self._prepare_cv_data_for_template(
@@ -3638,8 +3659,10 @@ Include one entry per candidate. Do not omit any candidate."""
             relevance score (Emphasize items first) so the most relevant
             content appears first in the generated document.
         Achievements: same blacklist rule.
-        Skills      : same blacklist rule; LLM-recommended skills are listed
-            first, remaining non-omitted skills follow by score.
+        Skills      : skills the user marked Emphasize/Include are always
+            kept, even past max_skills (a skill_limit_warning is emitted);
+            other recommended skills, then the rest by score, fill up to
+            max_skills.
         """
         # IDs/names explicitly omitted by the user
         omitted_exp_ids      = set(customizations.get('omitted_experiences', []))
@@ -3651,17 +3674,28 @@ Include one entry per candidate. Do not omit any candidate."""
         recommended_achievement_ids  = set(customizations.get('recommended_achievements', []))
         recommended_skills           = set(customizations.get('recommended_skills', []))
 
-        # Also honour per-item recommendation dicts (LLM structured output)
+        # Also honour per-item recommendation dicts (LLM structured output), but
+        # ONLY for items the user has not decided.  recommended_*/omitted_* above
+        # carry the user's include/omit decisions; an LLM "Omit" must never undo
+        # a user's include, nor an LLM "Include" a user's omit (GitHub #156).
+        decided_exp_ids     = recommended_exp_ids | omitted_exp_ids
+        decided_skill_names = recommended_skills | omitted_skill_names
         for rec in customizations.get('experience_recommendations', []):
-            if isinstance(rec, dict):
+            if isinstance(rec, dict) and rec.get('id', '') not in decided_exp_ids:
                 if rec.get('recommendation', '').lower() == 'omit':
                     omitted_exp_ids.add(rec.get('id', ''))
                 elif rec.get('recommendation', '').lower() in ('emphasize', 'include', 'de-emphasize'):
                     recommended_exp_ids.add(rec.get('id', ''))
         for rec in customizations.get('skill_recommendations', []):
             if isinstance(rec, dict):
+                # The schema key is `skill` (SkillRecommendation); `name` is a
+                # legacy fallback.  Reading only `name` silently ignored every
+                # LLM skill "Omit".
+                skill_name = rec.get('skill') or rec.get('name') or ''
+                if skill_name in decided_skill_names:
+                    continue
                 if rec.get('recommendation', '').lower() == 'omit':
-                    omitted_skill_names.add(rec.get('name', ''))
+                    omitted_skill_names.add(skill_name)
 
         # Get all content
         all_experiences  = self.master_data.get('experience', [])
@@ -3739,25 +3773,8 @@ Include one entry per candidate. Do not omit any candidate."""
         )
         selected_experiences = [exp for exp, _ in scored_experiences]
 
-        # Sort experiences in reverse chronological order by end date.
-        # "Current", "Present", "", or None are treated as today (sorts first).
-        _today = _date.today()
-
-        def _parse_end_date(exp: Dict) -> _date:
-            raw = str(exp.get('end_date') or exp.get('end') or '').strip()
-            if not raw or raw.lower() in ('current', 'present', 'now', 'ongoing'):
-                return _today
-            for fmt in ('%Y-%m-%d', '%B %Y', '%b %Y', '%Y'):
-                try:
-                    return datetime.strptime(raw, fmt).date()
-                except ValueError:
-                    pass
-            # Partial match — try extracting a 4-digit year
-            m = re.search(r'\b(\d{4})\b', raw)
-            if m:
-                return _date(int(m.group(1)), 12, 31)
-            return _date.min
-
+        # Sort experiences in reverse chronological order by end date, using the
+        # _parse_end_date defined above ("Current"/"Present"/"" sort first).
         # Only apply default chronological sort when the user hasn't manually reordered.
         # The user-override block below will replace this ordering if present.
         selected_experiences = sorted(selected_experiences, key=_parse_end_date, reverse=True)
@@ -3871,16 +3888,24 @@ Include one entry per candidate. Do not omit any candidate."""
             selected_achievements = (prepend_achs + selected_achievements)[:max_ach]
 
         # ── Skills ────────────────────────────────────────────────────────────
-        # Include all non-omitted skills; recommended ones appear first.
+        # max_skills is the user's limit (Goals tab).  Skills the user marked
+        # Emphasize or Include ("guaranteed") are ALWAYS shown, even past the
+        # limit — the user is warned instead (GitHub #158).  Other recommended
+        # skills (De-emphasize, LLM-only) come next, then the rest by score,
+        # filling only up to the limit.  Do not cap the guaranteed list.
+        guaranteed_skill_names = set(customizations.get('guaranteed_skills', []))
         selected_skills: List[Dict] = []
+        preferred_skills: List[Dict] = []
         remaining_skills: List[tuple] = []
 
         for skill in all_skills:
             skill_name = skill.get('name', '')
             if skill_name in omitted_skill_names:
                 continue
-            if skill_name in recommended_skills:
+            if skill_name in guaranteed_skill_names:
                 selected_skills.append(skill)
+            elif skill_name in recommended_skills:
+                preferred_skills.append(skill)
             else:
                 skill_score = calculate_skill_score(
                     skill,
@@ -3890,10 +3915,10 @@ Include one entry per candidate. Do not omit any candidate."""
                 remaining_skills.append((skill, skill_score))
 
         remaining_skills.sort(key=lambda x: x[1], reverse=True)
-        for skill, _ in remaining_skills:
-            selected_skills.append(skill)
+        for skill in preferred_skills + [s for s, _ in remaining_skills]:
             if len(selected_skills) >= max_skills:
                 break
+            selected_skills.append(skill)
 
         # Prepend extra_skills: LLM-suggested skills not in master CV that the user approved
         # and derive years from matched experience entries (user-edited if provided).
@@ -4090,6 +4115,18 @@ Include one entry per candidate. Do not omit any candidate."""
 
         summary_warnings = self._validate_summary(selected_summary, job_analysis)
 
+        # Only skills the user emphasized/included (plus approved extra skills)
+        # can push the list past max_skills, so an overflow is always the user's
+        # own choices outnumbering their limit: say so instead of cutting them.
+        skill_limit_warnings = []
+        if len(selected_skills) > max_skills:
+            skill_limit_warnings.append(
+                f"{len(selected_skills)} skills are shown, more than your limit of "
+                f"{max_skills}, because every skill you marked Emphasize or Include "
+                "is always kept. Raise the limit on the Goals tab, or change some "
+                "skills to De-emphasize, to shorten the list."
+            )
+
         publication_warnings = []
         for pub in selected_publications:
             raw = self.publications.get(pub.get('key') or '')
@@ -4105,6 +4142,7 @@ Include one entry per candidate. Do not omit any candidate."""
             'experiences': selected_experiences,
             'achievements': selected_achievements,
             'skills': selected_skills,
+            'skill_limit_warnings': skill_limit_warnings,
             'skill_category_order': customizations.get('skill_category_order', []),
             'education': self.master_data.get('education', []),
             'certifications': self.master_data.get('certifications', []),
@@ -4686,7 +4724,7 @@ Include one entry per candidate. Do not omit any candidate."""
         return summary
 
     def _optimize_skills_for_ats(self, skills: List[Dict], job_analysis: Dict) -> List[str]:
-        """Return a score-ordered, deduplicated subset of skill names.
+        """Return the given skill names, deduplicated and ordered by ATS relevance.
 
         Synonym expansion is applied so that a skill named 'ML' scores a
         match against job keyword 'Machine Learning' and vice versa.
@@ -4731,8 +4769,11 @@ Include one entry per candidate. Do not omit any candidate."""
         # Sort by score and return top skills
         skill_scores.sort(key=lambda x: x[1], reverse=True)
 
-        # Return optimized skill names (top 15 for ATS readability)
-        return [skill[0] for skill in skill_scores[:15]]
+        # Return EVERY selected skill, ordered by ATS relevance.  The count is
+        # already the user's max_skills limit plus any skills they emphasized or
+        # included (see _select_content_hybrid).  Do not re-cap here: a fixed
+        # top-15 silently dropped skills the user had chosen (GitHub #158).
+        return [skill[0] for skill in skill_scores]
 
     def _enhance_achievement_for_ats(self, achievement: str, job_analysis: Dict) -> str:
         """Return the achievement text unchanged.
