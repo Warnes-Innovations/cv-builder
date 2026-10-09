@@ -3768,25 +3768,8 @@ Include one entry per candidate. Do not omit any candidate."""
         )
         selected_experiences = [exp for exp, _ in scored_experiences]
 
-        # Sort experiences in reverse chronological order by end date.
-        # "Current", "Present", "", or None are treated as today (sorts first).
-        _today = _date.today()
-
-        def _parse_end_date(exp: Dict) -> _date:
-            raw = str(exp.get('end_date') or exp.get('end') or '').strip()
-            if not raw or raw.lower() in ('current', 'present', 'now', 'ongoing'):
-                return _today
-            for fmt in ('%Y-%m-%d', '%B %Y', '%b %Y', '%Y'):
-                try:
-                    return datetime.strptime(raw, fmt).date()
-                except ValueError:
-                    pass
-            # Partial match — try extracting a 4-digit year
-            m = re.search(r'\b(\d{4})\b', raw)
-            if m:
-                return _date(int(m.group(1)), 12, 31)
-            return _date.min
-
+        # Sort experiences in reverse chronological order by end date, using the
+        # _parse_end_date defined above ("Current"/"Present"/"" sort first).
         # Only apply default chronological sort when the user hasn't manually reordered.
         # The user-override block below will replace this ordering if present.
         selected_experiences = sorted(selected_experiences, key=_parse_end_date, reverse=True)
