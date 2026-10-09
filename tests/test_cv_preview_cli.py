@@ -379,7 +379,13 @@ def test_cv_preview_wrapper_help_smoke():
 def test_cv_preview_wrapper_uses_virtual_env_python(tmp_path):
     venv_bin = tmp_path / 'venv' / 'bin'
     venv_bin.mkdir(parents=True)
-    (venv_bin / 'python').symlink_to(sys.executable)
+    # A shim that execs the real interpreter, not a symlink to it: when
+    # sys.executable is itself a venv python (as in CI), reaching it through
+    # a symlink elsewhere loses its pyvenv.cfg and with it the project's
+    # site-packages.
+    shim = venv_bin / 'python'
+    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    shim.chmod(0o755)
     env = {k: v for k, v in os.environ.items() if k != 'CV_PYTHON'}
     env.update(PATH=_BARE_PATH, VIRTUAL_ENV=str(tmp_path / 'venv'))
     _assert_help_ok(_run_wrapper(env))
