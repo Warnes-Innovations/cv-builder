@@ -420,6 +420,12 @@ function renderRewriteCard(r, cardWarnings = [], changeStatus = null) {
   // Compute word-level diff for the inline display.
   const diffTokens = computeWordDiff(r.original || '', r.proposed || '');
   const diffHtml   = renderDiffHtml(diffTokens);
+  const reviewContent = r.type === 'bullet_add'
+    ? `<div class="rewrite-addition-label">Source bullet</div>
+       <div class="rewrite-addition-text">${escapeHtml(r.original || '')}</div>
+       <div class="rewrite-addition-label">New bullet</div>
+       <div class="rewrite-addition-text">${escapeHtml(r.proposed || '')}</div>`
+    : diffHtml;
 
   return `
     <div class="rewrite-card" id="rw-card-${cardId}">
@@ -431,7 +437,7 @@ function renderRewriteCard(r, cardWarnings = [], changeStatus = null) {
       </div>
       <div class="rewrite-card-body">
         <div class="rewrite-inline-diff" id="rw-diff-${cardId}"
-             data-original="${escapeHtml(r.original || '')}">${diffHtml}</div>
+             data-original="${escapeHtml(r.original || '')}">${reviewContent}</div>
         <div class="rewrite-after" id="rw-after-${cardId}" style="display:none">
           <span id="rw-after-text-${cardId}">${escapeHtml(r.proposed || '')}</span>
         </div>

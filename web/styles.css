@@ -1497,6 +1497,9 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid var(--cv-gray-3
 .rw-change-updated { background: var(--cv-info-bg-md); color: var(--cv-accent-hover); }
 .rewrite-card-body  { padding: 0 16px 14px; }
 .rewrite-inline-diff { background: var(--cv-bg-light); border: 1px solid var(--cv-border); border-radius: 6px; padding: 10px 12px; font-size: 0.9em; line-height: 1.6; margin-bottom: 10px; word-wrap: break-word; }
+.rewrite-addition-label { font-size: 0.78em; font-weight: 700; color: var(--cv-text-secondary); text-transform: uppercase; }
+.rewrite-addition-text + .rewrite-addition-label { margin-top: 8px; }
+.rewrite-addition-text { white-space: pre-wrap; }
 del.diff-removed { text-decoration: line-through; color: var(--cv-error); background: var(--cv-error-bg-lt); border-radius: 2px; padding: 0 2px; }
 ins.diff-added   { text-decoration: none; color: var(--cv-success-text); background: var(--cv-success-bg-md); border-radius: 2px; padding: 0 2px; font-style: normal; }
 .rewrite-after  { background: var(--cv-success-bg); border: 1px solid var(--cv-success-bg-lt); border-radius: 6px; padding: 10px 12px; font-size: 0.9em; color: var(--cv-success-text); margin-bottom: 10px; }
