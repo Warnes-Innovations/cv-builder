@@ -38,6 +38,7 @@ Usage examples::
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -69,10 +70,23 @@ class CLIError(click.ClickException):
         click.echo(json.dumps({"ok": False, "error": self.format_message()}), err=True)
 
 
+# The CLI's stdout carries only JSON / PromptBundle output.  The library code
+# it calls print()s progress messages ("Session saved to ...") that would
+# corrupt that stream, so cli() diverts sys.stdout to stderr for the whole
+# command and keeps the real stdout here.  Write CLI output through _emit(),
+# never click.echo()/print() directly.
+_JSON_STDOUT: Optional[Any] = None
+
+
+def _emit(text: str) -> None:
+    """Write one line of machine-readable output to the real stdout."""
+    click.echo(text, file=_JSON_STDOUT)
+
+
 def _out(data: Any, pretty: bool = False) -> None:
     """Print *data* as JSON to stdout."""
     indent = 2 if pretty else None
-    click.echo(json.dumps(data, indent=indent, default=str))
+    _emit(json.dumps(data, indent=indent, default=str))
 
 
 def _err(msg: str) -> NoReturn:
@@ -150,6 +164,9 @@ def _load_session(
 @click.pass_context
 def cli(ctx, provider, model, session_id, session_file, agent_mode, pretty):
     """cv-builder CLI — create and manage customised CVs from the command line."""
+    global _JSON_STDOUT
+    _JSON_STDOUT = sys.stdout
+    ctx.with_resource(contextlib.redirect_stdout(sys.stderr))
     ctx.ensure_object(dict)
     ctx.obj.update(
         provider=provider,
@@ -180,7 +197,9 @@ def session_new(ctx, provider, model):
     p = provider or ctx.obj.get("provider")
     m = model    or ctx.obj.get("model")
     session = HeadlessSession(provider=p, model=m)
-    sf = session.save()
+    # Each CLI call is a new process: the session must be on disk now or the
+    # printed session_id cannot be found by the next command (issue #151).
+    sf = session.save(force=True)
     _out({"ok": True, "session_id": session.session_id, "phase": session.phase, "session_file": sf}, ctx.obj["pretty"])
 
 
@@ -275,7 +294,7 @@ def analyze_run(ctx):
     session = _load_session(ctx.obj)
     if ctx.obj["agent_mode"]:
         bundle = session.prepare_llm_call(OperationType.JOB_ANALYSIS)
-        click.echo(bundle.to_json(indent=2))
+        _emit(bundle.to_json(indent=2))
     else:
         if not ctx.obj.get("provider"):
             _err("--provider required for non-agent-mode analysis.  Use --agent-mode to get PromptBundle.")
@@ -330,7 +349,7 @@ def customize_run(ctx, prefs):
     session = _load_session(ctx.obj)
     if ctx.obj["agent_mode"]:
         bundle = session.prepare_llm_call(OperationType.RECOMMENDATIONS, user_preferences=user_prefs)
-        click.echo(bundle.to_json(indent=2))
+        _emit(bundle.to_json(indent=2))
     else:
         if not ctx.obj.get("provider"):
             _err("--provider required.  Use --agent-mode to get PromptBundle.")
@@ -373,7 +392,7 @@ def rewrites_run(ctx):
     session = _load_session(ctx.obj)
     if ctx.obj["agent_mode"]:
         bundle = session.prepare_llm_call(OperationType.REWRITE)
-        click.echo(bundle.to_json(indent=2))
+        _emit(bundle.to_json(indent=2))
     else:
         _err("Direct LLM mode not yet implemented for rewrites.  Use --agent-mode.")
 
@@ -547,7 +566,7 @@ def spell_check(ctx, text_file, result_file):
     session = _load_session(ctx.obj)
     if ctx.obj["agent_mode"]:
         bundle = session.prepare_llm_call(OperationType.SPELL_CHECK, text=text)
-        click.echo(bundle.to_json(indent=2))
+        _emit(bundle.to_json(indent=2))
     else:
         _err("Direct LLM mode not implemented for spell-check.  Use --agent-mode.")
 
@@ -577,7 +596,7 @@ def persuasion_check(ctx, text_file):
     session = _load_session(ctx.obj)
     if ctx.obj["agent_mode"]:
         bundle = session.prepare_llm_call(OperationType.PERSUASION_CHECK, text=text)
-        click.echo(bundle.to_json(indent=2))
+        _emit(bundle.to_json(indent=2))
     else:
         _err("Direct LLM mode not implemented for persuasion-check.  Use --agent-mode.")
 
@@ -630,7 +649,7 @@ def chat(ctx, message, result_file):
         if not message:
             _err("MESSAGE required for agent-mode chat bundle generation.")
         bundle = session.prepare_llm_call(OperationType.CHAT, message=message)
-        click.echo(bundle.to_json(indent=2))
+        _emit(bundle.to_json(indent=2))
 
 
 # ---------------------------------------------------------------------------

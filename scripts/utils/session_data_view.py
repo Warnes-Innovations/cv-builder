@@ -559,6 +559,13 @@ class SessionDataView:
             ]
             updated["recommended_skills"] = recommended
             updated["omitted_skills"] = omitted
+            # Skills the user marked Emphasize or Include are always shown, even
+            # past max_skills (GitHub #158).  De-emphasize is NOT guaranteed: it
+            # gets priority within the limit but may be cut.
+            updated["guaranteed_skills"] = [
+                key for key, value in skill_decisions.items()
+                if value in ("emphasize", "include")
+            ]
 
         achievement_decisions = _coerce_decision_mapping(state.get("achievement_decisions"))
         if achievement_decisions:

@@ -382,6 +382,11 @@ async function initiateLayoutInstructions() {
               <input id="include-division-department-input" type="checkbox" />
               Show division / department
             </label>
+            <label for="include-citizenship-input" style="display:inline-flex; align-items:center; gap:6px; font-size:0.83em; color:#334155; margin-left:8px;"
+                title="Print your citizenship in the contact block. On automatically for federal-contractor summaries, off otherwise; ticking or unticking overrides that for this application.">
+              <input id="include-citizenship-input" type="checkbox" />
+              Show citizenship
+            </label>
             <button id="apply-layout-settings-btn" class="btn-secondary" style="padding:3px 10px; font-size:0.85em;">Apply</button>
             <span id="layout-settings-status" style="font-size:0.8em; color:#64748b;"></span>
           </div>
@@ -506,6 +511,24 @@ async function initiateLayoutInstructions() {
     // must not tick the box.
     includeDivisionDepartmentInput.checked = coerceBoolean(savedIncludeOrgUnit, false);
   }
+  const includeCitizenshipInput = document.getElementById('include-citizenship-input');
+  if (includeCitizenshipInput) {
+    // Show the server's EFFECTIVE decision (on for federal-contractor
+    // summaries unless the user chose otherwise). Do NOT re-derive the
+    // federal rule here — a second copy is how the box and the CV disagree.
+    includeCitizenshipInput.checked = stateManager?.getTabData?.('citizenshipEffective') === true;
+    // Only a CHANGE by the user becomes an explicit choice. Without this an
+    // idle Apply would send the displayed value and freeze the automatic
+    // default, so switching to a federal summary later would no longer turn
+    // citizenship on.
+    delete includeCitizenshipInput.dataset.touched;
+    if (!includeCitizenshipInput.dataset.wired) {
+      includeCitizenshipInput.addEventListener('change', () => {
+        includeCitizenshipInput.dataset.touched = '1';
+      });
+      includeCitizenshipInput.dataset.wired = '1';
+    }
+  }
 
   renderPreviewOutputStatus(getPreviewOutputs());
 
@@ -614,6 +637,14 @@ function setupLayoutInstructionListeners() {
   // Deliberately NOT part of the guard below: it is optional, and adding it
   // would disable the whole Apply button if this one checkbox were absent.
   const includeDivisionDepartmentInput = document.getElementById('include-division-department-input');
+  const includeCitizenshipInput = document.getElementById('include-citizenship-input');
+  // undefined unless the user CHANGED the box — see the load block. Sending
+  // the displayed value on every Apply would freeze the federal default.
+  const citizenshipChoice = () => (
+    includeCitizenshipInput?.dataset.touched
+      ? includeCitizenshipInput.checked === true
+      : undefined
+  );
 
   if (applySettingsBtn && fontSizeInput && pageMarginInput && publicationsStartInput) {
     applySettingsBtn.addEventListener(
@@ -624,6 +655,7 @@ function setupLayoutInstructionListeners() {
         publicationsStartInput.checked,
         skillsShowExperienceSelect?.value || 'individual',
         includeDivisionDepartmentInput?.checked === true,
+        citizenshipChoice(),
       ),
     );
     fontSizeInput.addEventListener('input', () => {
@@ -641,6 +673,7 @@ function setupLayoutInstructionListeners() {
           publicationsStartInput.checked,
           skillsShowExperienceSelect?.value || 'individual',
           includeDivisionDepartmentInput?.checked === true,
+          citizenshipChoice(),
         );
       }
     });
@@ -652,6 +685,7 @@ function setupLayoutInstructionListeners() {
           publicationsStartInput.checked,
           skillsShowExperienceSelect?.value || 'individual',
           includeDivisionDepartmentInput?.checked === true,
+          citizenshipChoice(),
         );
       }
     });
@@ -728,7 +762,7 @@ function setupLayoutInstructionListeners() {
  */
 // Positional, so new options are APPENDED with a default and never inserted:
 // inserting one would silently shift every argument at the three call sites.
-async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsStartNewPage = false, skillsShowExperience = 'individual', includeDivisionDepartment = false) {
+async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsStartNewPage = false, skillsShowExperience = 'individual', includeDivisionDepartment = false, includeCitizenship = undefined) {
   const statusEl = document.getElementById('layout-settings-status');
   const parsedFontSize = parseFloat(fontSizeValue);
   const parsedPageMargin = parseFloat(pageMarginValue);
@@ -748,6 +782,11 @@ async function applyLayoutSettings(fontSizeValue, pageMarginValue, publicationsS
       publications_start_new_page: Boolean(publicationsStartNewPage),
       skills_show_experience: skillsShowExperience,
       include_division_department: includeDivisionDepartment === true,
+      // Omitted entirely unless the user changed the box, so the server keeps
+      // applying the automatic federal-contractor default.
+      ...(includeCitizenship === undefined
+        ? {}
+        : { include_citizenship: includeCitizenship === true }),
     });
     if (!saveRes.ok) throw new Error(saveRes.error || 'save failed');
 

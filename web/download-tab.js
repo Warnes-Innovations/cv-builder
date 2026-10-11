@@ -377,6 +377,22 @@ async function _fetchPersuasionHtml() {
   }
 }
 
+/**
+ * Warn when the skills the user emphasized/included outnumber their skill
+ * limit. They are all still shown (GitHub #158); this says why the list is
+ * longer than the limit set on the Goals tab.
+ */
+function _renderSkillLimitWarnings(cvData) {
+  const warnings = (cvData?.metadata?.skill_limit_warnings || []);
+  if (!warnings.length) return '';
+  return `<div style="background:#fef9c3;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+      <strong>⚠ Skills list is longer than your limit:</strong>
+      <ul style="margin:8px 0 0 0;padding-left:18px;">
+        ${warnings.map(w => `<li style="font-size:0.9em;">${escapeHtml(w)}</li>`).join('')}
+      </ul>
+    </div>`;
+}
+
 async function populateDownloadTab(cvData) {
   stateManager.setTabData('cv', cvData);
 
@@ -441,6 +457,8 @@ async function populateDownloadTab(cvData) {
       <p style="margin:8px 0 0;font-size:0.87em;color:#78350f;">These are advisory warnings — review the Summary tab if you wish to update the summary before submitting.</p>
     </div>`;
   }
+
+  html += _renderSkillLimitWarnings(cvData);
 
   const publicationWarnings = (cvData.metadata?.publication_warnings || []);
   if (publicationWarnings.length) {
@@ -533,4 +551,4 @@ async function populateDownloadTab(cvData) {
   content.innerHTML = html;
 }
 
-export { populateDownloadTab, _NON_BLOCKING_CHECKS, _renderDownloadGrid };
+export { populateDownloadTab, _NON_BLOCKING_CHECKS, _renderDownloadGrid, _renderSkillLimitWarnings };

@@ -649,6 +649,13 @@ describe('division/department layout option', () => {
     expect(body.include_division_department).toBe(false)
   })
 
+  it('does not send include_citizenship when that box was not touched', async () => {
+    const box = await render()
+    box.checked = true
+    const body = await clickApply()
+    expect(body).not.toHaveProperty('include_citizenship')
+  })
+
   it('does not disturb the existing layout settings it is sent alongside', async () => {
     const box = await render()
     box.checked = true
@@ -657,5 +664,87 @@ describe('division/department layout option', () => {
     expect(body.page_margin).toBe('1in')
     expect(body).toHaveProperty('publications_start_new_page')
     expect(body).toHaveProperty('skills_show_experience')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// "Show citizenship" layout option
+// ---------------------------------------------------------------------------
+//
+// Two properties the division/department box does not have:
+//   1. It DISPLAYS the server's effective decision (on for federal-contractor
+//      summaries unless overridden) rather than re-deriving the rule here.
+//   2. It SENDS a value only once the user changes it. Sending the displayed
+//      value on every Apply would freeze the automatic federal default.
+
+describe('citizenship layout option', () => {
+  function mockApi() {
+    apiCall.mockImplementation(async (method, url) => {
+      if (url === '/api/layout-settings') return { ok: true }
+      if (url === '/api/cv/generate-preview') return { ok: true }
+      return { instructions: [] }
+    })
+  }
+
+  async function render({ effective = false, customizations = {} } = {}) {
+    document.body.insertAdjacentHTML('beforeend', '<div id="document-content"></div>')
+    stateManager.getTabData.mockImplementation(
+      key => (key === 'citizenshipEffective' ? effective : customizations))
+    mockApi()
+    await initiateLayoutInstructions()
+    return document.getElementById('include-citizenship-input')
+  }
+
+  async function clickApply() {
+    document.getElementById('base-font-size-input').value = '10'
+    document.getElementById('page-margin-input').value = '1'
+    document.getElementById('apply-layout-settings-btn').click()
+    await vi.runAllTimersAsync()
+    const call = apiCall.mock.calls.find(([, url]) => url === '/api/layout-settings')
+    expect(call, 'Apply did not POST /api/layout-settings').toBeTruthy()
+    return call[2]
+  }
+
+  function userToggles(box, checked) {
+    box.checked = checked
+    box.dispatchEvent(new Event('change'))
+  }
+
+  it('shows ticked when the server says citizenship will be printed', async () => {
+    const box = await render({ effective: true })
+    expect(box).not.toBeNull()
+    expect(box.checked).toBe(true)
+  })
+
+  it('shows unticked when the server says it will not', async () => {
+    const box = await render({ effective: false })
+    expect(box.checked).toBe(false)
+  })
+
+  it('reads the effective value, not a stale saved "false" string', async () => {
+    // The box must follow the server, which already parsed any saved value.
+    const box = await render({ effective: true,
+                               customizations: { include_citizenship: 'false' } })
+    expect(box.checked).toBe(true)
+  })
+
+  it('an untouched box sends nothing, so the automatic default survives', async () => {
+    await render({ effective: true })
+    const body = await clickApply()
+    expect(body).not.toHaveProperty('include_citizenship')
+  })
+
+  it('ticking it on a non-federal application sends true', async () => {
+    const box = await render({ effective: false })
+    userToggles(box, true)
+    const body = await clickApply()
+    expect(body.include_citizenship).toBe(true)
+  })
+
+  it('unticking the federal default sends false', async () => {
+    const box = await render({ effective: true })
+    userToggles(box, false)
+    const body = await clickApply()
+    expect(body.include_citizenship).toBe(false)
   })
 })

@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Generator, List, Optional, Union
 
-from .llm_client import LLMClient, _LLMControlFlow
+from .llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -313,11 +313,17 @@ class PromptBundle:
 # Exceptions
 # ---------------------------------------------------------------------------
 
-class PromptBundleReady(_LLMControlFlow):
+class PromptBundleReady(BaseException):
     """Raised by :class:`PassthroughLLMClient` when a prompt bundle is ready.
 
     The caller catches this, serialises ``bundle`` as JSON, sends it to the
     agent, receives the result, then calls ``HeadlessSession.inject_llm_result``.
+
+    Deliberately a ``BaseException``, not an ``Exception``: it is a control-flow
+    signal, like ``GeneratorExit``.  LLMClient helpers wrap ``self.chat()`` in
+    ``except Exception`` to survive provider errors, and as an ``Exception``
+    this signal was swallowed there, so rewrites_prepare never got its bundle
+    (GitHub #153).  Do not change the base class back.
     """
 
     def __init__(self, bundle: PromptBundle) -> None:

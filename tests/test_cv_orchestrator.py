@@ -1529,6 +1529,26 @@ class TestApplyApprovedRewrites(unittest.TestCase):
             _REWRITE_CONTENT["experiences"][0]["achievements"],
         )
 
+    def test_bullet_add_rejects_non_achievement_location(self):
+        approved = [
+            {
+                "id": "bullet_add_bad_location",
+                "type": "bullet_add",
+                "location": "summary",
+                "evidence": "exp_001.achievements[0]",
+                "original": "Built a model to predict clinical trial outcomes",
+                "proposed": "Predicted clinical trial outcomes with a custom model",
+            }
+        ]
+
+        result = self._apply(approved)
+
+        self.assertEqual(result["summary"], _REWRITE_CONTENT["summary"])
+        self.assertEqual(
+            result["experiences"][0]["achievements"],
+            _REWRITE_CONTENT["experiences"][0]["achievements"],
+        )
+
     def test_bullet_add_rejects_non_text_source(self):
         content = {
             "experiences": [{"id": "exp_001", "achievements": [123]}],

@@ -2320,6 +2320,17 @@ def create_blueprint(deps):
                         raw = raw is True
                     conversation.state['include_division_department'] = raw
                     customizations['include_division_department'] = raw
+                if 'include_citizenship' in body:
+                    # Only present when the user CHANGED the checkbox — the
+                    # client omits it otherwise, so the federal-variant default
+                    # is not frozen into an explicit choice by an idle Apply.
+                    # Parsed, not bool()-ed: bool("false") is True.
+                    raw = body['include_citizenship']
+                    if isinstance(raw, str):
+                        raw = raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+                    else:
+                        raw = raw is True
+                    customizations['include_citizenship'] = raw
                 conversation._save_session()
             _trigger_render_snapshot_refresh(
                 conversation,

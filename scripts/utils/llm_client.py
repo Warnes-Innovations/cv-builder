@@ -40,10 +40,6 @@ _M = TypeVar("_M", bound=BaseModel)
 
 # ── Typed LLM error hierarchy ─────────────────────────────────────────────────
 
-class _LLMControlFlow(Exception):
-    """Internal control signals that LLM helpers must not convert to fallbacks."""
-
-
 class LLMError(RuntimeError):
     """Base class for all LLM provider errors. Carries provider name and original exception."""
     def __init__(self, message: str, provider: str = '', original: Optional[Exception] = None):
@@ -2032,8 +2028,6 @@ Return ONLY a JSON array — no prose, no markdown fences.
                         f"(id={item.get('id')!r})"
                     )
             return valid
-        except _LLMControlFlow:
-            raise
         except Exception as exc:
             warnings.warn(
                 f"propose_rewrites: failed to produce proposals: {exc}"

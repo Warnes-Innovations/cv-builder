@@ -13,6 +13,7 @@ import {
   _interviewPrepQuestions,
   _interviewPrepVisible,
   _resetInterviewPrepState,
+  populateInterviewPrepTab,
   generateInterviewPrep,
   _renderQuestions,
   updateInterviewPrepHint,
@@ -142,5 +143,41 @@ describe('generateInterviewPrep', () => {
     await generateInterviewPrep()
 
     expect(showAlertModal).toHaveBeenCalled()
+  })
+})
+
+// ── populateInterviewPrepTab: restore saved questions (GitHub #134) ──────────
+
+describe('populateInterviewPrepTab', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+  })
+
+  it('shows questions already saved in the session when memory is empty', async () => {
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, questions: [{ question: 'Saved Q', rationale: 'r', hint: 'h' }] }),
+    })
+
+    await populateInterviewPrepTab()
+
+    expect(fetch).toHaveBeenCalledWith('/api/interview-prep')
+    expect(document.getElementById('ip-questions-container').textContent).toContain('Saved Q')
+    expect(_interviewPrepQuestions).toHaveLength(1)
+  })
+
+  it('uses in-memory questions without fetching', async () => {
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, questions: [{ question: 'Mem Q', rationale: '', hint: '' }] }),
+    })
+    document.body.innerHTML += '<button id="ip-generate-btn">gen</button><span id="ip-status"></span>'
+    await generateInterviewPrep()
+    fetch.mockClear()
+
+    await populateInterviewPrepTab()
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(document.getElementById('ip-questions-container').textContent).toContain('Mem Q')
   })
 })

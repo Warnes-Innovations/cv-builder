@@ -221,3 +221,32 @@ class TestInterviewPrepGenerate(unittest.TestCase):
         self.assertEqual(res.status_code, 500)
         self.assertFalse(data['ok'])
         self.assertIn('No questions were generated', data['error'])
+
+
+# ---------------------------------------------------------------------------
+# GET /api/interview-prep  (GitHub #134: restore saved questions)
+# ---------------------------------------------------------------------------
+
+class TestInterviewPrepGet(unittest.TestCase):
+
+    def test_returns_questions_already_in_session_state(self):
+        """Questions saved earlier (or by MCP/CLI) are returned for display."""
+        saved = [{'question': 'Why Acme?', 'rationale': 'fit', 'hint': 'MLOps'}]
+        app, _, mock_llm, sid, stack = _make_app(state_overrides={'interview_prep': saved})
+
+        with stack, app.test_client() as client:
+            res  = client.get(f'/api/interview-prep?session_id={sid}')
+            data = res.get_json()
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['questions'], saved)
+        mock_llm.chat.assert_not_called()
+
+    def test_returns_empty_list_when_none_generated(self):
+        app, _, _, sid, stack = _make_app()
+
+        with stack, app.test_client() as client:
+            data = client.get(f'/api/interview-prep?session_id={sid}').get_json()
+
+        self.assertEqual(data, {'ok': True, 'questions': []})

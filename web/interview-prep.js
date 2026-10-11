@@ -56,11 +56,30 @@ async function populateInterviewPrepTab() {
       </div>
     </div>`;
 
-  // Restore previously generated questions across tab navigation.
+  // Restore previously generated questions: from memory across tab
+  // navigation, otherwise from the session on the server (page reload,
+  // session switch, or questions generated via the MCP server/CLI — #134).
   if (_interviewPrepVisible && _interviewPrepQuestions.length) {
     _renderQuestions(_interviewPrepQuestions);
+  } else {
+    await _loadSavedInterviewPrep();
   }
   log.debug('Interview prep tab rendered');
+}
+
+async function _loadSavedInterviewPrep() {
+  try {
+    const res  = await fetch('/api/interview-prep');
+    const data = await res.json();
+    const questions = Array.isArray(data?.questions) ? data.questions : [];
+    if (!data?.ok || !questions.length) return;
+    _interviewPrepQuestions.length = 0;
+    _interviewPrepQuestions.push(...questions);
+    _interviewPrepVisible = true;
+    _renderQuestions(_interviewPrepQuestions);
+  } catch (err) {
+    log.warn('Could not load saved interview prep questions', err);
+  }
 }
 
 // ── Generate interview prep ────────────────────────────────────────────────────
