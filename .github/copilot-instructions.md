@@ -112,7 +112,8 @@ llm:
                              #   openai | anthropic | gemini | groq | local
   default_model:    string   # Model name; null = provider default.
   temperature:      float    # Default: 0.7
-  max_tokens:       int|null # null = provider default.
+  max_tokens:       int|null # Optional cap on reply length for every provider;
+                             #   null = no cap (Anthropic: model's full output limit).
 
 generation:
   max_skills:        int   # Default: 20

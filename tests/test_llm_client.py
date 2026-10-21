@@ -411,21 +411,46 @@ class TestStubImplementations(unittest.TestCase):
         self.assertEqual(result, [])
 
 
+def _cfg(timeout=None, max_tokens=None):
+    """Stand-in for utils.config.get_config() with the LLM settings chat() reads."""
+    return SimpleNamespace(llm_request_timeout=timeout, llm_max_tokens=max_tokens)
+
+
+def _anthropic_client(model, response):
+    """AnthropicClient whose streamed request returns *response*."""
+    client = object.__new__(AnthropicClient)
+    client.model = model
+    client.client = MagicMock()
+    stream = client.client.messages.stream.return_value.__enter__.return_value
+    stream.get_final_message.return_value = response
+    return client
+
+
+def _text_response(text='ready'):
+    return SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=12, output_tokens=3),
+        content=[SimpleNamespace(type='text', text=text)],
+        stop_reason='end_turn',
+    )
+
+
 class TestAnthropicClient(unittest.TestCase):
     """Validate Anthropic payload normalization for current Messages API."""
 
+    def _chat(self, client, cfg=None, **kwargs):
+        with patch('utils.config.get_config', return_value=cfg or _cfg(), create=True):
+            return client.chat(messages=[{'role': 'user', 'content': 'Say ready'}], **kwargs)
+
+    def _sent(self, client):
+        return client.client.messages.stream.call_args.kwargs
+
     def _chat_with_content(self, content, stop_reason='end_turn'):
-        client = object.__new__(AnthropicClient)
-        client.model = 'claude-sonnet-5'
-        client.client = MagicMock()
-        client.client.messages.create.return_value = SimpleNamespace(
+        client = _anthropic_client('claude-sonnet-5', SimpleNamespace(
             usage=SimpleNamespace(input_tokens=12, output_tokens=3),
             content=content,
             stop_reason=stop_reason,
-        )
-        _no_timeout = SimpleNamespace(llm_request_timeout=None)
-        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
-            return client.chat(messages=[{'role': 'user', 'content': 'Say ready'}])
+        ))
+        return self._chat(client)
 
     def test_chat_skips_leading_thinking_block(self):
         """Models that think by default return a ThinkingBlock before the text.
@@ -461,17 +486,52 @@ class TestAnthropicClient(unittest.TestCase):
             self._chat_with_content(content, stop_reason='max_tokens')
         self.assertIn('max_tokens', str(ctx.exception))
 
-    def test_chat_sends_system_as_text_blocks(self):
-        client = object.__new__(AnthropicClient)
-        client.model = 'claude-sonnet-4-6'
-        client.client = MagicMock()
-        client.client.messages.create.return_value = SimpleNamespace(
-            usage=SimpleNamespace(input_tokens=12, output_tokens=3),
-            content=[SimpleNamespace(type='text', text='ready')],
-        )
+    def test_chat_streams_instead_of_create(self):
+        """Non-streaming create() is refused by the SDK above ~21K max_tokens."""
+        client = _anthropic_client('claude-sonnet-5', _text_response())
+        self.assertEqual(self._chat(client), 'ready')
+        client.client.messages.stream.assert_called_once()
+        client.client.messages.create.assert_not_called()
+        self.assertEqual(client.last_usage.input_tokens, 12)
 
-        _no_timeout = SimpleNamespace(llm_request_timeout=None)
-        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
+    def test_default_max_tokens_is_model_output_cap(self):
+        cases = {
+            'claude-sonnet-5':            128_000,
+            'claude-sonnet-5-5':          128_000,
+            'claude-opus-5-5':            128_000,
+            'claude-fable-5-1':           128_000,
+            'claude-sonnet-4-6':          128_000,
+            'claude-haiku-4-5-20251001':   64_000,
+            'claude-sonnet-4-5':           64_000,
+            'claude-opus-4-5-20251101':    64_000,
+            'claude-3-opus-20240229':       4_096,   # not in the table: old fallback
+        }
+        for model, expected in cases.items():
+            with self.subTest(model=model):
+                client = _anthropic_client(model, _text_response())
+                self._chat(client)
+                self.assertEqual(self._sent(client)['max_tokens'], expected)
+
+    def test_explicit_max_tokens_is_honoured(self):
+        client = _anthropic_client('claude-sonnet-5', _text_response())
+        self._chat(client, max_tokens=8)
+        self.assertEqual(self._sent(client)['max_tokens'], 8)
+
+    def test_configured_cap_lowers_default_and_explicit_values(self):
+        for requested, expected in ((None, 2_000), (8, 8), (50_000, 2_000)):
+            with self.subTest(requested=requested):
+                client = _anthropic_client('claude-sonnet-5', _text_response())
+                self._chat(client, cfg=_cfg(max_tokens=2_000), max_tokens=requested)
+                self.assertEqual(self._sent(client)['max_tokens'], expected)
+
+    def test_timeout_forwarded_when_configured(self):
+        client = _anthropic_client('claude-sonnet-5', _text_response())
+        self._chat(client, cfg=_cfg(timeout=300.0))
+        self.assertEqual(self._sent(client)['timeout'], 300.0)
+
+    def test_chat_sends_system_as_text_blocks(self):
+        client = _anthropic_client('claude-sonnet-4-6', _text_response())
+        with patch('utils.config.get_config', return_value=_cfg(), create=True):
             result = client.chat(
                 messages=[
                     {'role': 'system', 'content': 'Answer in one word.'},
@@ -482,7 +542,7 @@ class TestAnthropicClient(unittest.TestCase):
             )
 
         self.assertEqual(result, 'ready')
-        client.client.messages.create.assert_called_once_with(
+        client.client.messages.stream.assert_called_once_with(
             model='claude-sonnet-4-6',
             max_tokens=8,
             system=[{'type': 'text', 'text': 'Answer in one word.'}],
@@ -495,61 +555,57 @@ class TestAnthropicClient(unittest.TestCase):
         )
 
     def test_chat_does_not_forward_temperature(self):
-        """temperature must never reach Messages.create().
+        """temperature must never reach Messages.stream()/create().
 
         The anthropic SDK (>= 1.2.0) removed ``temperature`` from
-        ``Messages.create()`` and rejects unknown keywords outright, so
-        forwarding it raises TypeError before the request is sent and every
-        Anthropic call fails. Callers still pass temperature=... and that is
-        fine — it is ignored for this provider.
+        ``Messages.create()`` and ``Messages.stream()`` and rejects unknown
+        keywords outright, so forwarding it raises TypeError before the
+        request is sent and every Anthropic call fails. Callers still pass
+        temperature=... and that is fine — it is ignored for this provider.
 
         Note this test asserts a *call shape*, not real SDK behaviour: the
         MagicMock below happily accepts any keyword, which is precisely why the
         original bug shipped green. Treat a change here as a signal to re-check
         against the installed SDK signature, not just to re-run the mock.
         """
-        client = object.__new__(AnthropicClient)
-        client.model = 'claude-sonnet-4-6'
-        client.client = MagicMock()
-        client.client.messages.create.return_value = SimpleNamespace(
-            usage=SimpleNamespace(input_tokens=8, output_tokens=2),
-            content=[SimpleNamespace(type='text', text='ready')],
-        )
-
-        _no_timeout = SimpleNamespace(llm_request_timeout=None)
-        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
-            client.chat(
-                messages=[{'role': 'user', 'content': 'Say ready'}],
-                temperature=0.3,
-                max_tokens=8,
-            )
-
-        self.assertNotIn(
-            'temperature',
-            client.client.messages.create.call_args.kwargs,
-        )
+        client = _anthropic_client('claude-sonnet-4-6', _text_response())
+        self._chat(client, temperature=0.3, max_tokens=8)
+        self.assertNotIn('temperature', self._sent(client))
 
     def test_chat_omits_system_when_not_present(self):
-        client = object.__new__(AnthropicClient)
-        client.model = 'claude-sonnet-4-6'
-        client.client = MagicMock()
-        client.client.messages.create.return_value = SimpleNamespace(
-            usage=SimpleNamespace(input_tokens=8, output_tokens=2),
-            content=[SimpleNamespace(type='text', text='ready')],
-        )
+        client = _anthropic_client('claude-sonnet-4-6', _text_response())
+        self._chat(client, temperature=0, max_tokens=8)
 
-        client.chat(
-            messages=[{'role': 'user', 'content': 'Say ready'}],
-            temperature=0,
-            max_tokens=8,
-        )
-
-        kwargs = client.client.messages.create.call_args.kwargs
+        kwargs = self._sent(client)
         self.assertNotIn('system', kwargs)
         self.assertEqual(
             kwargs['messages'],
             [{'role': 'user', 'content': [{'type': 'text', 'text': 'Say ready'}]}],
         )
+
+
+class TestMaxTokensCap(unittest.TestCase):
+    """llm.max_tokens / CV_LLM_MAX_TOKENS is an optional lower cap for every provider."""
+
+    def _openai_sent(self, cfg, **kwargs):
+        client = object.__new__(OpenAIClient)
+        client.model = 'gpt-4o'
+        client.client = MagicMock()
+        client.client.chat.completions.create.return_value = SimpleNamespace(
+            usage=None, choices=[SimpleNamespace(message=SimpleNamespace(content='ok'))],
+        )
+        with patch('utils.config.get_config', return_value=cfg, create=True):
+            client.chat([{'role': 'user', 'content': 'hi'}], **kwargs)
+        return client.client.chat.completions.create.call_args.kwargs
+
+    def test_no_cap_leaves_provider_default(self):
+        self.assertIsNone(self._openai_sent(_cfg())['max_tokens'])
+
+    def test_cap_applies_when_caller_sets_none(self):
+        self.assertEqual(self._openai_sent(_cfg(max_tokens=1_500))['max_tokens'], 1_500)
+
+    def test_cap_never_raises_a_smaller_request(self):
+        self.assertEqual(self._openai_sent(_cfg(max_tokens=1_500), max_tokens=100)['max_tokens'], 100)
 
 
 class TestGitHubModelNormalization(unittest.TestCase):
@@ -663,7 +719,7 @@ class TestGeminiClientAnyLLM(unittest.TestCase):
             {'role': 'user', 'content': 'Say ready'}
         ]
 
-        _no_timeout = SimpleNamespace(llm_request_timeout=None)
+        _no_timeout = _cfg()
         with patch('utils.config.get_config', return_value=_no_timeout, create=True):
             result = client.chat(messages, temperature=0.1, max_tokens=12)
 
@@ -865,7 +921,7 @@ class TestCopilotSdkClient(unittest.TestCase):
         )
 
         messages = [{'role': 'user', 'content': 'Hi'}]
-        with patch('utils.config.get_config', return_value=SimpleNamespace(llm_request_timeout=300.0)):
+        with patch('utils.config.get_config', return_value=_cfg(timeout=300.0)):
             result = client.chat(messages, temperature=0.5, max_tokens=20)
 
         self.assertEqual(result, 'Hello')
@@ -891,7 +947,7 @@ class TestCopilotSdkClient(unittest.TestCase):
         )
 
         messages = [{'role': 'user', 'content': 'Hi'}]
-        with patch('utils.config.get_config', return_value=SimpleNamespace(llm_request_timeout=300.0)):
+        with patch('utils.config.get_config', return_value=_cfg(timeout=300.0)):
             result = client.chat(messages, temperature=0.7)
 
         self.assertEqual(result, 'Hello')

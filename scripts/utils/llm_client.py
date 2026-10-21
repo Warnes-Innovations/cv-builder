@@ -222,6 +222,50 @@ def _position_style_context(domain: str) -> str:
     return _POSITION_STYLE_CONTEXT_MSGS.get(style_key, _POSITION_STYLE_CONTEXT_MSGS['industry'])
 
 
+def _apply_max_tokens_cap(requested: Optional[int]) -> Optional[int]:
+    """Clamp *requested* to the optional llm.max_tokens / CV_LLM_MAX_TOKENS cap.
+
+    With no cap configured, *requested* passes through unchanged (None means
+    the provider's own default). With a cap, None becomes the cap.
+    """
+    from utils.config import get_config as _get_config  # noqa: PLC0415
+    cap = _get_config().llm_max_tokens
+    if not cap:
+        return requested
+    return cap if requested is None else min(requested, cap)
+
+
+# Max output tokens per Anthropic model, checked against GET /v1/models
+# (max_tokens field) on 2026-10-21. Prefix-matched, so "claude-opus-5" also covers
+# claude-opus-5-5 and dated IDs resolve. A model not listed keeps the fallback:
+# asking for more than a model's cap is a 400, so do not raise the fallback to
+# 128K "to be safe".
+_ANTHROPIC_MAX_OUTPUT = (
+    ('claude-fable-5',    128_000),
+    ('claude-mythos-5',   128_000),
+    ('claude-opus-5',     128_000),
+    ('claude-opus-4-8',   128_000),
+    ('claude-opus-4-7',   128_000),
+    ('claude-opus-4-6',   128_000),
+    ('claude-sonnet-5',   128_000),
+    ('claude-sonnet-4-6', 128_000),
+    ('claude-haiku-5',    128_000),
+    ('claude-haiku-4-5',   64_000),
+    ('claude-sonnet-4-5',  64_000),
+    ('claude-opus-4-5',    64_000),
+)
+_ANTHROPIC_FALLBACK_MAX_OUTPUT = 4096
+
+
+def _anthropic_max_output(model: str) -> int:
+    """Return the max output tokens for an Anthropic *model* ID."""
+    name = (model or '').lower().rsplit('/', 1)[-1]
+    for prefix, cap in _ANTHROPIC_MAX_OUTPUT:
+        if name.startswith(prefix):
+            return cap
+    return _ANTHROPIC_FALLBACK_MAX_OUTPUT
+
+
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
 
@@ -2063,7 +2107,7 @@ class OpenAIClient(LLMClient):
             model=self.model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_tokens=_apply_max_tokens_cap(max_tokens),
         )
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
@@ -2156,7 +2200,8 @@ class AnthropicClient(LLMClient):
         timeout_secs = _get_config().llm_request_timeout
         try:
             # Do NOT add "temperature" here. The anthropic SDK (>= 1.2.0) removed it
-            # from Messages.create(), which rejects unknown keywords outright:
+            # from Messages.create() and Messages.stream(), which reject unknown
+            # keywords outright:
             #   TypeError: Messages.create() got an unexpected keyword argument 'temperature'
             # That aborts EVERY Anthropic call before it reaches the network, so the
             # provider fails closed rather than degrading. Callers still pass
@@ -2164,9 +2209,13 @@ class AnthropicClient(LLMClient):
             # those values are intentionally ignored for this provider only. The sibling
             # OpenAI/Gemini/Groq/Copilot clients DO forward it — do not "make them
             # consistent" by copying this omission into them.
+            # The API requires max_tokens. It is a ceiling, not a charge, so default
+            # to the model's full output cap; thinking counts against it too.
             request_kwargs = {
                 "model":       self.model,
-                "max_tokens":  max_tokens or 4096,
+                "max_tokens":  _apply_max_tokens_cap(
+                    max_tokens or _anthropic_max_output(self.model)
+                ),
                 "messages":    payload_messages,
             }
             if system_blocks:
@@ -2174,7 +2223,11 @@ class AnthropicClient(LLMClient):
             if timeout_secs is not None:
                 request_kwargs["timeout"] = timeout_secs
 
-            response = self.client.messages.create(**request_kwargs)
+            # Stream, then return the whole message. Do not switch back to
+            # messages.create(): without a timeout the SDK refuses non-streaming
+            # requests whose max_tokens could take over 10 minutes (about 21K+).
+            with self.client.messages.stream(**request_kwargs) as stream:
+                response = stream.get_final_message()
             self.last_usage = response.usage
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Anthropic') from exc
@@ -2238,7 +2291,7 @@ class GeminiClient(LLMClient):
                 api_key=self.api_key,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_tokens=_apply_max_tokens_cap(max_tokens),
             )
             if timeout_secs is not None:
                 gemini_kwargs["timeout"] = timeout_secs
@@ -2364,6 +2417,7 @@ class CopilotSdkClient(LLMClient):
         )
         if self.api_key is not None:
             kwargs["api_key"] = self.api_key
+        max_tokens = _apply_max_tokens_cap(max_tokens)
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
         from utils.config import get_config as _get_config  # noqa: PLC0415
@@ -2457,7 +2511,7 @@ class LocalLLMClient(LLMClient):
 
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=max_tokens or 512,
+                max_new_tokens=_apply_max_tokens_cap(max_tokens) or 512,
                 temperature=temperature,
                 do_sample=True
             )
@@ -2731,6 +2785,7 @@ class CopilotOAuthClient(LLMClient):
             "messages":    messages,
             "temperature": temperature,
         }
+        max_tokens = _apply_max_tokens_cap(max_tokens)
         if max_tokens:
             payload["max_tokens"] = max_tokens
         if json_mode:

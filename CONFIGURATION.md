@@ -85,7 +85,9 @@ llm:
   default_provider: "github"
   default_model: null            # null uses provider default
   temperature: 0.7               # 0.0 = deterministic, 1.0 = creative
-  max_tokens: null               # null uses provider default
+  max_tokens: null               # Optional cap on reply length, applied to every
+                                 # provider. null = no cap: the provider default,
+                                 # or for Anthropic the model's full output limit
   request_timeout_seconds: 300  # Max seconds to wait per LLM reply; increase for slow
                                  # providers or complex queries, null = no limit
 ```

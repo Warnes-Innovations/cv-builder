@@ -305,10 +305,12 @@ def create_blueprint(deps):
         """Switch the active model and optionally the provider."""
         def _probe_client(candidate_client):
             try:
+                # No small max_tokens here: thinking counts against it, so a model
+                # that thinks by default can use it all and return no text, which
+                # reads as a failed probe. The reply is one word either way.
                 candidate_client.chat(
                     messages=[{"role": "user", "content": "Reply with one word: ready"}],
                     temperature=0,
-                    max_tokens=8,
                 )
                 return True, None
             except Exception as exc:

@@ -296,6 +296,25 @@ class TestPostModelPersistsToConfig(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         mock_persist.assert_called_once_with('openai', 'gpt-4o')
 
+    def test_probe_does_not_cap_max_tokens(self):
+        """The model-switch probe must not pass a tiny max_tokens.
+
+        Thinking counts against max_tokens; a model that thinks by default
+        could spend all of max_tokens=8 thinking and return no text.
+        """
+        probe_client = MagicMock()
+        probe_client.chat.return_value = 'ready'
+
+        with patch('routes.auth_routes.get_llm_provider', return_value=probe_client), \
+             patch('routes.auth_routes._persist_provider_model_to_config'):
+            response = self.client.post('/api/model', json={
+                'provider': 'anthropic',
+                'model':    'claude-sonnet-5',
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('max_tokens', probe_client.chat.call_args.kwargs)
+
     def test_failed_probe_does_not_call_persist(self):
         """A probe failure (bad auth) must NOT persist provider/model to config."""
         bad_client = MagicMock()
