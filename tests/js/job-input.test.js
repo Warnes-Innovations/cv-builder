@@ -21,6 +21,7 @@ import {
   clearURLInput,
   handleFileSelected,
   clearSelectedFile,
+  showProtectedSiteModal,
 } from '../../web/job-input.js'
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
@@ -268,3 +269,46 @@ describe('clearSelectedFile', () => {
   })
 })
 
+
+// ── showProtectedSiteModal ────────────────────────────────────────────────
+
+describe('showProtectedSiteModal', () => {
+  const INSTRUCTIONS = [
+    '1. Open the Indeed job posting in your browser',
+    '2. Copy the job description text',
+    '3. Use the "Paste Text" tab to submit it',
+  ]
+
+  beforeEach(() => vi.stubGlobal('showAlertModal', vi.fn()))
+
+  it('passes a DOM Node, not an HTML string (showAlertModal renders strings as text)', () => {
+    showProtectedSiteModal('Indeed', 'Indeed has anti-bot protection.', INSTRUCTIONS)
+    const [title, content] = globalThis.showAlertModal.mock.calls[0]
+    expect(title).toBe('Indeed Input Required')
+    expect(content).toBeInstanceOf(Node)
+    expect(content.textContent).not.toMatch(/<(div|strong|ol|li|p)\b/)
+  })
+
+  it('renders the header, message, one <li> per instruction, and the tip', () => {
+    showProtectedSiteModal('Indeed', 'Indeed has anti-bot protection.', INSTRUCTIONS)
+    const content = globalThis.showAlertModal.mock.calls[0][1]
+    expect(content.querySelector('strong').textContent).toBe('Indeed requires manual input')
+    expect(content.querySelector('p').textContent).toBe('Indeed has anti-bot protection.')
+    const items = [...content.querySelectorAll('ol > li')].map(li => li.textContent)
+    expect(items).toEqual(INSTRUCTIONS)
+    expect(content.textContent).toContain('💡 Tip:')
+  })
+
+  it('omits the list when there are no instructions', () => {
+    showProtectedSiteModal('Indeed', 'msg', [])
+    expect(globalThis.showAlertModal.mock.calls[0][1].querySelector('ol')).toBeNull()
+  })
+
+  it('treats server-supplied text as text, never markup', () => {
+    showProtectedSiteModal('<b>X</b>', '<img src=x onerror=alert(1)>', ['<script>evil()</script>'])
+    const [title, content] = globalThis.showAlertModal.mock.calls[0]
+    expect(title).toBe('<b>X</b> Input Required')
+    expect(content.querySelector('img, script, b')).toBeNull()
+    expect(content.querySelector('li').textContent).toBe('<script>evil()</script>')
+  })
+})

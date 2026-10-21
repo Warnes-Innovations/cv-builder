@@ -80,6 +80,23 @@ describe('showAlertModal', () => {
     expect(document.getElementById('alert-modal-message').innerHTML).toBe('line1<br>line2')
   })
 
+  it('renders a DOM Node message as elements, not literal markup', () => {
+    const node = document.createElement('p')
+    const strong = document.createElement('strong')
+    strong.textContent = 'bold'
+    node.append('plain ', strong)
+    showAlertModal('T', node)
+    const msgEl = document.getElementById('alert-modal-message')
+    expect(msgEl.querySelector('p > strong').textContent).toBe('bold')
+    expect(msgEl.textContent).toBe('plain bold')
+  })
+
+  it('replaces a previous Node message rather than appending to it', () => {
+    showAlertModal('T', document.createTextNode('first'))
+    showAlertModal('T', document.createTextNode('second'))
+    expect(document.getElementById('alert-modal-message').textContent).toBe('second')
+  })
+
   it('makes the overlay visible', () => {
     showAlertModal('T', 'M')
     expect(document.getElementById('alert-modal-overlay').style.display).toBe('block')

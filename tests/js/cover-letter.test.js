@@ -313,7 +313,14 @@ describe('saveCoverLetter', () => {
       ok: true, json: async () => ({ ok: true, filename: 'cover_letter.txt' }),
     })
     await saveCoverLetter()
-    expect(globalThis.showAlertModal).toHaveBeenCalledWith('✅ Saved', expect.stringContaining('cover_letter.txt'))
+    // showAlertModal renders strings as text, so formatted content must arrive as
+    // a Node — an HTML string here would show literal <strong> tags in the modal.
+    const [title, msg] = globalThis.showAlertModal.mock.calls[0]
+    expect(title).toBe('✅ Saved')
+    expect(msg).toBeInstanceOf(Node)
+    expect(msg.textContent).toContain('cover_letter.txt')
+    expect(msg.textContent).not.toContain('<strong>')
+    expect(msg.querySelector('strong').textContent).toBe('cover_letter.txt')
   })
 
   it('shows error alert on API failure', async () => {

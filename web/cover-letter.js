@@ -357,7 +357,12 @@ async function saveCoverLetter() {
     const data = await res.json();
 
     if (data.ok) {
-      showAlertModal('✅ Saved', `Cover letter saved as <strong>${escapeHtml(data.filename)}</strong> in your application folder.`);
+      // A Node, not an HTML string: showAlertModal renders strings as text (GAP-61).
+      const msg = document.createElement('span');
+      const fname = document.createElement('strong');
+      fname.textContent = data.filename;
+      msg.append('Cover letter saved as ', fname, ' in your application folder.');
+      showAlertModal('✅ Saved', msg);
     } else {
       showAlertModal('❌ Save Failed', data.error || 'Could not save cover letter.');
     }

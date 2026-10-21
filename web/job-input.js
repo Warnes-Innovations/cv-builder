@@ -545,28 +545,38 @@ async function fetchJobFromURL() {
   setLoading(false);
 }
 
+// Built as DOM nodes, not an HTML string: showAlertModal renders strings as
+// text (GAP-61), so HTML markup would appear literally. textContent also keeps
+// the server-supplied site name, message, and instructions from injecting HTML.
 function showProtectedSiteModal(siteName, message, instructions) {
-  let instructionsList = '';
-  if (instructions && instructions.length > 0) {
-    instructionsList = '<ol style="margin: 16px 0; padding-left: 20px;">' +
-                      instructions.map(inst => `<li style="margin: 8px 0;">${inst}</li>`).join('') +
-                      '</ol>';
+  const el = (tag, style, text) => {
+    const node = document.createElement(tag);
+    if (style) node.style.cssText = style;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const name = String(siteName || 'This site');
+
+  const content = document.createElement('div');
+
+  const header = el('div', 'text-align: center; margin-bottom: 16px;');
+  header.append('🔒 ', el('strong', '', `${name} requires manual input`));
+  content.appendChild(header);
+
+  content.appendChild(el('p', '', String(message || '')));
+
+  if (Array.isArray(instructions) && instructions.length > 0) {
+    // list-style none: the server's instruction strings already carry "1.", "2." prefixes.
+    const list = el('ol', 'margin: 16px 0; padding-left: 20px; list-style: none;');
+    instructions.forEach(inst => list.appendChild(el('li', 'margin: 8px 0;', String(inst))));
+    content.appendChild(list);
   }
 
-  const safeName = escapeHtml(siteName);
-  const safeMessage = escapeHtml(message);
-  const modalContent = `
-    <div style="text-align: center; margin-bottom: 16px;">
-      🔒 <strong>${safeName} requires manual input</strong>
-    </div>
-    <p>${safeMessage}</p>
-    ${instructionsList}
-    <div style="margin-top: 20px; padding: 12px; background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 6px;">
-      <strong>💡 Tip:</strong> After copying the job description, click the "Paste Text" tab above to submit it directly.
-    </div>
-  `;
+  const tip = el('div', 'margin-top: 20px; padding: 12px; background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 6px;');
+  tip.append(el('strong', '', '💡 Tip:'), ' After copying the job description, click the "Paste Text" tab above to submit it directly.');
+  content.appendChild(tip);
 
-  showAlertModal(`${safeName} Input Required`, modalContent);
+  showAlertModal(`${name} Input Required`, content);
 }
 
 // ---------------------------------------------------------------------------

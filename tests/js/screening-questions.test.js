@@ -231,7 +231,13 @@ describe('saveScreeningResponses', () => {
       ok: true, json: async () => ({ ok: true, count: 1, filename: 'screening_2026.json' }),
     })
     await saveScreeningResponses()
-    expect(globalThis.showAlertModal).toHaveBeenCalledWith('✅ Saved', expect.stringContaining('screening_2026.json'))
+    // showAlertModal renders strings as text, so formatted content must arrive as
+    // a Node — an HTML string here would show literal <strong> tags in the modal.
+    const [title, msg] = globalThis.showAlertModal.mock.calls[0]
+    expect(title).toBe('✅ Saved')
+    expect(msg).toBeInstanceOf(Node)
+    expect(msg.textContent).toBe('1 response saved as screening_2026.json and added to your response library.')
+    expect(msg.querySelector('strong').textContent).toBe('screening_2026.json')
   })
 
   it('shows error on API failure', async () => {

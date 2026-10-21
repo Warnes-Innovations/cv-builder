@@ -19,8 +19,16 @@ import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
 // Alert modal (informational — single OK button)
 // ---------------------------------------------------------------------------
 
+// A string message is always rendered as text (GAP-61: never assign it to
+// innerHTML — callers interpolate server data into it). Callers that need
+// formatting pass a DOM Node built with createElement/textContent instead of
+// an HTML string; an HTML string here shows up as literal tags in the modal.
 function _setModalText(el, message) {
   el.textContent = '';
+  if (typeof Node !== 'undefined' && message instanceof Node) {
+    el.appendChild(message);
+    return;
+  }
   const parts = String(message || '').split('\n');
   parts.forEach((part, i) => {
     el.appendChild(document.createTextNode(part));

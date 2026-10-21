@@ -338,7 +338,12 @@ async function saveScreeningResponses() {
     });
     const data = await res.json();
     if (data.ok) {
-      showAlertModal('✅ Saved', `${data.count} response${data.count !== 1 ? 's' : ''} saved as <strong>${escapeHtml(data.filename)}</strong> and added to your response library.`);
+      // A Node, not an HTML string: showAlertModal renders strings as text (GAP-61).
+      const msg = document.createElement('span');
+      const fname = document.createElement('strong');
+      fname.textContent = data.filename;
+      msg.append(`${data.count} response${data.count !== 1 ? 's' : ''} saved as `, fname, ' and added to your response library.');
+      showAlertModal('✅ Saved', msg);
     } else {
       showAlertModal('❌ Save Failed', data.error || 'Could not save responses.');
     }
