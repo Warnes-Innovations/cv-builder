@@ -21,7 +21,7 @@ import mcp_server  # noqa: E402
 
 
 @pytest.fixture
-def passthrough_server(monkeypatch, tmp_path):
+def passthrough_server(monkeypatch, tmp_path, example_master_data):
     monkeypatch.setenv("CV_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(mcp_server, "_effective_provider", lambda: None)
     monkeypatch.setattr(mcp_server, "_effective_model", lambda: None)

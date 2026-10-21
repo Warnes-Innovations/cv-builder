@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -344,16 +346,46 @@ def test_render_generated_assets_force_overwrites_existing_files(monkeypatch):
         )
 
 
-def test_cv_preview_wrapper_help_smoke():
-    result = subprocess.run(
+# PATH with no conda and (normally) only a system python3 that lacks the
+# project dependencies -- the conditions of the scheduled CI run, where
+# .venv/bin is never put on PATH.
+_BARE_PATH = '/usr/bin:/bin'
+
+
+def _run_wrapper(env):
+    return subprocess.run(
         ['bash', str(WRAPPER_PATH), '--help'],
         capture_output=True,
         text=True,
         check=False,
         cwd=str(REPO_ROOT),
         timeout=120,
+        env=env,
     )
 
-    assert result.returncode == 0
+
+def _assert_help_ok(result):
+    assert result.returncode == 0, result.stderr
     assert 'usage:' in result.stdout.lower()
     assert 'cv-preview.py' in result.stdout
+
+
+def test_cv_preview_wrapper_help_smoke():
+    env = {k: v for k, v in os.environ.items() if k != 'VIRTUAL_ENV'}
+    env.update(PATH=_BARE_PATH, CV_PYTHON=sys.executable)
+    _assert_help_ok(_run_wrapper(env))
+
+
+def test_cv_preview_wrapper_uses_virtual_env_python(tmp_path):
+    venv_bin = tmp_path / 'venv' / 'bin'
+    venv_bin.mkdir(parents=True)
+    # A shim that execs the real interpreter, not a symlink to it: when
+    # sys.executable is itself a venv python (as in CI), reaching it through
+    # a symlink elsewhere loses its pyvenv.cfg and with it the project's
+    # site-packages.
+    shim = venv_bin / 'python'
+    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    shim.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if k != 'CV_PYTHON'}
+    env.update(PATH=_BARE_PATH, VIRTUAL_ENV=str(tmp_path / 'venv'))
+    _assert_help_ok(_run_wrapper(env))

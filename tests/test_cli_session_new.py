@@ -24,7 +24,7 @@ def _run(args):
     return json.loads(result.stdout)
 
 
-def test_session_new_returns_persisted_session(monkeypatch, tmp_path):
+def test_session_new_returns_persisted_session(monkeypatch, tmp_path, example_master_data):
     monkeypatch.setenv("CV_OUTPUT_DIR", str(tmp_path))
 
     out = _run(["session", "new"])
@@ -35,7 +35,7 @@ def test_session_new_returns_persisted_session(monkeypatch, tmp_path):
     assert saved["session_id"] == out["session_id"]
 
 
-def test_session_new_id_is_usable_by_next_command(monkeypatch, tmp_path):
+def test_session_new_id_is_usable_by_next_command(monkeypatch, tmp_path, example_master_data):
     monkeypatch.setenv("CV_OUTPUT_DIR", str(tmp_path))
     sid = _run(["session", "new"])["session_id"]
     job = tmp_path / "job.txt"
