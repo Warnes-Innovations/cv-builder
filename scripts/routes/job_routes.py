@@ -53,6 +53,8 @@ def _json_ld_blobs_to_markdown(blobs: list) -> str:
         soup = BeautifulSoup(text, 'html.parser')
         for tag in soup.find_all('br'):
             tag.replace_with('\n')
+        for tag in soup.find_all('li'):
+            tag.insert(0, '- ')
         for tag in soup.find_all(['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'blockquote', 'tr']):
             tag.insert_after('\n')
         return '\n'.join(line.strip() for line in soup.get_text(separator='').splitlines() if line.strip())
@@ -239,6 +241,76 @@ def _safe_get(
     raise _requests.TooManyRedirects(f"Exceeded {max_redirects} redirects", response=response)
 
 
+_META_CHARSET_RE = _re.compile(rb'<meta[^>]+charset=["\']?([A-Za-z0-9_-]+)', _re.IGNORECASE)
+
+
+def _response_text(response: "_requests.Response") -> str:
+    """Decode *response*, honouring a <meta> charset when the header has none.
+
+    Do not replace with ``response.text``: for text/* without a charset in the
+    Content-Type header, requests assumes ISO-8859-1, which turns UTF-8 curly
+    quotes into "itâ€™s". Workday sends exactly that header.
+    """
+    if 'charset=' in response.headers.get('content-type', '').lower():
+        return response.text
+    match = _META_CHARSET_RE.search(response.content[:4096])
+    if match:
+        try:
+            return response.content.decode(match.group(1).decode('ascii'), errors='replace')
+        except LookupError:
+            pass
+    response.encoding = response.apparent_encoding
+    return response.text
+
+
+_WORKDAY_HOST_RE = _re.compile(r'^([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com$')
+_WORKDAY_PATH_RE = _re.compile(r'^/(?:[a-z]{2}-[A-Z]{2}/)?([^/]+)/job/(.+)$')
+
+
+def _workday_cxs_url(url: str) -> Optional[str]:
+    """Map a Workday job page URL to its CXS JSON endpoint, or None.
+
+    https://{tenant}.wdN.myworkdayjobs.com/[locale/]{site}/job/{path}
+      -> https://{tenant}.wdN.myworkdayjobs.com/wday/cxs/{tenant}/{site}/job/{path}
+    The query string is dropped; it can carry the applicant's username.
+    """
+    parsed = urlparse(url)
+    host = _WORKDAY_HOST_RE.match(parsed.hostname or '')
+    path = _WORKDAY_PATH_RE.match(parsed.path)
+    if parsed.scheme != 'https' or not host or not path:
+        return None
+    return (f"https://{parsed.hostname}/wday/cxs/{host.group(1)}/"
+            f"{path.group(1)}/job/{path.group(2)}")
+
+
+def _fetch_workday_description(url: str, headers: dict) -> Optional[str]:
+    """Return the HTML job description from Workday's CXS API, or None.
+
+    Workday's JSON-LD ``description`` has its markup and line breaks stripped,
+    so the posting renders as one paragraph; the page body is a JS app with no
+    text. The CXS endpoint the page itself loads returns the formatted HTML.
+    Any failure returns None so the caller keeps the JSON-LD text.
+    """
+    cxs_url = _workday_cxs_url(url)
+    if not cxs_url:
+        return None
+    try:
+        response = _safe_get(cxs_url, {**headers, 'Accept': 'application/json'}, timeout=30)
+        if response.status_code != 200:
+            logger.info("Workday CXS returned %s for %s", response.status_code, cxs_url)
+            return None
+        data = response.json()
+    except (_requests.RequestException, ValueError) as exc:
+        logger.info("Workday CXS fetch failed for %s: %s", cxs_url, exc)
+        return None
+    info = data.get('jobPostingInfo') if isinstance(data, dict) else None
+    description = info.get('jobDescription') if isinstance(info, dict) else None
+    if isinstance(description, str) and description.strip():
+        return description
+    logger.info("Workday CXS response had no jobDescription: %s", cxs_url)
+    return None
+
+
 def create_blueprint(deps):
     bp = Blueprint('job', __name__)
 
@@ -398,9 +470,9 @@ def create_blueprint(deps):
 
             page_title = None  # populated by the HTML branch; used by _infer_position_name
             if 'text/plain' in content_type:
-                job_text = response.text
+                job_text = _response_text(response)
             elif 'text/html' in content_type or 'html' in content_type:
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(_response_text(response), 'html.parser')
 
                 # --- Structured metadata extraction (before any tag removal) ---
                 json_ld_blobs: list  = []
@@ -420,6 +492,14 @@ def create_blueprint(deps):
                                     break
                     except Exception:
                         pass
+
+                workday_html = _fetch_workday_description(url, headers)
+                if workday_html:
+                    postings = [b for b in json_ld_blobs if b.get('@type') == 'JobPosting']
+                    for blob in postings:
+                        blob['description'] = workday_html
+                    if not postings:
+                        json_ld_blobs.append({'@type': 'JobPosting', 'description': workday_html})
 
                 og_title = None
                 meta_desc_text = None

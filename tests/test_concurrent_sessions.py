@@ -3709,6 +3709,9 @@ def test_fetch_job_url_route_prefers_json_ld_when_body_is_too_short(build_app):
         status_code=200,
         headers={"content-type": "text/html"},
         text=html,
+        # No charset in the header, so the route decodes .content using the
+        # page's <meta> charset (see routes.job_routes._response_text).
+        content=html.encode("utf-8"),
     )
 
     with patch("requests.get", return_value=mock_response):
