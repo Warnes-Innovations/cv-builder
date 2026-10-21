@@ -2176,9 +2176,25 @@ class AnthropicClient(LLMClient):
 
             response = self.client.messages.create(**request_kwargs)
             self.last_usage = response.usage
-            return response.content[0].text
         except Exception as exc:
             raise _classify_llm_error(exc, provider='Anthropic') from exc
+
+        # Join only the "text" blocks. Do not go back to content[0].text: models
+        # that think by default put a ThinkingBlock (no .text) first, which raised
+        # AttributeError and broke Recommend Customizations.
+        text = ''.join(
+            block.text for block in response.content
+            if getattr(block, 'type', None) == 'text'
+        )
+        if not text:
+            stop_reason = getattr(response, 'stop_reason', None)
+            raise LLMProviderError(
+                f"Anthropic returned no text (stop_reason={stop_reason}). "
+                + ("Thinking may have used the whole max_tokens budget."
+                   if stop_reason == 'max_tokens' else ''),
+                provider='Anthropic',
+            )
+        return text
 
     def propose_rewrites(self, content: Dict, job_analysis: Dict, conversation_history: List[Dict] = None, user_preferences: Dict = None) -> List[Dict]:
         """Propose rewrites via Anthropic Claude. Delegates to shared implementation."""

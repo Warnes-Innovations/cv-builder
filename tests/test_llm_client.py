@@ -414,13 +414,60 @@ class TestStubImplementations(unittest.TestCase):
 class TestAnthropicClient(unittest.TestCase):
     """Validate Anthropic payload normalization for current Messages API."""
 
+    def _chat_with_content(self, content, stop_reason='end_turn'):
+        client = object.__new__(AnthropicClient)
+        client.model = 'claude-sonnet-5'
+        client.client = MagicMock()
+        client.client.messages.create.return_value = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=12, output_tokens=3),
+            content=content,
+            stop_reason=stop_reason,
+        )
+        _no_timeout = SimpleNamespace(llm_request_timeout=None)
+        with patch('utils.config.get_config', return_value=_no_timeout, create=True):
+            return client.chat(messages=[{'role': 'user', 'content': 'Say ready'}])
+
+    def test_chat_skips_leading_thinking_block(self):
+        """Models that think by default return a ThinkingBlock before the text.
+
+        Reading ``response.content[0].text`` raised
+        ``'ThinkingBlock' object has no attribute 'text'`` and broke
+        Recommend Customizations. Uses the SDK's real block classes: the
+        untyped SimpleNamespace mocks elsewhere in this class cannot
+        reproduce it.
+        """
+        from anthropic.types import TextBlock, ThinkingBlock
+        content = [
+            ThinkingBlock(type='thinking', thinking='Considering...', signature='sig'),
+            TextBlock(type='text', text='ready'),
+        ]
+        self.assertEqual(self._chat_with_content(content), 'ready')
+
+    def test_chat_joins_multiple_text_blocks(self):
+        from anthropic.types import TextBlock, ThinkingBlock
+        content = [
+            TextBlock(type='text', text='{"a": '),
+            ThinkingBlock(type='thinking', thinking='...', signature='sig'),
+            TextBlock(type='text', text='1}'),
+        ]
+        self.assertEqual(self._chat_with_content(content), '{"a": 1}')
+
+    def test_chat_raises_clear_error_when_no_text_block(self):
+        """Thinking can use the whole max_tokens budget and leave no text."""
+        from anthropic.types import ThinkingBlock
+        from utils.llm_client import LLMProviderError
+        content = [ThinkingBlock(type='thinking', thinking='...', signature='sig')]
+        with self.assertRaises(LLMProviderError) as ctx:
+            self._chat_with_content(content, stop_reason='max_tokens')
+        self.assertIn('max_tokens', str(ctx.exception))
+
     def test_chat_sends_system_as_text_blocks(self):
         client = object.__new__(AnthropicClient)
         client.model = 'claude-sonnet-4-6'
         client.client = MagicMock()
         client.client.messages.create.return_value = SimpleNamespace(
             usage=SimpleNamespace(input_tokens=12, output_tokens=3),
-            content=[SimpleNamespace(text='ready')],
+            content=[SimpleNamespace(type='text', text='ready')],
         )
 
         _no_timeout = SimpleNamespace(llm_request_timeout=None)
@@ -466,7 +513,7 @@ class TestAnthropicClient(unittest.TestCase):
         client.client = MagicMock()
         client.client.messages.create.return_value = SimpleNamespace(
             usage=SimpleNamespace(input_tokens=8, output_tokens=2),
-            content=[SimpleNamespace(text='ready')],
+            content=[SimpleNamespace(type='text', text='ready')],
         )
 
         _no_timeout = SimpleNamespace(llm_request_timeout=None)
@@ -488,7 +535,7 @@ class TestAnthropicClient(unittest.TestCase):
         client.client = MagicMock()
         client.client.messages.create.return_value = SimpleNamespace(
             usage=SimpleNamespace(input_tokens=8, output_tokens=2),
-            content=[SimpleNamespace(text='ready')],
+            content=[SimpleNamespace(type='text', text='ready')],
         )
 
         client.chat(
