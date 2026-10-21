@@ -192,6 +192,71 @@ def _load_master_data(path: str | Path) -> dict[str, Any]:
         return json.load(fh)
 
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _default_base_url() -> str:
+    """The URL this checkout's web app listens on, resolved by the app's own code.
+
+    Uses ``utils.config.Config.web_host``/``web_port`` against the checkout's
+    ``config.yaml``, plus the two ``CV_WEB_*`` keys from its ``.env`` (the files
+    start.sh and the launchd service run the app with), so env > .env >
+    config.yaml > the app's defaults. Do not replace this with a literal URL:
+    config.yaml is gitignored, so a hard-coded port silently disagrees with any
+    checkout configured differently. The loopback guard in
+    ``_require_cv_builder`` still applies to whatever this returns.
+    """
+    import os
+
+    from dotenv import dotenv_values
+    from utils.config import Config
+
+    env_file = _REPO_ROOT / ".env"
+    file_values = dotenv_values(env_file) if env_file.exists() else {}
+    fill = {
+        key: file_values[key]
+        for key in ("CV_WEB_HOST", "CV_WEB_PORT")
+        if not os.environ.get(key) and file_values.get(key)
+    }
+
+    # Config reads CV_WEB_* from os.environ; supply the .env values only for
+    # the duration of the lookup, then restore, so this has no side effect.
+    saved = {key: os.environ.get(key) for key in fill}
+    os.environ.update(fill)
+    try:
+        cfg = Config(config_file=str(_REPO_ROOT / "config.yaml"), load_env=False)
+        host, port = str(cfg.web_host), cfg.web_port
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    host = host.strip("[]")
+    if host in ("", "0.0.0.0", "::"):
+        host = "127.0.0.1"
+    if ":" in host:
+        host = f"[{host}]"
+    return f"http://{host}:{port}"
+
+
+def _wrong_host_hint() -> str:
+    """Hint for an unreachable or foreign --base-url; built only on failure.
+
+    Never raises: a malformed CV_WEB_PORT or config.yaml must not replace the
+    real connection error with a traceback from building this hint.
+    """
+    try:
+        configured = f"this checkout's app is configured for {_default_base_url()}"
+    except Exception as exc:  # noqa: BLE001 - hint only; report and carry on
+        configured = f"could not read this checkout's app address ({exc})"
+    return (
+        f"  Check --base-url: {configured}.\n"
+        "  On macOS, AirPlay Receiver holds :5000 and answers HTTP 403."
+    )
+
+
 def _is_loopback(base_url: str) -> bool:
     """True when `base_url`'s host resolves to loopback.
 
@@ -264,10 +329,6 @@ def _require_cv_builder(base_url: str, allow_remote: bool = False) -> dict[str, 
         "    WARNING: that entry point calls _evict_port(), which SIGTERMs every\n"
         "    process holding the port — including a browser tab connected to it."
     )
-    wrong_host_hint = (
-        "  Check --base-url: the default is http://127.0.0.1:5001.\n"
-        "  On macOS, AirPlay Receiver holds :5000 and answers HTTP 403."
-    )
     not_ours = "  Something is listening there, but it is not a cv-builder app."
 
     try:
@@ -302,7 +363,7 @@ def _require_cv_builder(base_url: str, allow_remote: bool = False) -> dict[str, 
             "  --base-url must name the app directly, not a redirector: the host\n"
             "  that answers a redirected probe is not the host that receives the\n"
             "  data, and a 307 delivers the body to both.\n"
-            f"{wrong_host_hint}",
+            f"{_wrong_host_hint()}",
             file=sys.stderr,
         )
         sys.exit(4)
@@ -320,7 +381,7 @@ def _require_cv_builder(base_url: str, allow_remote: bool = False) -> dict[str, 
         print(
             f"ERROR: {base_url} answered HTTP {resp.status_code} for /api/status.\n"
             f"{not_ours}\n"
-            f"{wrong_host_hint}",
+            f"{_wrong_host_hint()}",
             file=sys.stderr,
         )
         sys.exit(4)
@@ -331,7 +392,7 @@ def _require_cv_builder(base_url: str, allow_remote: bool = False) -> dict[str, 
         print(
             f"ERROR: {base_url} returned non-JSON from /api/status.\n"
             f"{not_ours}\n"
-            f"{wrong_host_hint}",
+            f"{_wrong_host_hint()}",
             file=sys.stderr,
         )
         sys.exit(4)
@@ -342,7 +403,7 @@ def _require_cv_builder(base_url: str, allow_remote: bool = False) -> dict[str, 
         print(
             f"ERROR: {base_url} did not report alive:true from /api/status.\n"
             f"{not_ours}\n"
-            f"{wrong_host_hint}",
+            f"{_wrong_host_hint()}",
             file=sys.stderr,
         )
         sys.exit(4)
@@ -656,8 +717,11 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--base-url",
-        default="http://127.0.0.1:5001",
-        help="cv-builder web app base URL (default: http://127.0.0.1:5001)",
+        default=None,
+        help=(
+            "cv-builder web app base URL (default: where this checkout's app "
+            "listens, from CV_WEB_HOST/CV_WEB_PORT, .env and config.yaml)"
+        ),
     )
     p.add_argument(
         "--job-file",
@@ -682,7 +746,13 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Show decisions that would be applied without calling the API",
     )
-    return p.parse_args()
+    args = p.parse_args()
+    if args.base_url is None:
+        try:
+            args.base_url = _default_base_url()
+        except Exception as exc:  # noqa: BLE001 - malformed CV_WEB_* / config.yaml
+            p.error(f"cannot determine the default --base-url ({exc}); pass --base-url")
+    return args
 
 
 def main() -> None:

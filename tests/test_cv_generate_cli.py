@@ -263,9 +263,95 @@ class TestParseArgs(unittest.TestCase):
         args = self._parse(["--mode", "focused", "--summary-variant", "scientific_advisor"])
         self.assertEqual(args.mode, "focused")
 
+    def _default_url_in(self, files: dict[str, str], env: dict[str, str] | None = None) -> str:
+        """_default_base_url() against a throwaway checkout holding `files`."""
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, text in files.items():
+                Path(tmp, name).write_text(text, encoding="utf-8")
+            clean = {k: v for k, v in os.environ.items() if not k.startswith("CV_WEB_")}
+            clean.update(env or {})
+            with patch.object(cv_cli, "_REPO_ROOT", Path(tmp)), \
+                 patch.dict(os.environ, clean, clear=True):
+                return cv_cli._default_base_url()
+
     def test_default_base_url(self):
-        args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor"])
-        self.assertEqual(args.base_url, "http://127.0.0.1:5001")
+        with patch.object(cv_cli, "_default_base_url", return_value="http://127.0.0.1:5123"):
+            args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor"])
+        self.assertEqual(args.base_url, "http://127.0.0.1:5123")
+
+    def test_default_base_url_reads_config_yaml(self):
+        url = self._default_url_in({"config.yaml": "web:\n  host: 127.0.0.1\n  port: 5001\n"})
+        self.assertEqual(url, "http://127.0.0.1:5001")
+
+    def test_default_base_url_matches_app_default_without_config(self):
+        # The app falls back to 5000 (utils.config.Config.web_port), not 5001.
+        self.assertEqual(self._default_url_in({}), "http://127.0.0.1:5000")
+
+    def test_default_base_url_env_beats_dotenv_beats_config(self):
+        files = {"config.yaml": "web:\n  port: 5001\n", ".env": "CV_WEB_PORT=5002\n"}
+        self.assertEqual(self._default_url_in(files), "http://127.0.0.1:5002")
+        self.assertEqual(self._default_url_in(files, {"CV_WEB_PORT": "5003"}),
+                         "http://127.0.0.1:5003")
+
+    def test_default_base_url_maps_wildcard_bind_to_loopback(self):
+        url = self._default_url_in({"config.yaml": "web:\n  host: 0.0.0.0\n  port: 5001\n"})
+        self.assertEqual(url, "http://127.0.0.1:5001")
+
+    def test_default_base_url_leaves_environment_unchanged(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".env").write_text("CV_WEB_PORT=5002\n", encoding="utf-8")
+            clean = {k: v for k, v in os.environ.items() if not k.startswith("CV_WEB_")}
+            with patch.object(cv_cli, "_REPO_ROOT", Path(tmp)), \
+                 patch.dict(os.environ, clean, clear=True):
+                self.assertEqual(cv_cli._default_base_url(), "http://127.0.0.1:5002")
+                self.assertNotIn("CV_WEB_PORT", os.environ)
+
+    def test_unreadable_default_base_url_is_a_usage_error(self):
+        import os
+        with patch.dict(os.environ, {"CV_WEB_PORT": "abc"}), \
+             self.assertRaises(SystemExit) as cm, \
+             patch("sys.stderr"):
+            self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor"])
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_wrong_host_hint_survives_unreadable_config(self):
+        import os
+        with patch.dict(os.environ, {"CV_WEB_PORT": "abc"}):
+            hint = cv_cli._wrong_host_hint()
+        self.assertIn("could not read this checkout's app address", hint)
+
+    def test_app_url_sh_agrees_with_default_base_url(self):
+        """scripts/app_url.sh re-implements the same precedence in shell; keep them in step."""
+        import os
+        import shutil
+        import subprocess
+        if shutil.which("bash") is None:
+            self.skipTest("bash not available")
+        script = Path(__file__).resolve().parent.parent / "scripts" / "app_url.sh"
+        cases = [
+            ({}, {}),
+            ({"config.yaml": "web:\n  host: 127.0.0.1\n  port: 5001\n"}, {}),
+            ({"config.yaml": "web:\n    port: '5001'\n", ".env": "export CV_WEB_PORT = 5002\n"}, {}),
+            ({"config.yaml": "web:\n  host: 0.0.0.0\n  port: 5001\n"}, {"CV_WEB_PORT": "05003"}),
+        ]
+        for files, env in cases:
+            with self.subTest(files=files, env=env), tempfile.TemporaryDirectory() as tmp:
+                Path(tmp, "scripts").mkdir()
+                shutil.copy(script, Path(tmp, "scripts", "app_url.sh"))
+                for name, text in files.items():
+                    Path(tmp, name).write_text(text, encoding="utf-8")
+                run_env = {k: v for k, v in os.environ.items() if not k.startswith("CV_WEB_")}
+                run_env.update(env)
+                shell_url = subprocess.run(
+                    ["bash", str(Path(tmp, "scripts", "app_url.sh"))],
+                    env=run_env, capture_output=True, text=True, check=True,
+                ).stdout.strip()
+                with patch.object(cv_cli, "_REPO_ROOT", Path(tmp)), \
+                     patch.dict(os.environ, run_env, clear=True):
+                    py_url = cv_cli._default_base_url()
+                self.assertEqual(shell_url.rstrip("/"), py_url)
 
     def test_custom_base_url(self):
         args = self._parse(["--mode", "comprehensive", "--summary-variant", "scientific_advisor",
@@ -499,11 +585,12 @@ class TestPreflightIsWiredIn(unittest.TestCase):
     def test_gate_runs_on_a_real_run(self):
         with patch.object(cv_cli, "_require_cv_builder",
                           return_value={"alive": True}) as gate, \
-             patch.object(cv_cli, "run_generation", return_value={}):
+             patch.object(cv_cli, "run_generation", return_value={}), \
+             patch.object(cv_cli, "_default_base_url", return_value="http://127.0.0.1:5123"):
             self._run_main(["--mode", "comprehensive",
                             "--summary-variant", "scientific_advisor"])
         gate.assert_called_once()
-        self.assertEqual(gate.call_args[0][0], "http://127.0.0.1:5001")
+        self.assertEqual(gate.call_args[0][0], "http://127.0.0.1:5123")
 
     def test_gate_is_skipped_on_dry_run(self):
         """Also a control: if this passed while the one above failed, the gate

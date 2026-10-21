@@ -30,7 +30,7 @@ cp .env.example .env
 # 2. Start the app
 ./start.sh
 
-# 3. Open http://localhost:5001
+# 3. Open http://localhost:5001 (or run ./open.sh, macOS)
 ```
 
 ### Option 2: Manual start
@@ -450,6 +450,7 @@ cv-builder/
 ├── config.yaml                      # Main configuration file
 ├── .env.example                     # Environment variable template
 ├── start.sh                         # Convenience start script
+├── open.sh                          # Open the running app in a browser (macOS)
 ├── run_tests.py                     # Test runner orchestrator
 ├── scripts/
 │   ├── web_app.py                   # Flask web server entry point
