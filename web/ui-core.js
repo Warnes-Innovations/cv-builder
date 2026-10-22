@@ -580,6 +580,46 @@ function updateTabBarForStage(stage) {
     const stepLabel = _STEP_DISPLAY[stage] || stage;
     labelEl.textContent = stepLabel ? `Now viewing: ${stepLabel}` : '';
   }
+
+  updateTabStepNav(stateManager.getCurrentTab());
+}
+
+/**
+ * Show Previous / Next buttons for moving between the current stage's tabs.
+ *
+ * Neighbours follow STAGE_TABS order, skipping tabs that are absent or hidden,
+ * so every multi-tab stage gets the buttons with no per-tab code. Hidden for
+ * single-tab stages. Deliberately stops at the stage's first and last tab:
+ * moving to another workflow stage can start work (e.g. generating rewrites).
+ * @param {string} tab - The tab now shown.
+ */
+function updateTabStepNav(tab) {
+  const nav = document.getElementById('tab-step-nav');
+  if (!nav) return;
+  const stageTabs = (STAGE_TABS[getStageForTab(tab)] || []).filter(t => {
+    const el = document.getElementById(`tab-${t}`);
+    return el && !el.hidden && el.style.display !== 'none';
+  });
+  const i = stageTabs.indexOf(tab);
+  if (stageTabs.length < 2 || i < 0) {
+    nav.hidden = true;
+    return;
+  }
+  nav.hidden = false;
+  _setTabStepButton(nav.querySelector('[data-dir="prev"]'), stageTabs[i - 1], 'Previous');
+  _setTabStepButton(nav.querySelector('[data-dir="next"]'), stageTabs[i + 1], 'Next');
+}
+
+function _setTabStepButton(btn, target, direction) {
+  if (!btn) return;
+  btn.hidden = !target;
+  if (!target) return;
+  const label = (document.getElementById(`tab-${target}`)?.textContent || target).trim();
+  btn.textContent = direction === 'Previous' ? `← ${label}` : `${label} →`;
+  btn.dataset.target = target;
+  btn.setAttribute('aria-label', `${direction} tab: ${label}`);
+  // Assigned (not addEventListener) so repeated updates never stack handlers.
+  btn.onclick = () => { if (typeof switchTab === 'function') switchTab(target); };
 }
 
 // loadTabContent() lives in web/review-table-base.js, which owns the
@@ -1959,7 +1999,7 @@ export {
   // Dialogs & modals
   confirmDialog, openModal, closeModal, closeAllModals,
   // Tab & stage management
-  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage,
+  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, updateTabStepNav,
   // Chat
   toggleChat,
   // Model selector

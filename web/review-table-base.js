@@ -257,6 +257,7 @@ function switchTab(tab) {
     if (tabpanel) tabpanel.setAttribute('aria-labelledby', `tab-${tab}`);
   }
   stateManager.setCurrentTab(tab);
+  if (typeof updateTabStepNav === 'function') updateTabStepNav(tab);
 
   // Mark this tab as visited and refresh the visited indicators (GAP-269)
   if (_CUSTOMISE_TABS.has(tab)) {

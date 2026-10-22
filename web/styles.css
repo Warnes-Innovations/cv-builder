@@ -894,6 +894,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 /* ===== DOCUMENT VIEWER ===== */
 .document-viewer { flex: 1; overflow-y: auto; padding: 32px; background: var(--cv-white); }
 .document-viewer.expanded { padding: 16px; }
+/* Previous/Next between a stage's tabs (updateTabStepNav in ui-core.js). */
+/* bottom = minus .document-viewer's padding: sticky stops at the padding edge,
+   which would leave a strip of scrolling content visible below the bar. */
+.tab-step-nav { position: sticky; bottom: -32px; z-index: 5; display: flex; gap: 12px; margin-top: 16px; padding: 10px 0; background: var(--cv-white); border-top: 1px solid var(--cv-border); }
+.tab-step-nav[hidden], .tab-step-btn[hidden] { display: none; }  /* display:flex would override [hidden] */
+.tab-step-btn { background: var(--cv-bg-light); color: var(--cv-text-primary); border: 1px solid var(--cv-slate-300); padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.tab-step-btn:hover { background: var(--cv-bg-subtle); }
+.tab-step-btn:focus-visible { outline: 2px solid var(--cv-accent); outline-offset: 2px; }
+.tab-step-next { margin-left: auto; }
+.document-viewer.expanded .tab-step-nav { bottom: -16px; }
 .document-content { max-width: 8.5in; margin: 0 auto; background: var(--cv-white); min-height: 11in; padding: 0.5in; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
 .expanded .document-content { max-width: none; margin: 0; padding: 20px; box-shadow: none; }
 .document-content.full-width { max-width: none !important; margin: 0; padding: 20px; box-shadow: none; min-height: unset; }

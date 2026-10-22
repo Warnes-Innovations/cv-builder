@@ -265,6 +265,12 @@
             <p>Job description and analysis results will appear here</p>
           </div>
         </div>
+        <!-- Previous/Next between the current stage's tabs; filled in by
+             updateTabStepNav() (ui-core.js). Sticky, so it stays in view. -->
+        <nav class="tab-step-nav" id="tab-step-nav" aria-label="Move between tabs" hidden>
+          <button type="button" class="tab-step-btn" data-dir="prev" hidden></button>
+          <button type="button" class="tab-step-btn tab-step-next" data-dir="next" hidden></button>
+        </nav>
       </div>
     </div>
   </main>

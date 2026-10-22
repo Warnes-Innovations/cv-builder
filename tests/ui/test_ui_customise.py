@@ -48,6 +48,34 @@ class TestCustomisationsTab:
         customization stage, which is the default page fixture stage)."""
         expect(page.locator("#tab-exp-review")).to_be_visible()
 
+    def test_previous_next_buttons_step_through_tabs(self, page: Page):
+        """Previous/Next move between Customise tabs in tab-bar order."""
+        self._show_customization_stage(page)   # lands on Experiences
+        nav = page.locator("#tab-step-nav")
+        prev_btn = nav.locator('[data-dir="prev"]')
+        next_btn = nav.locator('[data-dir="next"]')
+        expect(nav).to_be_visible()
+        expect(prev_btn).to_have_text(re.compile(r"^← .*Questions$"))
+        expect(next_btn).to_have_text(re.compile(r"Experience Bullets →$"))
+
+        next_btn.click()
+        expect(page.locator("#tab-ach-editor")).to_have_class(re.compile(r"\bactive\b"))
+        prev_btn.click()
+        prev_btn.click()
+        expect(page.locator("#tab-questions")).to_have_class(re.compile(r"\bactive\b"))
+
+    def test_previous_next_stop_at_stage_ends(self, page: Page):
+        """No Previous on the first tab, no Next on the last; none on one-tab stages."""
+        self._show_customization_stage(page)
+        nav = page.locator("#tab-step-nav")
+        page.evaluate("() => switchTab('customise-guide')")
+        expect(nav.locator('[data-dir="prev"]')).to_be_hidden()
+        expect(nav.locator('[data-dir="next"]')).to_be_visible()
+        page.evaluate("() => switchTab('ats-score')")
+        expect(nav.locator('[data-dir="next"]')).to_be_hidden()
+        page.evaluate("() => switchTab('job')")
+        expect(nav).to_be_hidden()
+
     def test_click_customizations_tab(self, page: Page):
         """Clicking the exp-review tab shows document content."""
         page.locator("#tab-exp-review").click()

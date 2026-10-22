@@ -697,3 +697,91 @@ describe('settings modal', () => {
     expect(updateSettings.mock.calls[0][0].generation.formats.human_pdf).toBe(false)
   })
 })
+// ── updateTabStepNav (Previous / Next between a stage's tabs) ────────────────
+
+describe('updateTabStepNav', () => {
+  // A subset of the Customise tabs plus both Download tabs and the single Job
+  // tab. Tabs absent from the page are skipped, so the real STAGE_TABS order
+  // still applies: customise-guide, goals, questions, …, ats-score.
+  const TABS = [
+    ['job', 'Job'],
+    ['customise-guide', 'Guide'], ['goals', 'Goals'], ['questions', 'Questions'],
+    ['ats-score', 'ATS Score'],
+    ['final_generate', 'Generate'], ['download', 'Download'],
+  ]
+
+  function buildTabsFixture() {
+    document.body.innerHTML = `
+      <div class="tabs" id="tab-bar">
+        ${TABS.map(([id, label]) => `<div class="tab" id="tab-${id}" data-tab="${id}"><span aria-hidden="true">•</span> ${label}</div>`).join('')}
+      </div>
+      <nav id="tab-step-nav" hidden>
+        <button data-dir="prev" hidden></button>
+        <button data-dir="next" hidden></button>
+      </nav>`
+  }
+
+  const nav  = () => document.getElementById('tab-step-nav')
+  const prev = () => nav().querySelector('[data-dir="prev"]')
+  const next = () => nav().querySelector('[data-dir="next"]')
+
+  beforeEach(buildTabsFixture)
+
+  it('links a middle tab to its neighbours, labelled from the tab bar', () => {
+    mod.updateTabStepNav('goals')
+    expect(nav().hidden).toBe(false)
+    expect(prev().hidden).toBe(false)
+    expect(prev().dataset.target).toBe('customise-guide')
+    expect(prev().textContent).toBe('← • Guide')
+    expect(prev().getAttribute('aria-label')).toBe('Previous tab: • Guide')
+    expect(next().dataset.target).toBe('questions')
+    expect(next().textContent).toBe('• Questions →')
+  })
+
+  it('hides Previous on the first tab and Next on the last', () => {
+    mod.updateTabStepNav('customise-guide')
+    expect(prev().hidden).toBe(true)
+    expect(next().dataset.target).toBe('goals')
+
+    mod.updateTabStepNav('ats-score')
+    expect(prev().dataset.target).toBe('questions')
+    expect(next().hidden).toBe(true)
+  })
+
+  it('skips tabs hidden in the tab bar', () => {
+    document.getElementById('tab-questions').style.display = 'none'
+    mod.updateTabStepNav('goals')
+    expect(next().dataset.target).toBe('ats-score')
+  })
+
+  it('works for every multi-tab stage, not just Customise', () => {
+    mod.updateTabStepNav('download')
+    expect(nav().hidden).toBe(false)
+    expect(prev().dataset.target).toBe('final_generate')
+    expect(next().hidden).toBe(true)
+  })
+
+  it('hides the bar for single-tab stages', () => {
+    mod.updateTabStepNav('goals')
+    mod.updateTabStepNav('job')
+    expect(nav().hidden).toBe(true)
+  })
+
+  it('buttons switch to their target tab', () => {
+    const switchTab = vi.fn()
+    vi.stubGlobal('switchTab', switchTab)
+    mod.updateTabStepNav('goals')
+    mod.updateTabStepNav('goals')   // re-render must not stack handlers
+    next().click()
+    prev().click()
+    expect(switchTab.mock.calls).toEqual([['questions'], ['customise-guide']])
+  })
+
+  it('updateTabBarForStage refreshes the bar for the current tab', async () => {
+    const { stateManager } = await import('../../web/state-manager.js')
+    stateManager.setCurrentTab('download')
+    mod.updateTabBarForStage('download')
+    expect(nav().hidden).toBe(false)
+    expect(prev().dataset.target).toBe('final_generate')
+  })
+})
