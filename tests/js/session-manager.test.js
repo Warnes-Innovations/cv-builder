@@ -31,6 +31,7 @@ import {
   saveTabData,
   restoreTabData,
   restoreBackendState,
+  _restoreTabForPhase,
 } from '../../web/session-manager.js'
 import { SESSION_PHASE_LABELS } from '../../web/utils.js'
 import { stateManager } from '../../web/state-manager.js'
@@ -1838,5 +1839,21 @@ describe('createNewSessionAndNavigate — failure reporting', () => {
 
     expect(btn.disabled).toBe(false)
     expect(btn.textContent).toBe('＋ New Session')
+  })
+})
+
+// ── _restoreTabForPhase ───────────────────────────────────────────────────
+
+describe('_restoreTabForPhase', () => {
+  it('restores a customization-phase session onto the Customisation Guide tab', () => {
+    vi.stubGlobal('switchTab', vi.fn())
+    _restoreTabForPhase('customization')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('customise-guide')
+  })
+
+  it('falls back to the job tab for an unknown phase', () => {
+    vi.stubGlobal('switchTab', vi.fn())
+    _restoreTabForPhase('no-such-phase')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('job')
   })
 })

@@ -22,6 +22,11 @@ const log = getLogger('workflow-steps');
 
 import { stateManager, GENERATION_STATE_EVENT } from './state-manager.js';
 
+// Every way into the Customise stage (step click, back-nav, re-run) opens its
+// first tab, the Customisation Guide. One constant so the four maps below can't
+// drift apart again.
+const _CUSTOMISE_ENTRY_TAB = 'customise-guide';
+
 function _findExperienceRecommendationRecord(expId) {
   const data = globalThis.window?.pendingRecommendations;
   if (!data || !Array.isArray(data.experience_recommendations)) return null;
@@ -112,7 +117,7 @@ async function backToPhase(step, feedback) {
     const tabMap = {
       job:            null,
       analysis:       'analysis',
-      customizations: 'goals',
+      customizations: _CUSTOMISE_ENTRY_TAB,
       rewrite:        'rewrite',
       spell:          'spell',
     };
@@ -454,7 +459,7 @@ async function _executeReRunPhase(step) {
     // Navigate to the step's viewer tab
     const tabMap = {
       analysis:       'analysis',
-      customizations: 'goals',
+      customizations: _CUSTOMISE_ENTRY_TAB,
       rewrite:        'rewrite',
       spell:          'spell',
     };
@@ -1132,7 +1137,7 @@ function applyDirtyPhaseNavigationState() {
 function _doStepNavigate(step) {
   const stepToTab = {
     analysis:       'analysis',
-    customizations: 'goals',
+    customizations: _CUSTOMISE_ENTRY_TAB,
     rewrite:        'rewrite',
     spell:          'spell',
     layout:         'layout',
@@ -1199,7 +1204,7 @@ function handleStepClick(step) {
 
   const stepToTab = {
     analysis:       hasUnansweredPostAnalysisQuestions() ? 'questions' : 'analysis',
-    customizations: 'goals',
+    customizations: _CUSTOMISE_ENTRY_TAB,
     rewrite:        'rewrite',
     spell:          'spell',
     layout:         'layout',

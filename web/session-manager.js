@@ -521,19 +521,22 @@ function showSessionsLandingPanel(message = '') {
   `;
 }
 
+// The tab a restored session opens on, by phase. Shared by _restoreTabForPhase
+// and loadSessionFile — keep a single map rather than a copy in each.
+const _PHASE_TAB_MAP = {
+  [PHASES.INIT]:             'job',
+  [PHASES.JOB_ANALYSIS]:     'analysis',
+  [PHASES.CUSTOMIZATION]:    'customise-guide',
+  [PHASES.REWRITE_REVIEW]:   'rewrite',
+  [PHASES.SPELL_CHECK]:      'spell',
+  [PHASES.GENERATION]:       'layout',
+  [PHASES.LAYOUT_REVIEW]:    'layout',
+  [PHASES.FINAL_GENERATION]: 'final_generate',
+  [PHASES.REFINEMENT]:       'download',
+};
+
 function _restoreTabForPhase(sessionPhase) {
-  const phaseTabMap = {
-    [PHASES.INIT]:             'job',
-    [PHASES.JOB_ANALYSIS]:     'analysis',
-    [PHASES.CUSTOMIZATION]:    'exp-review',
-    [PHASES.REWRITE_REVIEW]:   'rewrite',
-    [PHASES.SPELL_CHECK]:      'spell',
-    [PHASES.GENERATION]:       'layout',
-    [PHASES.LAYOUT_REVIEW]:    'layout',
-    [PHASES.FINAL_GENERATION]: 'final_generate',
-    [PHASES.REFINEMENT]:       'download',
-  };
-  const targetTab = phaseTabMap[sessionPhase] || 'job';
+  const targetTab = _PHASE_TAB_MAP[sessionPhase] || 'job';
 
   if (typeof switchTab === 'function') {
     switchTab(targetTab);
@@ -930,18 +933,7 @@ async function loadSessionFile(path, { redirectOnMismatch = true } = {}) {
 
     // Rehydrate tabData and switch to the correct tab for the restored phase
     const sessionPhase = data.phase || PHASES.INIT;
-    const phaseTabMap = {
-      [PHASES.INIT]:             'job',
-      [PHASES.JOB_ANALYSIS]:     'analysis',
-      [PHASES.CUSTOMIZATION]:    'exp-review',
-      [PHASES.REWRITE_REVIEW]:   'rewrite',
-      [PHASES.SPELL_CHECK]:      'spell',
-      [PHASES.GENERATION]:       'layout',
-      [PHASES.LAYOUT_REVIEW]:    'layout',
-      [PHASES.FINAL_GENERATION]: 'final_generate',
-      [PHASES.REFINEMENT]:       'download',
-    };
-    const targetTab = phaseTabMap[sessionPhase] || 'job';
+    const targetTab = _PHASE_TAB_MAP[sessionPhase] || 'job';
 
     const customizationPhases = [
       PHASES.CUSTOMIZATION, PHASES.REWRITE_REVIEW, PHASES.SPELL_CHECK,
@@ -1124,6 +1116,7 @@ export {
   closeWelcomeModal,
   _claimCurrentSession,
   _resolveRestoredPhase,
+  _restoreTabForPhase,
   showSessionsLandingPanel,
   ensureSessionContext,
   restoreSession,

@@ -52,7 +52,9 @@ from tests.ui.fixtures.mock_responses import (  # noqa: E402
 )
 
 BASE_URL = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
-SERVER_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "30"))  # seconds
+# Seconds. 30 was too tight: a busy machine took ~28s to boot the app and
+# whole UI runs skipped. Override with CV_SERVER_STARTUP_TIMEOUT.
+SERVER_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "120"))
 
 
 def _base_url_port(url: str) -> int:

@@ -24,6 +24,7 @@ import {
   confirmReRunPhase,
   _getStepTooltip,
   _updateViewingIndicator,
+  handleStepClick,
 } from '../../web/workflow-steps.js'
 import { _ACTION_LABELS } from '../../web/session-actions.js'
 
@@ -417,6 +418,14 @@ describe('backToPhase', () => {
     await backToPhase('analysis')
     expect(globalThis.switchTab).toHaveBeenCalledWith('analysis')
   })
+
+  it('lands on the Customisation Guide when navigating back to customizations', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true, phase: 'customization' })
+    })
+    await backToPhase('customizations')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('customise-guide')
+  })
 })
 
 // ── reRunPhase ────────────────────────────────────────────────────────────
@@ -446,6 +455,14 @@ describe('reRunPhase', () => {
     })
     await reRunPhase('rewrite')
     expect(globalThis.switchTab).toHaveBeenCalledWith('rewrite')
+  })
+
+  it('lands on the Customisation Guide after re-running customizations', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true })
+    })
+    await reRunPhase('customizations')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('customise-guide')
   })
 
   it('calls appendRetryMessage on API error', async () => {
@@ -631,5 +648,22 @@ describe('_updateViewingIndicator', () => {
       expect(el.classList.contains('viewing')).toBe(false)
       expect(el.classList.contains('browsing-away')).toBe(false)
     })
+  })
+})
+
+// ── handleStepClick → Customise stage entry tab ──────────────────────────
+
+describe('handleStepClick customizations', () => {
+  it('opens the Customisation Guide tab, the first tab of the stage', () => {
+    document.body.innerHTML = '<div id="step-customizations" class="step active"></div>'
+    handleStepClick('customizations')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('customise-guide')
+  })
+
+  it('opens the Customisation Guide on a forward-skip jump too', () => {
+    vi.stubGlobal('confirmDialog', undefined)
+    document.body.innerHTML = '<div id="step-customizations" class="step forward-skip"></div>'
+    handleStepClick('customizations')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('customise-guide')
   })
 })
