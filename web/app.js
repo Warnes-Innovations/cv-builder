@@ -116,9 +116,7 @@ function setupEventListeners() {
 
   // Message sending
   document.getElementById('send-btn').addEventListener('click', sendMessage);
-  document.getElementById('message-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMessage();
-  });
+  setupChatInput();   // Enter / Shift+Enter / Ctrl+Enter: message-dispatch.js
 
   // Action buttons — one per workflow stage
   document.getElementById('analyze-btn').addEventListener('click', analyzeJob);

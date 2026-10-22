@@ -393,9 +393,23 @@ const _messageHandlers = [
   },
 ];
 
+/**
+ * Tidy chat-box text but keep its line breaks. Do not use normalizeText()
+ * here: it collapses every newline to a space, flattening multi-line prompts.
+ */
+function normalizeChatText(value) {
+  return String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map(line => line.replace(/[ \t]+/g, ' ').trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function sendMessage() {
   const input = document.getElementById('message-input');
-  const text = normalizeText(input.value);
+  const text = normalizeChatText(input.value);
   if (!text || stateManager.isLoading()) return;
 
   if (!getSessionIdFromURL()) {
@@ -405,6 +419,7 @@ async function sendMessage() {
 
   appendMessage('user', text);
   input.value = '';
+  autoGrowChatInput(input);
 
   for (const handler of _messageHandlers) {
     if (handler.test(text)) {
@@ -548,11 +563,91 @@ async function _loadPriorClarifications() {
   await continuation();
 }
 
+// ---------------------------------------------------------------------------
+// Chat input: multi-line, with a selectable Enter key
+// ---------------------------------------------------------------------------
+// The single place that decides what Enter does in #message-input. Both
+// setupEventListeners() copies (app.js, ui-core.js) call setupChatInput();
+// do not add another keypress handler there.
+
+const CHAT_ENTER_SENDS_KEY = 'cvb.chat.enterSends';
+const _CHAT_INPUT_MAX_HEIGHT = 200;   // px; scrolls beyond this
+
+/** True when plain Enter sends (the default); false when it adds a line. */
+function chatEnterSends() {
+  try {
+    return localStorage.getItem(CHAT_ENTER_SENDS_KEY) !== 'false';
+  } catch (_) {
+    return true;   // storage blocked: fall back to the default
+  }
+}
+
+function setChatEnterSends(enterSends) {
+  try {
+    localStorage.setItem(CHAT_ENTER_SENDS_KEY, enterSends ? 'true' : 'false');
+  } catch (_) { /* storage blocked: the choice lasts for this page only */ }
+  _updateChatInputHint();
+}
+
+/**
+ * keydown on #message-input. Ctrl/Cmd+Enter always sends; plain Enter sends
+ * only in "Enter sends" mode. Anything else keeps the textarea default, so
+ * Shift+Enter (and Enter in the other mode) inserts a new line.
+ */
+function handleChatInputKeydown(e) {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  const send = e.ctrlKey || e.metaKey || (!e.shiftKey && chatEnterSends());
+  if (!send) return;
+  e.preventDefault();
+  sendMessage();
+}
+
+function autoGrowChatInput(input) {
+  if (!input || !input.style) return;
+  input.style.height = 'auto';
+  if (input.value) {
+    input.style.height = `${Math.min(input.scrollHeight, _CHAT_INPUT_MAX_HEIGHT)}px`;
+  } else {
+    input.style.height = '';
+  }
+}
+
+function _updateChatInputHint() {
+  const input = document.getElementById('message-input');
+  if (!input) return;
+  input.placeholder = chatEnterSends()
+    ? "Type a message (e.g., 'analyse job') — Shift+Enter for a new line"
+    : "Type a message (e.g., 'analyse job') — Ctrl/⌘+Enter to send";
+}
+
+/** Wire the chat box and its "Enter sends" checkbox; safe to call twice. */
+function setupChatInput() {
+  const input = document.getElementById('message-input');
+  if (!input || input.dataset.chatInputReady) return;
+  input.dataset.chatInputReady = '1';
+  input.addEventListener('keydown', handleChatInputKeydown);
+  input.addEventListener('input', () => autoGrowChatInput(input));
+
+  const toggle = document.getElementById('enter-sends-toggle');
+  if (toggle) {
+    toggle.checked = chatEnterSends();
+    toggle.addEventListener('change', () => setChatEnterSends(toggle.checked));
+  }
+  _updateChatInputHint();
+}
+
 // ── ES module exports ──────────────────────────────────────────────────────
 export {
   _handleLLMMessage,
   _messageHandlers,
   sendMessage,
+  normalizeChatText,
+  chatEnterSends,
+  setChatEnterSends,
+  handleChatInputKeydown,
+  autoGrowChatInput,
+  setupChatInput,
+  CHAT_ENTER_SENDS_KEY,
   _showIntakeConfirmCard,
   _submitIntakeCard,
   _skipIntakeCard,

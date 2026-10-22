@@ -211,7 +211,7 @@ export function showKeyboardShortcutsPanel() {
       </div>
       <table style="border-collapse:collapse;width:100%">
         <tbody>
-          <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Trigger primary action on current step</td></tr>
+          <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Trigger primary action on current step (in the chat box: send message)</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Re-run current workflow phase</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Navigate between review cards / table rows</td></tr>
           <tr><td style="padding:4px 12px 4px 0"><kbd>A</kbd></td><td>Accept / include focused item (rewrite, spell, or customise review row)</td></tr>
@@ -272,9 +272,10 @@ export function resetCardFocus() {
 // ── Global keydown handler ───────────────────────────────────────────────────
 
 function _onKeyDown(e) {
-  // Ctrl+Enter → primary action (always, even in text inputs when the main
-  // send-box is focused, to match the existing Enter behaviour there).
+  // Ctrl+Enter → primary action, except in the chat box, where Ctrl/Cmd+Enter
+  // sends the message (handleChatInputKeydown in message-dispatch.js).
   if (e.ctrlKey && e.key === 'Enter') {
+    if (e.target && e.target.id === 'message-input') return;
     _triggerPrimaryAction();
     return;
   }

@@ -189,9 +189,12 @@
       
       <div class="input-area">
         <div class="input-group">
-          <input type="text" class="message-input" id="message-input" aria-label="Chat message" placeholder="Type a message (e.g., 'analyse job')" />
+          <textarea class="message-input" id="message-input" rows="1" aria-label="Chat message" placeholder="Type a message (e.g., 'analyse job')"></textarea>
           <button class="send-btn" id="send-btn">Send</button>
         </div>
+        <label class="enter-sends-toggle" title="Unchecked: Enter adds a new line and Ctrl/⌘+Enter sends">
+          <input type="checkbox" id="enter-sends-toggle" checked /> Enter sends (Shift+Enter: new line)
+        </label>
         
         <div class="actions">
           <button class="action-btn primary" id="analyze-btn">🔍 Analyse Job</button>

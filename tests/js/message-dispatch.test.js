@@ -18,6 +18,10 @@ import {
   _skipIntakeCard,
   _dismissPriorClarifications,
   _loadPriorClarifications,
+  normalizeChatText,
+  handleChatInputKeydown,
+  setupChatInput,
+  CHAT_ENTER_SENDS_KEY,
 } from '../../web/message-dispatch.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
 
@@ -360,5 +364,102 @@ describe('_loadPriorClarifications', () => {
     window.questionAnswers = null
     await _loadPriorClarifications()
     expect(window.questionAnswers).toEqual({ t: 'a' })
+  })
+})
+
+// ── Multi-line chat input ─────────────────────────────────────────────────
+
+describe('normalizeChatText', () => {
+  it('keeps line breaks that normalizeText() would collapse', () => {
+    expect(normalizeChatText('  first line  \r\nsecond\t\tline\n')).toBe('first line\nsecond line')
+  })
+
+  it('caps runs of blank lines at one', () => {
+    expect(normalizeChatText('a\n\n\n\nb')).toBe('a\n\nb')
+  })
+})
+
+describe('chat input keys', () => {
+  let store
+  beforeEach(() => {
+    store = {}
+    global.localStorage = {
+      getItem: vi.fn(k => (k in store ? store[k] : null)),
+      setItem: vi.fn((k, v) => { store[k] = String(v) }),
+      removeItem: vi.fn(k => { delete store[k] }),
+    }
+    document.body.innerHTML = `
+      <textarea id="message-input"></textarea>
+      <input type="checkbox" id="enter-sends-toggle" checked />`
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '?session=test-session-id' },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  const input = () => document.getElementById('message-input')
+  function press(opts = {}) {
+    const e = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, ...opts })
+    handleChatInputKeydown(e)
+    return e
+  }
+
+  it.each([
+    ['Enter',       true,  {}],
+    ['Shift+Enter', false, { shiftKey: true }],
+    ['Ctrl+Enter',  true,  { ctrlKey: true }],
+    ['Cmd+Enter',   true,  { metaKey: true }],
+  ])('"Enter sends" mode (default): %s sends=%s', (_name, sends, opts) => {
+    input().value = 'hello'
+    const e = press(opts)
+    expect(e.defaultPrevented).toBe(sends)
+    expect(globalThis.appendMessage.mock.calls.length).toBe(sends ? 1 : 0)
+  })
+
+  it.each([
+    ['Enter',       false, {}],
+    ['Shift+Enter', false, { shiftKey: true }],
+    ['Ctrl+Enter',  true,  { ctrlKey: true }],
+  ])('"Enter = new line" mode: %s sends=%s', (_name, sends, opts) => {
+    store[CHAT_ENTER_SENDS_KEY] = 'false'
+    input().value = 'hello'
+    const e = press(opts)
+    expect(e.defaultPrevented).toBe(sends)
+    expect(globalThis.appendMessage.mock.calls.length).toBe(sends ? 1 : 0)
+  })
+
+  it('ignores Enter while an IME composition is in progress', () => {
+    input().value = 'hello'
+    expect(press({ isComposing: true }).defaultPrevented).toBe(false)
+  })
+
+  it('sends a multi-line prompt with its line breaks', async () => {
+    input().value = 'line one\nline two'
+    press({ ctrlKey: true })
+    expect(globalThis.appendMessage).toHaveBeenCalledWith('user', 'line one\nline two')
+  })
+
+  it('the checkbox switches modes and is remembered', () => {
+    setupChatInput()
+    const toggle = document.getElementById('enter-sends-toggle')
+    expect(toggle.checked).toBe(true)
+    expect(input().placeholder).toMatch(/Shift\+Enter for a new line/)
+
+    toggle.checked = false
+    toggle.dispatchEvent(new Event('change'))
+    expect(store[CHAT_ENTER_SENDS_KEY]).toBe('false')
+    expect(input().placeholder).toMatch(/Ctrl\/⌘\+Enter to send/)
+
+    input().value = 'hello'
+    expect(press().defaultPrevented).toBe(false)   // Enter now adds a line
+  })
+
+  it('setupChatInput is safe to call twice (no doubled handlers)', () => {
+    setupChatInput()
+    setupChatInput()
+    input().value = 'hello'
+    input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+    expect(globalThis.appendMessage).toHaveBeenCalledTimes(1)
   })
 })

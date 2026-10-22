@@ -498,18 +498,8 @@ function setupEventListeners() {
     });
   });
 
-  // Message input (Enter key to send)
-  const messageInput = document.getElementById('message-input');
-  if (messageInput) {
-    messageInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        if (typeof globalThis.sendMessage === 'function') {
-          globalThis.sendMessage();
-        }
-      }
-    });
-  }
+  // Message input keys are owned by setupChatInput() (message-dispatch.js).
+  if (typeof globalThis.setupChatInput === 'function') globalThis.setupChatInput();
 
   // Modal close on ESC key
   document.addEventListener('keydown', (e) => {

@@ -181,3 +181,32 @@ describe('showKeyboardShortcutsPanel focus management (GAP-384/385 cycle-105)', 
     expect(document.getElementById('kb-shortcuts-panel')).toBeNull()
   })
 })
+
+describe('Ctrl+Enter primary action vs the chat box', () => {
+  let clicks
+  beforeEach(() => {
+    clicks = 0
+    vi.stubGlobal('stateManager', { getCurrentTab: () => 'analysis' })
+    document.body.innerHTML = `
+      <textarea id="message-input"></textarea>
+      <textarea id="other-text"></textarea>
+      <button id="analyze-btn"></button>`
+    document.getElementById('analyze-btn').addEventListener('click', () => { clicks += 1 })
+  })
+
+  function ctrlEnterFrom(id) {
+    document.getElementById(id).dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true,
+    }))
+  }
+
+  it('does not trigger the primary action from the chat box (Ctrl+Enter sends there)', () => {
+    ctrlEnterFrom('message-input')
+    expect(clicks).toBe(0)
+  })
+
+  it('still triggers the primary action from anywhere else', () => {
+    ctrlEnterFrom('other-text')
+    expect(clicks).toBe(1)
+  })
+})
