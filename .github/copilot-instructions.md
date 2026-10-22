@@ -110,7 +110,8 @@ data:
 llm:
   default_provider: string   # REQUIRED. One of: copilot-oauth | copilot | github |
                              #   openai | anthropic | gemini | groq | local
-  default_model:    string   # Model name; null = provider default.
+  default_model:    string   # Model name; null = provider default. Anthropic also
+                             #   takes a class (sonnet|opus|haiku|fable) = newest in class.
   temperature:      float    # Default: 0.7
   max_tokens:       int|null # Optional cap on reply length for every provider;
                              #   null = no cap (Anthropic: model's full output limit).

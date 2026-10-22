@@ -53,7 +53,7 @@ if has_github:
 if has_anthropic:
     print("Testing Anthropic client...")
     try:
-        client = AnthropicClient(model="claude-3-opus-20240229")
+        client = AnthropicClient(model="sonnet")
         response = client.chat([
             {"role": "user", "content": "Say 'Hello, CV Generator!' in exactly those words."}
         ])

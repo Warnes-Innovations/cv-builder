@@ -31,7 +31,7 @@ data:
 #                      openai | anthropic | gemini | groq | local
 llm:
   default_provider: github
-  default_model:    null          # null = provider default
+  default_model:    null          # null = provider default; anthropic also takes sonnet|opus|haiku|fable (newest in class)
   temperature:      0.7
   max_tokens:       null          # optional reply-length cap; null = none (Anthropic: model max)
   request_timeout_seconds: 120

@@ -584,6 +584,152 @@ class TestAnthropicClient(unittest.TestCase):
         )
 
 
+def _model_entry(day, mid, limits=None):
+    """A GET /v1/models entry; *limits* = (max_input_tokens, max_tokens)."""
+    from datetime import datetime
+    extra = {} if limits is None else {'max_input_tokens': limits[0], 'max_tokens': limits[1]}
+    return SimpleNamespace(id=mid, created_at=datetime.fromisoformat(day), model_extra=extra)
+
+
+def _models_client(entries=None, error=None):
+    """Fake Anthropic client whose models.list() returns *entries*."""
+    fake = MagicMock()
+    if error:
+        fake.models.list.side_effect = error
+    else:
+        fake.models.list.return_value = list(entries or [])
+    return fake
+
+
+_LIVE_LIST = [   # shape of GET /v1/models on 2026-10-21, deliberately not date-sorted
+    _model_entry('2026-06-29', 'claude-sonnet-5'),
+    _model_entry('2026-10-07', 'claude-haiku-5-5'),
+    _model_entry('2026-09-28', 'claude-sonnet-5-5'),
+    _model_entry('2026-09-21', 'claude-opus-5-5'),
+    _model_entry('2025-10-15', 'claude-haiku-4-5-20251001'),
+]
+
+
+class _ClearLiveLimits(unittest.TestCase):
+    """_ANTHROPIC_LIVE_LIMITS is module state: keep tests from leaking into others."""
+
+    def setUp(self):
+        from utils.llm_client import _ANTHROPIC_LIVE_LIMITS
+        self._live = _ANTHROPIC_LIVE_LIMITS
+        self._saved = dict(self._live)
+        self._live.clear()
+
+    def tearDown(self):
+        self._live.clear()
+        self._live.update(self._saved)
+
+
+class TestAnthropicModelClassResolution(_ClearLiveLimits):
+    """A model class ("sonnet") resolves to the newest model in it via the API."""
+
+    def test_class_resolves_to_newest_in_class(self):
+        from utils.llm_client import _resolve_anthropic_model
+        self.assertEqual(_resolve_anthropic_model('sonnet', _LIVE_LIST), 'claude-sonnet-5-5')
+        self.assertEqual(_resolve_anthropic_model('Haiku', _LIVE_LIST), 'claude-haiku-5-5')
+        self.assertEqual(_resolve_anthropic_model('opus', _LIVE_LIST), 'claude-opus-5-5')
+
+    def test_exact_model_id_is_unchanged(self):
+        from utils.llm_client import _resolve_anthropic_model
+        self.assertEqual(_resolve_anthropic_model('claude-sonnet-5', _LIVE_LIST), 'claude-sonnet-5')
+
+    def test_lookup_failure_uses_fallback_list(self):
+        from utils.llm_client import _list_anthropic_models, _resolve_anthropic_model, PROVIDER_MODELS
+        client = _models_client(error=RuntimeError('401 invalid x-api-key'))
+        with self.assertLogs('utils.llm_client', level='WARNING'):
+            models = _list_anthropic_models(client)
+            resolved = _resolve_anthropic_model('sonnet', models)
+        self.assertEqual(models, [])
+        expected = next(m for m in PROVIDER_MODELS['anthropic'] if m.startswith('claude-sonnet-'))
+        self.assertEqual(resolved, expected)
+
+    def test_provider_without_model_uses_newest_sonnet(self):
+        """The old hard-coded default, claude-3-opus-20240229, is retired."""
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}), \
+             patch('anthropic.Anthropic', return_value=_models_client(_LIVE_LIST)):
+            client = get_llm_provider(provider='anthropic', model=None)
+        self.assertEqual(client.model, 'claude-sonnet-5-5')
+
+
+class TestAnthropicLiveLimits(_ClearLiveLimits):
+    """Limits come from GET /v1/models when available; the table is a fallback."""
+
+    def _start_client(self, model, entries):
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}), \
+             patch('anthropic.Anthropic', return_value=_models_client(entries)):
+            return AnthropicClient(model=model)
+
+    def test_live_limits_override_the_table(self):
+        from utils.llm_client import context_window_for, _anthropic_max_output
+        self._start_client('sonnet', [
+            _model_entry('2026-09-28', 'claude-sonnet-5-5', (750_000, 99_000)),
+        ])
+        self.assertEqual(context_window_for('claude-sonnet-5-5'), 750_000)
+        self.assertEqual(_anthropic_max_output('claude-sonnet-5-5'), 99_000)
+
+    def test_new_model_needs_no_code_change(self):
+        from utils.llm_client import context_window_for, _anthropic_max_output
+        self._start_client('opus', [_model_entry('2027-01-01', 'claude-opus-6', (2_000_000, 256_000))])
+        self.assertEqual(context_window_for('claude-opus-6'), 2_000_000)
+        self.assertEqual(_anthropic_max_output('claude-opus-6'), 256_000)
+
+    def test_undated_and_dated_ids_match(self):
+        from utils.llm_client import context_window_for
+        self._start_client('haiku', [
+            _model_entry('2025-10-15', 'claude-haiku-4-5-20251001', (300_000, 70_000)),
+        ])
+        self.assertEqual(context_window_for('claude-haiku-4-5'), 300_000)
+        self.assertEqual(context_window_for('claude-haiku-4-5-20251001'), 300_000)
+
+    def test_table_used_when_list_unavailable(self):
+        from utils.llm_client import context_window_for, _anthropic_max_output
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}), \
+             patch('anthropic.Anthropic', return_value=_models_client(error=RuntimeError('offline'))), \
+             self.assertLogs('utils.llm_client', level='WARNING'):
+            AnthropicClient(model='claude-sonnet-5')
+        self.assertEqual(context_window_for('claude-sonnet-5'), 1_000_000)
+        self.assertEqual(_anthropic_max_output('claude-sonnet-5'), 128_000)
+
+    def test_chat_sends_the_live_output_limit(self):
+        client = self._start_client('sonnet', [
+            _model_entry('2026-09-28', 'claude-sonnet-5-5', (1_000_000, 99_000)),
+        ])
+        stream = client.client.messages.stream.return_value.__enter__.return_value
+        stream.get_final_message.return_value = _text_response()
+        with patch('utils.config.get_config', return_value=_cfg(), create=True):
+            client.chat([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(client.client.messages.stream.call_args.kwargs['max_tokens'], 99_000)
+
+
+class TestContextWindowFor(unittest.TestCase):
+    """context_window_for() is the single source for the UI's context counter."""
+
+    def test_known_windows(self):
+        from utils.llm_client import context_window_for
+        cases = {
+            'claude-sonnet-5':            1_000_000,   # was shown as a fake 128K
+            'claude-opus-5-5':            1_000_000,
+            'claude-sonnet-4-6':          1_000_000,   # MODEL_INFO's 200K is stale
+            'claude-haiku-4-5-20251001':    200_000,
+            'claude-3-5-sonnet-20241022':   200_000,
+            'gpt-4o':                       128_000,
+            'gemini-1.5-pro':             2_000_000,
+            'gpt-3.5-turbo':                 16_385,   # from MODEL_INFO
+        }
+        for model, expected in cases.items():
+            with self.subTest(model=model):
+                self.assertEqual(context_window_for(model), expected)
+
+    def test_unknown_model_is_none_not_a_guess(self):
+        from utils.llm_client import context_window_for
+        self.assertIsNone(context_window_for('some-new-model'))
+        self.assertIsNone(context_window_for(''))
+
+
 class TestMaxTokensCap(unittest.TestCase):
     """llm.max_tokens / CV_LLM_MAX_TOKENS is an optional lower cap for every provider."""
 

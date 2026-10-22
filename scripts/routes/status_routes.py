@@ -26,7 +26,7 @@ import yaml
 from utils.app_identity import get_app_version, is_testing_server
 from utils.config import get_config
 from utils.cv_orchestrator import CVOrchestrator
-from utils.llm_client import PROVIDER_MODELS
+from utils.llm_client import PROVIDER_MODELS, context_window_for
 from utils.provider_registry import DISPLAY_FIELDS, PROVIDER_REGISTRY
 from utils.session_data_view import SessionDataView
 
@@ -813,29 +813,11 @@ def create_blueprint(deps):
         entry = _get_session()
         conversation = entry.manager
         orchestrator = entry.orchestrator
-        MODEL_CONTEXT_WINDOWS = {
-            "gemini-2.5-pro":    2_000_000,
-            "gemini-2.5-flash":  1_048_576,
-            "gemini-2.0-flash":  1_048_576,
-            "gemini-1.5-pro":    2_000_000,
-            "gemini-1.5-flash":  1_048_576,
-            "gpt-4o":              128_000,
-            "gpt-4o-mini":         128_000,
-            "gpt-4-turbo":         128_000,
-            "o1":                  200_000,
-            "o3-mini":             200_000,
-            "claude-3-5-sonnet":   200_000,
-            "claude-3-5-haiku":    200_000,
-            "claude-3-opus":       200_000,
-            "llama":               128_000,
-        }
         try:
             model_name     = getattr(orchestrator.llm, "model", "") or ""
-            context_window = 128_000
-            for key, size in MODEL_CONTEXT_WINDOWS.items():
-                if key.lower() in model_name.lower():
-                    context_window = size
-                    break
+            # None when unknown; do not substitute a default here, or the UI
+            # shows a made-up "/ 128K" limit (it did for every Claude 4.x/5.x).
+            context_window = context_window_for(model_name)
 
             real_tokens  = _usage_prompt_tokens(getattr(orchestrator.llm, "last_usage", None))
             if real_tokens is not None:

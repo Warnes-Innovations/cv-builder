@@ -2174,6 +2174,28 @@ def test_context_stats_route_reports_exact_prompt_usage(build_app):
     }
 
 
+@pytest.mark.parametrize("model, expected", [
+    ("claude-sonnet-5", 1_000_000),   # previously reported as the 128K default
+    ("some-new-model", None),         # unknown: no made-up window
+])
+def test_context_stats_route_reports_real_or_no_context_window(build_app, model, expected):
+    app, tracker = build_app()
+
+    with app.test_client() as client:
+        session_id = _new_session(client)
+        orchestrator = _orchestrator_for_session(tracker, session_id)
+        orchestrator.llm.model = model
+        orchestrator.llm.last_usage = None
+
+        response = client.get(
+            "/api/context-stats",
+            query_string={"session_id": session_id},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["context_window"] == expected
+
+
 def test_post_analysis_questions_route_uses_llm_output_and_persists_questions(
     build_app,
 ):
