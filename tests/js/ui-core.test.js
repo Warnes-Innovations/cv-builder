@@ -785,3 +785,81 @@ describe('updateTabStepNav', () => {
     expect(prev().dataset.target).toBe('final_generate')
   })
 })
+
+// ── Next saves/submits the current tab before moving on ──────────────────────
+
+describe('goToNextTab', () => {
+  let switchTab
+  beforeEach(() => {
+    switchTab = vi.fn()
+    vi.stubGlobal('switchTab', switchTab)
+  })
+
+  it('just switches on a tab with nothing to save', async () => {
+    await mod.goToNextTab('customise-guide', 'goals')
+    expect(switchTab).toHaveBeenCalledWith('goals')
+  })
+
+  it('save-type tab: saves, then switches when the save succeeds', async () => {
+    const order = []
+    vi.stubGlobal('saveGenerationGoals', vi.fn(async () => { order.push('save'); return true }))
+    switchTab.mockImplementation(t => order.push(`switch:${t}`))
+    await mod.goToNextTab('goals', 'questions')
+    expect(order).toEqual(['save', 'switch:questions'])
+  })
+
+  it('save-type tab: stays put when the save fails', async () => {
+    vi.stubGlobal('savePublicationDecisions', vi.fn(async () => false))
+    await mod.goToNextTab('publications-review', 'ats-score')
+    expect(switchTab).not.toHaveBeenCalled()
+  })
+
+  it('save-type tab: a save returning undefined is not treated as success', async () => {
+    vi.stubGlobal('saveQuestionAnswers', vi.fn(async () => undefined))
+    await mod.goToNextTab('questions', 'exp-review')
+    expect(switchTab).not.toHaveBeenCalled()
+  })
+
+  it('continue-type tab: runs the tab Continue action, which moves on itself', async () => {
+    const submit = vi.fn(async () => {})
+    vi.stubGlobal('submitSkillDecisions', submit)
+    await mod.goToNextTab('skills-review', 'achievements-review')
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(switchTab).not.toHaveBeenCalled()   // no second, competing switch
+  })
+
+  it('the Next button saves via goToNextTab and is disabled while saving', async () => {
+    document.body.innerHTML = `
+      <div class="tab" id="tab-customise-guide" data-tab="customise-guide">Guide</div>
+      <div class="tab" id="tab-goals" data-tab="goals">Goals</div>
+      <div class="tab" id="tab-questions" data-tab="questions">Questions</div>
+      <nav id="tab-step-nav" hidden>
+        <button data-dir="prev" hidden></button><button data-dir="next" hidden></button>
+      </nav>`
+    let release
+    vi.stubGlobal('saveGenerationGoals', vi.fn(() => new Promise(r => { release = r })))
+    mod.updateTabStepNav('goals')
+    const next = document.querySelector('[data-dir="next"]')
+    next.click()
+    expect(next.disabled).toBe(true)
+    expect(switchTab).not.toHaveBeenCalled()
+    release(true)
+    await vi.waitFor(() => expect(switchTab).toHaveBeenCalledWith('questions'))
+    expect(next.disabled).toBe(false)
+  })
+
+  it('Previous only switches (no save)', () => {
+    document.body.innerHTML = `
+      <div class="tab" id="tab-customise-guide" data-tab="customise-guide">Guide</div>
+      <div class="tab" id="tab-goals" data-tab="goals">Goals</div>
+      <nav id="tab-step-nav" hidden>
+        <button data-dir="prev" hidden></button><button data-dir="next" hidden></button>
+      </nav>`
+    const save = vi.fn(async () => true)
+    vi.stubGlobal('saveGenerationGoals', save)
+    mod.updateTabStepNav('goals')
+    document.querySelector('[data-dir="prev"]').click()
+    expect(switchTab).toHaveBeenCalledWith('customise-guide')
+    expect(save).not.toHaveBeenCalled()
+  })
+})

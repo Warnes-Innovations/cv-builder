@@ -363,6 +363,10 @@ async function _loadGoalsFromStatus() {
  * Exposed on globalThis so the inline onclick="saveGenerationGoals()" works.
  */
 export async function saveGenerationGoals() {
+  // Returns true when saved (or when the Goals form is not on the page, so
+  // there is nothing to save), false on a validation or save failure. The
+  // Previous/Next bar's Next relies on this to decide whether to move on.
+  if (!document.getElementById('goals-max-pdf-pages')) return true;
   const statusEl = document.getElementById('goals-status');
 
   // ── Read enabled flags ──────────────────────────────────────────────────────
@@ -382,19 +386,19 @@ export async function saveGenerationGoals() {
   if (pdfEnabled) {
     if (pdfMode === 'combined') {
       if (!pdfPages || pdfPages < 1 || pdfPages > 10) {
-        _setStatus(statusEl, '⚠️ PDF pages must be 1–10.', 'warn'); return;
+        _setStatus(statusEl, '⚠️ PDF pages must be 1–10.', 'warn'); return false;
       }
     } else {
       if (!pdfResumePages || pdfResumePages < 1 || pdfResumePages > 10) {
-        _setStatus(statusEl, '⚠️ Resume portion pages must be 1–10.', 'warn'); return;
+        _setStatus(statusEl, '⚠️ Resume portion pages must be 1–10.', 'warn'); return false;
       }
       if (!pdfCvPages || pdfCvPages < 1 || pdfCvPages > 10) {
-        _setStatus(statusEl, '⚠️ CV / Publications portion pages must be 1–10.', 'warn'); return;
+        _setStatus(statusEl, '⚠️ CV / Publications portion pages must be 1–10.', 'warn'); return false;
       }
     }
   }
-  if (atsPageEnabled  && (!atsPages  || atsPages  < 1  || atsPages  > 5))     { _setStatus(statusEl, '⚠️ ATS pages must be 1–5.',          'warn'); return; }
-  if (atsCharsEnabled && (!atsChars  || atsChars  < 500 || atsChars > 20000)) { _setStatus(statusEl, '⚠️ Characters must be 500–20 000.', 'warn'); return; }
+  if (atsPageEnabled  && (!atsPages  || atsPages  < 1  || atsPages  > 5))     { _setStatus(statusEl, '⚠️ ATS pages must be 1–5.',          'warn'); return false; }
+  if (atsCharsEnabled && (!atsChars  || atsChars  < 500 || atsChars > 20000)) { _setStatus(statusEl, '⚠️ Characters must be 500–20 000.', 'warn'); return false; }
 
   // ── Build payload (include enabled flags + active values only) ──────────────
   const payload = {
@@ -421,9 +425,11 @@ export async function saveGenerationGoals() {
     await apiCall('POST', '/api/generation-goals', payload);
     _setStatus(statusEl, '✓ Saved', 'ok');
     setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+    return true;
   } catch (err) {
     log.error('Failed to save generation goals:', err);
     _setStatus(statusEl, 'Save failed. Please try again.', 'error');
+    return false;
   }
 }
 

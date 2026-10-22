@@ -435,6 +435,27 @@ function updateQProgress() {
   }
 }
 
+/**
+ * Collect the typed answers and persist them, without generating
+ * recommendations (submitAllAnswers does that). Used by the Previous/Next
+ * bar's Next. Returns true: persistence failures are logged, not blocking,
+ * as they always have been for Submit Answers.
+ */
+async function saveQuestionAnswers() {
+  const qs = window.postAnalysisQuestions || [];
+  if (!window.questionAnswers || typeof window.questionAnswers !== 'object') {
+    window.questionAnswers = {};
+  }
+  qs.forEach((q, idx) => {
+    const ta = document.getElementById(`q-input-${idx}`);
+    if (ta && ta.value.trim()) {
+      window.questionAnswers[q.type] = ta.value.trim();
+    }
+  });
+  await persistPostAnalysisState();
+  return true;
+}
+
 async function submitAllAnswers() {
   /* duckflow:
    *   id: questions_ui_submit_live
@@ -455,13 +476,7 @@ async function submitAllAnswers() {
    *   notes: Collects the clarifying-question answers from the UI, persists them to session state, and then advances into customization recommendation generation.
    */
   const qs = window.postAnalysisQuestions || [];
-  qs.forEach((q, idx) => {
-    const ta = document.getElementById(`q-input-${idx}`);
-    if (ta && ta.value.trim()) {
-      window.questionAnswers[q.type] = ta.value.trim();
-    }
-  });
-  await persistPostAnalysisState();
+  await saveQuestionAnswers();
 
   const btn = document.getElementById('q-submit-btn');
   if (btn) {
@@ -532,6 +547,7 @@ export {
   onQInputChange,
   updateQProgress,
   submitAllAnswers,
+  saveQuestionAnswers,
   showDraftError,
   showNextQuestion,
   handleQuestionResponse,

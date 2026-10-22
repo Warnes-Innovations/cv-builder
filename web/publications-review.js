@@ -370,34 +370,47 @@ async function submitPublicationDecisions() {
    *   - request:POST /api/review-decisions.decisions
    *   notes: Persists publication include/exclude decisions before the rewrite stage derives downstream content proposals from the accepted publication set.
    */
-  const decisions = window.publicationDecisions || {};
-  const count = Object.keys(decisions).length;
+  const count = Object.keys(window.publicationDecisions || {}).length;
   if (count === 0) {
     showToast('No publication decisions to save.', 'error');
     return;
   }
+  if (await savePublicationDecisions()) await fetchAndReviewRewrites();
+}
+
+/**
+ * Persist the publication include/exclude decisions without starting the
+ * rewrite stage (submitPublicationDecisions does that). Used by the
+ * Previous/Next bar's Next. Returns true when saved or when there is nothing
+ * to save (e.g. no publications), false when the save failed.
+ */
+async function savePublicationDecisions() {
+  const decisions = window.publicationDecisions || {};
+  const count = Object.keys(decisions).length;
+  if (count === 0) return true;
 
   // Persist as a structured answer in session state
   try {
     const response = await fetch('/api/review-decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'publications', decisions: window.publicationDecisions })
+      body: JSON.stringify({ type: 'publications', decisions })
     });
 
     if (response.ok) {
       stateManager.markContentChanged();
-      const accepted = Object.values(window.publicationDecisions).filter(Boolean).length;
+      const accepted = Object.values(decisions).filter(Boolean).length;
       const rejected = count - accepted;
       showToast(`Publication selections saved: ${accepted} kept, ${rejected} excluded`);
-      await fetchAndReviewRewrites();
-    } else {
-      const err = await response.json();
-      showToast(`Error: ${err.error || 'Failed to save publication selections'}`, 'error');
+      return true;
     }
+    const err = await response.json();
+    showToast(`Error: ${err.error || 'Failed to save publication selections'}`, 'error');
+    return false;
   } catch (err) {
     log.error('Error saving publication decisions:', err);
     showToast('Failed to save publication selections. Please try again.', 'error');
+    return false;
   }
 }
 
@@ -410,4 +423,5 @@ export {
   filterPublicationsTable,
   handlePubAction,
   submitPublicationDecisions,
+  savePublicationDecisions,
 };

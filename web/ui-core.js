@@ -596,11 +596,48 @@ function updateTabStepNav(tab) {
     return;
   }
   nav.hidden = false;
-  _setTabStepButton(nav.querySelector('[data-dir="prev"]'), stageTabs[i - 1], 'Previous');
-  _setTabStepButton(nav.querySelector('[data-dir="next"]'), stageTabs[i + 1], 'Next');
+  _setTabStepButton(nav.querySelector('[data-dir="prev"]'), tab, stageTabs[i - 1], 'Previous');
+  _setTabStepButton(nav.querySelector('[data-dir="next"]'), tab, stageTabs[i + 1], 'Next');
 }
 
-function _setTabStepButton(btn, target, direction) {
+// What Next does on a tab before leaving it: Next saves/submits, like the
+// tab's own Continue button. Function names are looked up on globalThis.
+//   continue: the tab's Continue action. It saves and then switches to the
+//             next tab itself, or stays (showing its own message) when
+//             validation fails. Each one's destination is the same tab Next
+//             links to; keep them in step with STAGE_TABS order.
+//   save:     saves and returns true on success; Next then switches. Used
+//             where the tab's Continue does more than move one tab on
+//             (Questions and Publications start LLM work).
+// Tabs not listed have nothing to save.
+const _TAB_NEXT_ACTION = {
+  'goals':               { save:     'saveGenerationGoals' },
+  'questions':           { save:     'saveQuestionAnswers' },
+  'exp-review':          { continue: 'submitExperienceDecisions' },
+  'ach-editor':          { continue: 'saveAchievementEditsAndContinue' },
+  'skills-review':       { continue: 'submitSkillDecisions' },
+  'achievements-review': { continue: 'submitAchievementDecisions' },
+  'tagline-review':      { continue: 'taglineContinue' },
+  'summary-review':      { continue: 'submitSummaryFocusDecision' },
+  'publications-review': { save:     'savePublicationDecisions' },
+};
+
+/** Save/submit *fromTab*, then move to *target* (unless the save failed). */
+async function goToNextTab(fromTab, target) {
+  const action = _TAB_NEXT_ACTION[fromTab] || {};
+  const fn = globalThis[action.continue || action.save];
+  if (typeof fn !== 'function') {
+    if (typeof switchTab === 'function') switchTab(target);
+    return;
+  }
+  if (action.continue) {
+    await fn();   // switches tabs itself when the save succeeds
+    return;
+  }
+  if ((await fn()) === true && typeof switchTab === 'function') switchTab(target);
+}
+
+function _setTabStepButton(btn, fromTab, target, direction) {
   if (!btn) return;
   btn.hidden = !target;
   if (!target) return;
@@ -609,7 +646,12 @@ function _setTabStepButton(btn, target, direction) {
   btn.dataset.target = target;
   btn.setAttribute('aria-label', `${direction} tab: ${label}`);
   // Assigned (not addEventListener) so repeated updates never stack handlers.
-  btn.onclick = () => { if (typeof switchTab === 'function') switchTab(target); };
+  btn.onclick = direction === 'Previous'
+    ? () => { if (typeof switchTab === 'function') switchTab(target); }
+    : async () => {
+        btn.disabled = true;   // no double submit while saving
+        try { await goToNextTab(fromTab, target); } finally { btn.disabled = false; }
+      };
 }
 
 // loadTabContent() lives in web/review-table-base.js, which owns the
@@ -1989,7 +2031,7 @@ export {
   // Dialogs & modals
   confirmDialog, openModal, closeModal, closeAllModals,
   // Tab & stage management
-  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, updateTabStepNav,
+  setupEventListeners, getStageForTab, getVisibleStage, updateTabBarForStage, updateTabStepNav, goToNextTab,
   // Chat
   toggleChat,
   // Model selector

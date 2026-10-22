@@ -25,6 +25,7 @@ import {
   askPostAnalysisQuestions,
   advanceQGroup,
   jumpToQGroup,
+  saveQuestionAnswers,
 } from '../../web/questions-panel.js'
 import { initializeState, stateManager } from '../../web/state-manager.js'
 
@@ -494,5 +495,22 @@ describe('askPostAnalysisQuestions', () => {
     await askPostAnalysisQuestions(analysisObj, null)
 
     expect(globalThis.sendAction).toHaveBeenCalledWith('recommend_customizations')
+  })
+})
+
+// ── saveQuestionAnswers (used by the Previous/Next bar's Next) ───────────────
+
+describe('saveQuestionAnswers', () => {
+  it('collects typed answers and persists them without generating recommendations', async () => {
+    window.postAnalysisQuestions = [{ type: 'focus' }, { type: 'tone' }]
+    document.body.innerHTML = `
+      <textarea id="q-input-0">  platform leadership  </textarea>
+      <textarea id="q-input-1"></textarea>`
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+
+    expect(await saveQuestionAnswers()).toBe(true)
+    expect(window.questionAnswers).toEqual({ focus: 'platform leadership' })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/post-analysis-responses', expect.objectContaining({ method: 'POST' }))
+    expect(globalThis.sendAction).not.toHaveBeenCalled()
   })
 })

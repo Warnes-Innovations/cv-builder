@@ -58,11 +58,14 @@ class TestCustomisationsTab:
         expect(prev_btn).to_have_text(re.compile(r"^← .*Questions$"))
         expect(next_btn).to_have_text(re.compile(r"Experience Bullets →$"))
 
+        # Click through from the Guide, which has nothing to save. (Next on a
+        # review tab submits first; see test_next_saves_before_switching.)
+        page.evaluate("() => switchTab('customise-guide')")
+        expect(next_btn).to_have_text(re.compile(r"Goals →$"))
         next_btn.click()
-        expect(page.locator("#tab-ach-editor")).to_have_class(re.compile(r"\bactive\b"))
+        expect(page.locator("#tab-goals")).to_have_class(re.compile(r"\bactive\b"))
         prev_btn.click()
-        prev_btn.click()
-        expect(page.locator("#tab-questions")).to_have_class(re.compile(r"\bactive\b"))
+        expect(page.locator("#tab-customise-guide")).to_have_class(re.compile(r"\bactive\b"))
 
     def test_previous_next_stop_at_stage_ends(self, page: Page):
         """No Previous on the first tab, no Next on the last; none on one-tab stages."""
@@ -95,6 +98,52 @@ class TestCustomisationsTab:
             expect(content.locator(".continue-btn").first).to_be_visible()
             expect(content.locator(".back-btn")).to_have_count(0)
             expect(content).not_to_contain_text("← Back to")
+
+    def test_next_saves_before_switching(self, analysis_seeded_page: Page):
+        """Next submits the tab's decisions, then moves on (not just switches).
+
+        Skills uses its own Continue action; Publications saves without
+        starting the rewrite stage, then moves to ATS Score.
+        """
+        page = analysis_seeded_page
+        page.evaluate(
+            """(reviewDecisionsResponse) => {
+                window.__decisionTypes = [];
+                window.__rewritesStarted = false;
+                const originalFetch = window.fetch.bind(window);
+                window.fetch = async (input, init) => {
+                    const url = typeof input === 'string' ? input : input.url;
+                    if (url.includes('/api/review-decisions')) {
+                        window.__decisionTypes.push(JSON.parse(init.body).type);
+                        return new Response(JSON.stringify(reviewDecisionsResponse), {
+                            status: 200, headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                    return originalFetch(input, init);
+                };
+                window.fetchAndReviewRewrites = async () => { window.__rewritesStarted = true; };
+            }""",
+            API_REVIEW_DECISIONS_OK,
+        )
+        page.evaluate("async () => { await sendAction('recommend_customizations'); }")
+        self._show_customization_stage(page)
+        next_btn = page.locator('#tab-step-nav [data-dir="next"]')
+
+        page.evaluate("() => switchTab('skills-review')")
+        expect(next_btn).to_have_text(re.compile(r"Achievements →$"))
+        next_btn.click()
+        expect(page.locator("#tab-achievements-review")).to_have_class(re.compile(r"\bactive\b"))
+        assert "skills" in page.evaluate("() => window.__decisionTypes")
+
+        page.evaluate("() => switchTab('publications-review')")
+        # This fixture has no publications; on a real page the tab fills
+        # publicationDecisions with one entry per listed publication.
+        page.evaluate("() => { window.publicationDecisions = { smith2020: true }; }")
+        expect(next_btn).to_have_text(re.compile(r"ATS Score →$"))
+        next_btn.click()
+        expect(page.locator("#tab-ats-score")).to_have_class(re.compile(r"\bactive\b"))
+        assert "publications" in page.evaluate("() => window.__decisionTypes")
+        assert page.evaluate("() => window.__rewritesStarted") is False
 
     def test_click_customizations_tab(self, page: Page):
         """Clicking the exp-review tab shows document content."""

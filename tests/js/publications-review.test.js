@@ -14,6 +14,7 @@ import {
   filterPublicationsTable,
   handlePubAction,
   submitPublicationDecisions,
+  savePublicationDecisions,
 } from '../../web/publications-review.js'
 
 // ── Global stubs ──────────────────────────────────────────────────────────
@@ -172,5 +173,38 @@ describe('submitPublicationDecisions', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
     await submitPublicationDecisions()
     expect(globalThis.showToast).toHaveBeenCalledWith(expect.stringContaining('Failed'), 'error')
+  })
+})
+
+// ── savePublicationDecisions (used by the Previous/Next bar's Next) ──────────
+
+describe('savePublicationDecisions', () => {
+  it('returns true with nothing to save (e.g. no publications) and posts nothing', async () => {
+    window.publicationDecisions = {}
+    globalThis.fetch = vi.fn()
+    expect(await savePublicationDecisions()).toBe(true)
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+    expect(globalThis.showToast).not.toHaveBeenCalled()
+  })
+
+  it('saves and returns true without starting the rewrite stage', async () => {
+    window.publicationDecisions = { a: true, b: false }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true })
+    expect(await savePublicationDecisions()).toBe(true)
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/review-decisions', expect.objectContaining({ method: 'POST' }))
+    expect(globalThis.fetchAndReviewRewrites).not.toHaveBeenCalled()
+  })
+
+  it('returns false when the save fails', async () => {
+    window.publicationDecisions = { a: true }
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: 'nope' }) })
+    expect(await savePublicationDecisions()).toBe(false)
+  })
+
+  it('submitPublicationDecisions does not start rewrites when the save fails', async () => {
+    window.publicationDecisions = { a: true }
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
+    await submitPublicationDecisions()
+    expect(globalThis.fetchAndReviewRewrites).not.toHaveBeenCalled()
   })
 })
