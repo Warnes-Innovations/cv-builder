@@ -390,5 +390,74 @@ class TestLookupRuntimePricingBulk(unittest.TestCase):
 
 
 
+class TestPricesMatchedByNamingRule(unittest.TestCase):
+    """New models are priced without a _OPENROUTER_ID_MAP entry.
+
+    OpenRouter spells versions with a dot (claude-sonnet-5.5); Anthropic IDs use
+    a hyphen and may carry a date (claude-haiku-4-5-20251001).
+    """
+
+    def _fetch(self, or_models):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = _or_api_response(or_models)
+        mock_resp.raise_for_status.return_value = None
+        mock_requests = MagicMock()
+        mock_requests.get.return_value = mock_resp
+        with patch.dict("sys.modules", {"requests": mock_requests}):
+            return _fetch_openrouter_pricing()
+
+    def test_unmapped_model_priced_under_local_ids(self):
+        result = self._fetch([
+            ("anthropic/claude-sonnet-5.5", 2.00, 10.00),
+            ("anthropic/claude-sonnet-5.5:batch", 1.00, 5.00),
+        ])
+        for local_id in ("claude-sonnet-5-5", "claude-sonnet-5.5"):
+            self.assertAlmostEqual(result[local_id]["cost_input"], 2.00, places=4)
+        self.assertNotIn("claude-sonnet-5.5:batch", result)
+
+    def test_map_entry_wins_over_naming_rule(self):
+        """gpt-4o is mapped explicitly; a derived alias must not overwrite it."""
+        result = self._fetch([("openai/gpt-4o", 2.50, 10.00)])
+        self.assertAlmostEqual(result["gpt-4o"]["cost_input"], 2.50, places=4)
+
+    def test_other_namespaces_ignored(self):
+        result = self._fetch([("anthropic/claude-sonnet-5.5", 2.0, 10.0), ("someco/model-1.5", 9.0, 9.0)])
+        self.assertNotIn("model-1-5", result)
+        self.assertNotIn("model-1.5", result)
+
+    def test_lookup_matches_dated_and_hyphenated_ids(self):
+        prices = {"claude-haiku-4.5": {"cost_input": 1.0, "cost_output": 5.0}}
+        with patch.object(pc, "_fetch_openrouter_catalog_index") as fetch:
+            found = pc.lookup_cached_pricing("claude-haiku-4-5-20251001", "anthropic", prices)
+            missing = pc.lookup_cached_pricing("claude-unknown-9", "anthropic", prices)
+        self.assertEqual(found, {"cost_input": 1.0, "cost_output": 5.0})
+        self.assertIsNone(missing)
+        fetch.assert_not_called()   # local only: safe in a request path
+
+
+class TestPricesRefreshWhileRunning(unittest.TestCase):
+    """A long-running app re-checks prices every _CACHE_TTL_H, not only at startup."""
+
+    def setUp(self):
+        self._saved = (pc._mem_cache, pc._mem_checked_at)
+        pc._mem_cache = {"gpt-4o": {"cost_input": 1.0, "cost_output": 2.0}}
+
+    def tearDown(self):
+        pc._mem_cache, pc._mem_checked_at = self._saved
+
+    def test_recent_check_does_not_refresh(self):
+        pc._mem_checked_at = pc.time.monotonic()
+        with patch.object(pc, "maybe_refresh_in_background") as refresh:
+            pc.get_cached_pricing()
+        refresh.assert_not_called()
+
+    def test_check_older_than_ttl_triggers_background_refresh_once(self):
+        pc._mem_checked_at = pc.time.monotonic() - (pc._CACHE_TTL_H * 3600 + 1)
+        with patch.object(pc, "maybe_refresh_in_background") as refresh:
+            pc.get_cached_pricing()
+            pc.get_cached_pricing()
+        refresh.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,7 @@ import functools
 import logging
 import os
 import json
+import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Type, TypeVar
 from abc import ABC, abstractmethod
@@ -235,9 +236,28 @@ def _apply_max_tokens_cap(requested: Optional[int]) -> Optional[int]:
     return cap if requested is None else min(requested, cap)
 
 
-# (prefix, context window, max output tokens) per Anthropic model, checked
-# against GET /v1/models (max_input_tokens, max_tokens) on 2026-10-21; the
-# claude-mythos-5 row is from Anthropic's model reference, not the live API.
+# Live (context window, max output tokens) per Anthropic model ID, recorded
+# from GET /v1/models (max_input_tokens, max_tokens) whenever an
+# AnthropicClient starts. Takes precedence over the table below, so a new
+# model's limits need no code change.
+_ANTHROPIC_LIVE_LIMITS: Dict[str, tuple] = {}
+_DATE_SUFFIX_RE = re.compile(r'-\d{8}$')
+
+
+def _record_anthropic_limits(models: List[Any]) -> None:
+    """Store the live limits carried by GET /v1/models entries."""
+    for m in models:
+        extra = getattr(m, 'model_extra', None) or {}
+        context = extra.get('max_input_tokens', getattr(m, 'max_input_tokens', None))
+        output = extra.get('max_tokens', getattr(m, 'max_tokens', None))
+        if isinstance(context, int) and isinstance(output, int):
+            _ANTHROPIC_LIVE_LIMITS[m.id] = (context, output)
+
+
+# Fallback when no live limits are recorded (the API is unreachable, or no
+# AnthropicClient has started yet): (prefix, context window, max output
+# tokens), checked against GET /v1/models on 2026-10-21; the claude-mythos-5
+# row is from Anthropic's model reference, not the live API.
 # Prefix-matched, so "claude-opus-5" also covers claude-opus-5-5 and dated IDs
 # resolve. A model not listed keeps the output fallback: asking for more than a
 # model's cap is a 400, so do not raise the fallback to 128K "to be safe".
@@ -261,6 +281,12 @@ _ANTHROPIC_FALLBACK_MAX_OUTPUT = 4096
 def _anthropic_limits(model: str) -> Optional[tuple]:
     """Return (context window, max output) for an Anthropic *model*, or None."""
     name = (model or '').lower().rsplit('/', 1)[-1]
+    if name in _ANTHROPIC_LIVE_LIMITS:
+        return _ANTHROPIC_LIVE_LIMITS[name]
+    undated = _DATE_SUFFIX_RE.sub('', name)   # claude-haiku-4-5 <-> ...-20251001
+    for live_id, limits in _ANTHROPIC_LIVE_LIMITS.items():
+        if _DATE_SUFFIX_RE.sub('', live_id) == undated:
+            return limits
     for prefix, context, output in _ANTHROPIC_LIMITS:
         if name.startswith(prefix):
             return context, output
@@ -2209,24 +2235,30 @@ ANTHROPIC_MODEL_CLASSES = ('sonnet', 'opus', 'haiku', 'fable')
 ANTHROPIC_DEFAULT_MODEL_CLASS = 'sonnet'
 
 
-def _resolve_anthropic_model(model: str, client: Any) -> str:
+def _list_anthropic_models(client: Any) -> List[Any]:
+    """Return GET /v1/models entries and record their limits; [] on failure."""
+    try:
+        models = list(client.models.list(limit=100, timeout=10))
+    except Exception as exc:
+        logger.warning("Anthropic model list unavailable (%s); using fallback tables", exc)
+        return []
+    _record_anthropic_limits(models)
+    return models
+
+
+def _resolve_anthropic_model(model: str, models: List[Any]) -> str:
     """Resolve a model class ("sonnet", "opus", ...) to the newest model in it.
 
-    Any other value is an exact model ID and is returned unchanged. The newest
-    model comes from GET /v1/models (by created_at), so a new release is
-    picked up without a code change. If that call fails, the first matching ID
+    Any other value is an exact model ID and is returned unchanged. *models*
+    are GET /v1/models entries; the newest by created_at wins, so a new release
+    is picked up without a code change. With no entries, the first matching ID
     in PROVIDER_MODELS["anthropic"] is used and a warning is logged.
     """
     model_class = (model or '').strip().lower()
     if model_class not in ANTHROPIC_MODEL_CLASSES:
         return model
     prefix = f'claude-{model_class}-'
-    try:
-        candidates = [m for m in client.models.list(limit=100, timeout=10)
-                      if m.id.startswith(prefix)]
-    except Exception as exc:
-        logger.warning("Anthropic model list unavailable (%s); using fallback list", exc)
-        candidates = []
+    candidates = [m for m in models if m.id.startswith(prefix)]
     if candidates:
         return max(candidates, key=lambda m: m.created_at).id
     fallback = next((m for m in PROVIDER_MODELS['anthropic'] if m.startswith(prefix)), None)
@@ -2254,8 +2286,9 @@ class AnthropicClient(LLMClient):
             raise ImportError(
                 "Anthropic package not installed. Run: pip install anthropic"
             )
-        # A class name ("sonnet") becomes the newest model ID in that class.
-        self.model = _resolve_anthropic_model(model, self.client)
+        # One model-list call: records live limits, and turns a class name
+        # ("sonnet") into the newest model ID in that class.
+        self.model = _resolve_anthropic_model(model, _list_anthropic_models(self.client))
 
     def chat(
         self,

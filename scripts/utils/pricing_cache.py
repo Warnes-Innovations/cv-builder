@@ -42,7 +42,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -63,6 +65,28 @@ _PROVIDER_NAMESPACE = {
     "gemini":    "google",
     "groq":      "groq",
 }
+
+# OpenRouter namespaces whose models are also priced under our local IDs, so a
+# newly released model needs no _OPENROUTER_ID_MAP entry.
+_ALIAS_NAMESPACES = ("anthropic", "openai", "google", "meta-llama", "mistralai")
+_DATE_SUFFIX_RE    = re.compile(r"-\d{8}$")        # claude-haiku-4-5-20251001
+_VERSION_DOT_RE    = re.compile(r"(\d)\.(\d)")     # claude-sonnet-5.5 (OpenRouter)
+_VERSION_HYPHEN_RE = re.compile(r"-(\d+)-(\d+)$")  # claude-sonnet-5-5 (Anthropic)
+
+
+def _local_aliases_for_openrouter_id(or_id: str) -> List[str]:
+    """Local model IDs that an OpenRouter ID prices.
+
+    ``anthropic/claude-sonnet-5.5`` -> ``claude-sonnet-5.5``, ``claude-sonnet-5-5``.
+    Variants such as ``:batch`` are skipped: they are priced differently.
+    """
+    if ":" in or_id or "/" not in or_id:
+        return []
+    namespace, bare = or_id.split("/", 1)
+    if namespace not in _ALIAS_NAMESPACES:
+        return []
+    hyphenated = _VERSION_DOT_RE.sub(r"\1-\2", bare)
+    return [bare] if hyphenated == bare else [bare, hyphenated]
 
 # Maps our internal short model IDs → canonical OpenRouter model IDs.
 # OR prices are in USD-per-token; we multiply × 1,000,000 → $/1M.
@@ -155,6 +179,10 @@ STATIC_PRICING: Dict[str, Dict[str, Any]] = {
 
 # Module-level in-memory cache (populated on first call to get_cached_pricing)
 _mem_cache: Optional[Dict[str, Any]] = None
+# time.monotonic() when _mem_cache was last loaded or checked for staleness.
+# A long-running app re-checks every _CACHE_TTL_H instead of keeping its
+# startup prices forever.
+_mem_checked_at: Optional[float] = None
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
@@ -197,8 +225,11 @@ def get_cached_pricing() -> Dict[str, Dict[str, Any]]:
     if it exists and is not older than ``_CACHE_TTL_H`` hours; otherwise falls
     back to the compiled-in ``STATIC_PRICING`` baseline.
     """
-    global _mem_cache
+    global _mem_cache, _mem_checked_at
     if _mem_cache is not None:
+        if _mem_checked_at is None or time.monotonic() - _mem_checked_at > _CACHE_TTL_H * 3600:
+            _mem_checked_at = time.monotonic()
+            maybe_refresh_in_background()   # no-op unless the cache file is stale
         return _mem_cache
 
     payload = _load_cache_file()
@@ -207,6 +238,7 @@ def get_cached_pricing() -> Dict[str, Dict[str, Any]]:
         _mem_cache = {**STATIC_PRICING, **payload.get("pricing", {})}
     else:
         _mem_cache = dict(STATIC_PRICING)
+    _mem_checked_at = time.monotonic()
     return _mem_cache
 
 
@@ -229,8 +261,10 @@ def _fetch_openrouter_pricing() -> Optional[Dict[str, Dict[str, Any]]]:
     """Fetch live token pricing from the OpenRouter public API.
 
     Returns a dict of ``{local_model_id: {cost_input, cost_output}}`` for
-    every model that resolves via ``_OPENROUTER_ID_MAP``, or ``None`` on any
-    network/parse failure.  Prices from OR are per-token (USD); we multiply
+    every model that resolves via ``_OPENROUTER_ID_MAP``, plus every model in
+    ``_ALIAS_NAMESPACES`` under its local-style name(s) (see
+    ``_local_aliases_for_openrouter_id``), or ``None`` on any network/parse
+    failure.  Prices from OR are per-token (USD); we multiply
     by 1,000,000 to get $/1M format consistent with STATIC_PRICING.
 
     ``copilot_multiplier`` is intentionally NOT set here — that data lives
@@ -263,9 +297,15 @@ def _fetch_openrouter_pricing() -> Optional[Dict[str, Dict[str, Any]]]:
     for local_id, or_id in _OPENROUTER_ID_MAP.items():
         if or_id in or_index:
             result[local_id] = or_index[or_id]
+    mapped = len(result)
 
-    logger.info("OpenRouter: resolved %d / %d model prices",
-                len(result), len(_OPENROUTER_ID_MAP))
+    # Every other model, under its local-style name(s). Map entries win.
+    for or_id, price in or_index.items():
+        for alias in _local_aliases_for_openrouter_id(or_id):
+            result.setdefault(alias, price)
+
+    logger.info("OpenRouter: resolved %d / %d mapped model prices, %d by naming rule",
+                mapped, len(_OPENROUTER_ID_MAP), len(result) - mapped)
     return result or None
 
 
@@ -324,7 +364,31 @@ def _runtime_pricing_candidates(model_id: str, provider: Optional[str] = None) -
         _add(f"meta-llama/{normalized}")
         _add(f"mistralai/{normalized}")
 
+    # Undated and dotted-version forms: claude-haiku-4-5-20251001 is priced
+    # as claude-haiku-4-5 / claude-haiku-4.5 (OpenRouter's spelling).
+    for candidate in list(candidates):
+        undated = _DATE_SUFFIX_RE.sub("", candidate)
+        _add(undated)
+        _add(_VERSION_HYPHEN_RE.sub(r"-\1.\2", undated))
+
     return candidates
+
+
+def lookup_cached_pricing(
+    model_id: str,
+    provider: Optional[str] = None,
+    pricing: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Return cached pricing for *model_id* under any of its names, or None.
+
+    Local only — never fetches, so it is safe in a request path. Unlike
+    ``lookup_runtime_pricing_bulk``, a miss stays a miss until the next refresh.
+    """
+    prices = pricing if pricing is not None else get_cached_pricing()
+    for key in _runtime_pricing_candidates(model_id, provider):
+        if prices.get(key):
+            return prices[key]
+    return None
 
 
 def _persist_runtime_pricing(entries: Dict[str, Dict[str, Any]]) -> None:

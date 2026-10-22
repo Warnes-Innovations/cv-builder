@@ -281,6 +281,15 @@ class TestModelAPI(unittest.TestCase):
         self.assertEqual(windows[('anthropic', 'claude-sonnet-4-6')], 1_000_000)
         self.assertEqual(windows[('anthropic', 'claude-haiku-4-5')],    200_000)
 
+    def test_model_picker_prices_match_openrouter_spelling(self):
+        """Picker rows find prices stored under OpenRouter's dotted names."""
+        prices = {"claude-sonnet-5.5": {"cost_input": 2.0, "cost_output": 10.0}}
+        with patch('routes.auth_routes.get_cached_pricing', return_value=prices):
+            response = self.client.get('/api/model')
+        rows = {(r['provider'], r['model']): r for r in response.get_json()['all_models']}
+        row = rows[('anthropic', 'claude-sonnet-5-5')]
+        self.assertEqual((row['cost_input'], row['cost_output']), (2.0, 10.0))
+
     def test_model_catalog_endpoint_accessible(self):
         """GET /api/model-catalog returns available models."""
         response = self.client.get('/api/model-catalog')

@@ -63,7 +63,7 @@ def _persist_provider_model_to_config(provider: str, model: str) -> None:
 from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO, context_window_for
 from utils.pricing_cache import (
     get_cached_pricing, get_pricing_updated_at, get_pricing_source,
-    refresh_pricing_cache, lookup_runtime_pricing_bulk, STATIC_PRICING,
+    refresh_pricing_cache, lookup_runtime_pricing_bulk, lookup_cached_pricing, STATIC_PRICING,
 )
 
 
@@ -166,12 +166,17 @@ def create_blueprint(deps):
         available = _get_available_models(provider_for_view, current_model=current)
         billing = PROVIDER_BILLING.get(provider_for_view, {"type": "per_token", "note": ""})
         live      = get_cached_pricing()
+
+        def _price(model_id, provider):
+            # Matches dated/hyphenated IDs to OpenRouter's names; local only.
+            return lookup_cached_pricing(model_id, provider, live) or MODEL_INFO.get(model_id, {})
+
         models_with_info = [
             {
                 "model":              m,
                 "context_window":     context_window_for(m),
-                "cost_input":         (live.get(m) or MODEL_INFO.get(m, {})).get("cost_input"),
-                "cost_output":        (live.get(m) or MODEL_INFO.get(m, {})).get("cost_output"),
+                "cost_input":         _price(m, provider_for_view).get("cost_input"),
+                "cost_output":        _price(m, provider_for_view).get("cost_output"),
                 "copilot_multiplier": MODEL_INFO.get(m, {}).get("copilot_multiplier"),
                 "notes":              MODEL_INFO.get(m, {}).get("notes", ""),
             }
@@ -182,7 +187,7 @@ def create_blueprint(deps):
             prov_models       = _get_available_models(prov)
             prov_billing_type = PROVIDER_BILLING.get(prov, {}).get("type", "per_token")
             for m in prov_models:
-                pricing = live.get(m) or MODEL_INFO.get(m, {})
+                pricing = _price(m, prov)
                 price_source = "static_baseline"
                 all_models.append({
                     "provider":           prov,
@@ -257,6 +262,7 @@ def create_blueprint(deps):
                 pricing = (
                     live.get(model_name)
                     or runtime_prices.get(model_name)
+                    or lookup_cached_pricing(model_name, provider, live)
                     or MODEL_INFO.get(model_name, {})
                 )
                 if model_name in runtime_prices and model_name not in STATIC_PRICING:
