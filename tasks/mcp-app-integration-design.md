@@ -381,7 +381,7 @@ L ≈ a week or more).
 
 | Phase | Content | Size | Depends on | Removes |
 |---|---|---|---|---|
-| **P0** | Safety fixes to today's code: `_evict_port` kills only the listener; `MasterStore` for every master write; evictions stop discarding save errors | S–M | — | unsafe master writes, killed tabs, silent eviction loss |
+| **P0** | Safety fixes to today's code: `_evict_port` kills only the listener; `MasterStore` for every master write, committing each save (D3); evictions stop discarding save errors | S–M | — | master writes without backup or validation, killed tabs, silent eviction loss (the MCP tool's stale whole-master overwrite remains until P4) |
 | **P1** | An `id` on every master experience and bullet — a CLI command shows the proposed ids as a diff for the person to approve before applying (the proposal queue does not exist yet); specification, validator and schema updated together (project rule) | S | P0 | the migration's main ambiguity |
 | **P2** | `schema_version`; atomic, checked, cross-process-safe saves; save on every change with an eviction dirty check; side files; reload; bundle-version check so open tabs reload after a deployment | M | P0 | silent overwrites, reload that does nothing, restart loss |
 | **P3** | Id-keyed `achievement_edits`, per-bullet editor, all consumers, conflict view, `migrate-sessions` CLI command, removal of positional code | L | P1, P2 | the snapshot problem |
@@ -425,7 +425,7 @@ call becomes a proposal and an unclassified route fails the route-coverage test 
 |---|---|---|---|
 | D1 | How far to commit now | P0 only; through P4; through P5; through P6 | **Through P4** (about 2½–4 weeks) — fixes the motivating case, including master edits made outside the app, and today's unsafe paths; decide P5 and P6 with that experience. Cost of stopping there: several writers remain, approval of agent wording still relies on the agent, and the browser is not told about changes |
 | D2 | Agent changes to wording | proposals; or direct writes with a notification | **Proposals** — the only way the app, rather than the agent, enforces approval. Cost: the proposal queue and its UI are a large part of P6; direct writes would be cheaper but leave approval to the agent's instructions |
-| D3 | Master history | today's mix (three routes commit, most only `git add`); commit every save | **Commit every save** through `MasterStore`, from P0, naming only the master file so nothing else staged is swept in, with an actor/reason note. Cost: one commit per master save; if a commit fails, it is logged and the save stands (the file is already written and validated) |
+| D3 | Master history | today's mix (three routes commit, most only `git add`); commit every save | **Commit every save** through `MasterStore`, from P0, naming only the master file so nothing else staged is swept in, with an actor/reason note; P0 removes the three routes' own `git commit` calls so a save is not committed twice. Cost: one commit per master save; if a commit fails, it is logged and the save stands (the file is already written and validated) |
 | D4 | Phase gate on master writes | keep for app and agent; drop for both | **Drop for both, after P3 and P4** — master data belongs to no session, but while session edits are positional a mid-job master edit can re-target them |
 
 ---
@@ -467,6 +467,8 @@ Settled when each phase is designed; collected from review so they are not lost.
   - A **maintenance marker** so the MCP server does not restart the app during a rollback or a
     manual repair.
   - Duplicate-proposal handling on retries.
+  - Where a master-wording proposal (`bullet_propose`) is stored, since master data belongs to no
+    session and proposals are otherwise stored per session.
   - Conflict granularity for agent writes: per target, not per session, so the person's
     concurrent edits do not refuse the agent's.
   - Whether `job_submit_file` sends the file or its path.
