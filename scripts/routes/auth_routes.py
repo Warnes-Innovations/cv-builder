@@ -60,7 +60,7 @@ def _persist_provider_model_to_config(provider: str, model: str) -> None:
 
 # Live blueprint module registered by `scripts.web_app.create_app()`.
 
-from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO
+from utils.llm_client import get_llm_provider, PROVIDER_MODELS, PROVIDER_BILLING, MODEL_INFO, context_window_for
 from utils.pricing_cache import (
     get_cached_pricing, get_pricing_updated_at, get_pricing_source,
     refresh_pricing_cache, lookup_runtime_pricing_bulk, STATIC_PRICING,
@@ -169,7 +169,7 @@ def create_blueprint(deps):
         models_with_info = [
             {
                 "model":              m,
-                "context_window":     MODEL_INFO.get(m, {}).get("context_window"),
+                "context_window":     context_window_for(m),
                 "cost_input":         (live.get(m) or MODEL_INFO.get(m, {})).get("cost_input"),
                 "cost_output":        (live.get(m) or MODEL_INFO.get(m, {})).get("cost_output"),
                 "copilot_multiplier": MODEL_INFO.get(m, {}).get("copilot_multiplier"),
@@ -190,7 +190,7 @@ def create_blueprint(deps):
                     "source":             "list_models" if prov in _dynamic_model_cache else "fallback_static",
                     "price_source":       price_source,
                     "billing_type":       prov_billing_type,
-                    "context_window":     MODEL_INFO.get(m, {}).get("context_window"),
+                    "context_window":     context_window_for(m),
                     "cost_input":         pricing.get("cost_input"),
                     "cost_output":        pricing.get("cost_output"),
                     "copilot_multiplier": MODEL_INFO.get(m, {}).get("copilot_multiplier"),
@@ -272,7 +272,7 @@ def create_blueprint(deps):
                     "source":             provider_sources[provider],
                     "price_source":       price_source,
                     "billing_type":       prov_billing_type,
-                    "context_window":     MODEL_INFO.get(model_name, {}).get("context_window"),
+                    "context_window":     context_window_for(model_name),
                     "cost_input":         pricing.get("cost_input"),
                     "cost_output":        pricing.get("cost_output"),
                     "copilot_multiplier": MODEL_INFO.get(model_name, {}).get("copilot_multiplier"),

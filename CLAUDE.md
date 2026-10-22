@@ -64,6 +64,14 @@ Several `cv_orchestrator.py` methods return a tuple where the second element is 
 - ❌ INCORRECT: `if file_name == filename:` when one side may be a full path and the other a basename — matches only by coincidence.
 - Why: this exact bug had one test (`tests/test_web_ui_workflow.py`) that "covered" it, but that test builds its download request directly from `generated_files["files"]` (full paths) instead of reducing to basename first like a real browser does — so it exercised full-path-vs-full-path and never caught the mismatch a real request hits. When writing a test for filename matching/lookup logic, always construct the request the same way the actual frontend does (basename via `.split('/').pop()`), not by copying the backend's own internal representation.
 
+## Alert/Confirm Modals Render Strings as Text — Pass a DOM Node for Formatting
+
+`showAlertModal()` / `showConfirmModal()` (`web/ui-helpers.js`) render a string message as plain text (GAP-61 XSS fix), so HTML in a string shows up as literal tags. Three callers did this independently — the "Indeed Input Required" modal and both "✅ Saved" modals displayed raw `<div>`/`<strong>` markup.
+
+- ✅ CORRECT: build the content with `document.createElement` + `textContent` and pass the Node: `showAlertModal('✅ Saved', msg)` where `msg` is a `<span>` containing a `<strong>`.
+- ❌ INCORRECT: `` showAlertModal('✅ Saved', `Saved as <strong>${escapeHtml(name)}</strong>`) `` — renders the tags literally; `escapeHtml()` here also double-escapes.
+- Why: the string path must stay text-only because callers interpolate server data. A test that only checks the message *contains* the filename passes with the markup bug present — assert on rendered elements instead (see `tests/js/cover-letter.test.js`).
+
 ## New Frontend Modules Need a Test File Before Their First Bug, Not After
 
 `web/final-generate.js` had zero test coverage (no `tests/js/final-generate.test.js` existed) until the session-id and tuple bugs above were reported by manual testing rather than caught by CI. Coverage gaps like this are easy to check: `npm run test:js:cover` reports per-file statement/branch coverage, and any `web/*.js` file showing `0` across the board has no test file exercising it at all (as of writing: `goals.js`, `interview-prep.js`, `llm-log.js`, `thank-you.js`, `provider-info.js` are in this state — check `npm run test:js:cover`'s current output before assuming this list is still accurate).

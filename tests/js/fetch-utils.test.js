@@ -303,3 +303,32 @@ describe('setLoading', () => {
     expect(document.getElementById('loading-progress-bar')).toBeNull()
   })
 })
+
+// ── _refreshContextStats ─────────────────────────────────────────────────────
+
+describe('_refreshContextStats', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<span id="llm-token-count"></span>'
+  })
+
+  const counter = async (payload) => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, ...payload }) })
+    await mod._refreshContextStats()
+    return document.getElementById('llm-token-count').textContent
+  }
+
+  it('shows the real window for a 1M-context model', async () => {
+    expect(await counter({ estimated_tokens: 6700, context_window: 1_000_000 }))
+      .toBe('~6.7K / 1M (1%)')
+  })
+
+  it('formats K windows without a trailing .0', async () => {
+    expect(await counter({ estimated_tokens: 321, token_source: 'exact', context_window: 128_000 }))
+      .toBe('321 / 128K (0%)')
+  })
+
+  it('shows the count alone when the window is unknown (no fake 128K)', async () => {
+    expect(await counter({ estimated_tokens: 6700, context_window: null }))
+      .toBe('~6.7K tokens')
+  })
+})

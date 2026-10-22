@@ -584,6 +584,86 @@ class TestAnthropicClient(unittest.TestCase):
         )
 
 
+def _models_client(ids_by_date=None, error=None):
+    """Fake Anthropic client whose models.list() returns (created_at, id) pairs."""
+    from datetime import datetime
+    fake = MagicMock()
+    if error:
+        fake.models.list.side_effect = error
+    else:
+        fake.models.list.return_value = [
+            SimpleNamespace(id=mid, created_at=datetime.fromisoformat(day))
+            for day, mid in (ids_by_date or [])
+        ]
+    return fake
+
+
+_LIVE_LIST = [   # shape of GET /v1/models on 2026-10-21, deliberately not date-sorted
+    ('2026-06-29', 'claude-sonnet-5'),
+    ('2026-10-07', 'claude-haiku-5-5'),
+    ('2026-09-28', 'claude-sonnet-5-5'),
+    ('2026-09-21', 'claude-opus-5-5'),
+    ('2025-10-15', 'claude-haiku-4-5-20251001'),
+]
+
+
+class TestAnthropicModelClassResolution(unittest.TestCase):
+    """A model class ("sonnet") resolves to the newest model in it via the API."""
+
+    def test_class_resolves_to_newest_in_class(self):
+        from utils.llm_client import _resolve_anthropic_model
+        client = _models_client(_LIVE_LIST)
+        self.assertEqual(_resolve_anthropic_model('sonnet', client), 'claude-sonnet-5-5')
+        self.assertEqual(_resolve_anthropic_model('Haiku', client), 'claude-haiku-5-5')
+        self.assertEqual(_resolve_anthropic_model('opus', client), 'claude-opus-5-5')
+
+    def test_exact_model_id_is_unchanged_and_not_looked_up(self):
+        from utils.llm_client import _resolve_anthropic_model
+        client = _models_client(_LIVE_LIST)
+        self.assertEqual(_resolve_anthropic_model('claude-sonnet-5', client), 'claude-sonnet-5')
+        client.models.list.assert_not_called()
+
+    def test_lookup_failure_uses_fallback_list(self):
+        from utils.llm_client import _resolve_anthropic_model, PROVIDER_MODELS
+        client = _models_client(error=RuntimeError('401 invalid x-api-key'))
+        with self.assertLogs('utils.llm_client', level='WARNING'):
+            resolved = _resolve_anthropic_model('sonnet', client)
+        expected = next(m for m in PROVIDER_MODELS['anthropic'] if m.startswith('claude-sonnet-'))
+        self.assertEqual(resolved, expected)
+
+    def test_provider_without_model_uses_newest_sonnet(self):
+        """The old hard-coded default, claude-3-opus-20240229, is retired."""
+        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}), \
+             patch('anthropic.Anthropic', return_value=_models_client(_LIVE_LIST)):
+            client = get_llm_provider(provider='anthropic', model=None)
+        self.assertEqual(client.model, 'claude-sonnet-5-5')
+
+
+class TestContextWindowFor(unittest.TestCase):
+    """context_window_for() is the single source for the UI's context counter."""
+
+    def test_known_windows(self):
+        from utils.llm_client import context_window_for
+        cases = {
+            'claude-sonnet-5':            1_000_000,   # was shown as a fake 128K
+            'claude-opus-5-5':            1_000_000,
+            'claude-sonnet-4-6':          1_000_000,   # MODEL_INFO's 200K is stale
+            'claude-haiku-4-5-20251001':    200_000,
+            'claude-3-5-sonnet-20241022':   200_000,
+            'gpt-4o':                       128_000,
+            'gemini-1.5-pro':             2_000_000,
+            'gpt-3.5-turbo':                 16_385,   # from MODEL_INFO
+        }
+        for model, expected in cases.items():
+            with self.subTest(model=model):
+                self.assertEqual(context_window_for(model), expected)
+
+    def test_unknown_model_is_none_not_a_guess(self):
+        from utils.llm_client import context_window_for
+        self.assertIsNone(context_window_for('some-new-model'))
+        self.assertIsNone(context_window_for(''))
+
+
 class TestMaxTokensCap(unittest.TestCase):
     """llm.max_tokens / CV_LLM_MAX_TOKENS is an optional lower cap for every provider."""
 

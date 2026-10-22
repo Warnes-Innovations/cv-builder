@@ -235,35 +235,79 @@ def _apply_max_tokens_cap(requested: Optional[int]) -> Optional[int]:
     return cap if requested is None else min(requested, cap)
 
 
-# Max output tokens per Anthropic model, checked against GET /v1/models
-# (max_tokens field) on 2026-10-21. Prefix-matched, so "claude-opus-5" also covers
-# claude-opus-5-5 and dated IDs resolve. A model not listed keeps the fallback:
-# asking for more than a model's cap is a 400, so do not raise the fallback to
-# 128K "to be safe".
-_ANTHROPIC_MAX_OUTPUT = (
-    ('claude-fable-5',    128_000),
-    ('claude-mythos-5',   128_000),
-    ('claude-opus-5',     128_000),
-    ('claude-opus-4-8',   128_000),
-    ('claude-opus-4-7',   128_000),
-    ('claude-opus-4-6',   128_000),
-    ('claude-sonnet-5',   128_000),
-    ('claude-sonnet-4-6', 128_000),
-    ('claude-haiku-5',    128_000),
-    ('claude-haiku-4-5',   64_000),
-    ('claude-sonnet-4-5',  64_000),
-    ('claude-opus-4-5',    64_000),
+# (prefix, context window, max output tokens) per Anthropic model, checked
+# against GET /v1/models (max_input_tokens, max_tokens) on 2026-10-21; the
+# claude-mythos-5 row is from Anthropic's model reference, not the live API.
+# Prefix-matched, so "claude-opus-5" also covers claude-opus-5-5 and dated IDs
+# resolve. A model not listed keeps the output fallback: asking for more than a
+# model's cap is a 400, so do not raise the fallback to 128K "to be safe".
+_ANTHROPIC_LIMITS = (
+    ('claude-fable-5',    1_000_000, 128_000),
+    ('claude-mythos-5',   1_000_000, 128_000),
+    ('claude-opus-5',     1_000_000, 128_000),
+    ('claude-opus-4-8',   1_000_000, 128_000),
+    ('claude-opus-4-7',   1_000_000, 128_000),
+    ('claude-opus-4-6',   1_000_000, 128_000),
+    ('claude-sonnet-5',   1_000_000, 128_000),
+    ('claude-sonnet-4-6', 1_000_000, 128_000),
+    ('claude-haiku-5',    1_000_000, 128_000),
+    ('claude-haiku-4-5',    200_000,  64_000),
+    ('claude-sonnet-4-5',   200_000,  64_000),
+    ('claude-opus-4-5',     200_000,  64_000),
 )
 _ANTHROPIC_FALLBACK_MAX_OUTPUT = 4096
 
 
+def _anthropic_limits(model: str) -> Optional[tuple]:
+    """Return (context window, max output) for an Anthropic *model*, or None."""
+    name = (model or '').lower().rsplit('/', 1)[-1]
+    for prefix, context, output in _ANTHROPIC_LIMITS:
+        if name.startswith(prefix):
+            return context, output
+    return None
+
+
 def _anthropic_max_output(model: str) -> int:
     """Return the max output tokens for an Anthropic *model* ID."""
-    name = (model or '').lower().rsplit('/', 1)[-1]
-    for prefix, cap in _ANTHROPIC_MAX_OUTPUT:
-        if name.startswith(prefix):
-            return cap
-    return _ANTHROPIC_FALLBACK_MAX_OUTPUT
+    limits = _anthropic_limits(model)
+    return limits[1] if limits else _ANTHROPIC_FALLBACK_MAX_OUTPUT
+
+
+# Substring-matched context windows for other providers' models. Checked before
+# MODEL_INFO, whose figures for some of these differ (e.g. gemini-1.5-pro).
+_CONTEXT_WINDOW_HINTS = (
+    ("gemini-2.5-pro",    2_000_000),
+    ("gemini-2.5-flash",  1_048_576),
+    ("gemini-2.0-flash",  1_048_576),
+    ("gemini-1.5-pro",    2_000_000),
+    ("gemini-1.5-flash",  1_048_576),
+    ("gpt-4o",              128_000),
+    ("gpt-4o-mini",         128_000),
+    ("gpt-4-turbo",         128_000),
+    ("o1",                  200_000),
+    ("o3-mini",             200_000),
+    ("claude-3-5-sonnet",   200_000),
+    ("claude-3-5-haiku",    200_000),
+    ("claude-3-opus",       200_000),
+    ("llama",               128_000),
+)
+
+
+def context_window_for(model: str) -> Optional[int]:
+    """Return *model*'s context window in tokens, or None when unknown.
+
+    The single source for context-window figures. Return None rather than a
+    guess: the UI shows a "/ N" denominator only when this is a real number.
+    """
+    limits = _anthropic_limits(model)
+    if limits:
+        return limits[0]
+    name = (model or '').lower()
+    for key, size in _CONTEXT_WINDOW_HINTS:
+        if key in name:
+            return size
+    info = MODEL_INFO.get(name) or MODEL_INFO.get(name.rsplit('/', 1)[-1])
+    return (info or {}).get('context_window')
 
 
 class LLMClient(ABC):
@@ -2161,11 +2205,41 @@ class OpenAIClient(LLMClient):
         return self._propose_rewrites_via_chat(content, job_analysis, conversation_history, user_preferences)
 
 
+ANTHROPIC_MODEL_CLASSES = ('sonnet', 'opus', 'haiku', 'fable')
+ANTHROPIC_DEFAULT_MODEL_CLASS = 'sonnet'
+
+
+def _resolve_anthropic_model(model: str, client: Any) -> str:
+    """Resolve a model class ("sonnet", "opus", ...) to the newest model in it.
+
+    Any other value is an exact model ID and is returned unchanged. The newest
+    model comes from GET /v1/models (by created_at), so a new release is
+    picked up without a code change. If that call fails, the first matching ID
+    in PROVIDER_MODELS["anthropic"] is used and a warning is logged.
+    """
+    model_class = (model or '').strip().lower()
+    if model_class not in ANTHROPIC_MODEL_CLASSES:
+        return model
+    prefix = f'claude-{model_class}-'
+    try:
+        candidates = [m for m in client.models.list(limit=100, timeout=10)
+                      if m.id.startswith(prefix)]
+    except Exception as exc:
+        logger.warning("Anthropic model list unavailable (%s); using fallback list", exc)
+        candidates = []
+    if candidates:
+        return max(candidates, key=lambda m: m.created_at).id
+    fallback = next((m for m in PROVIDER_MODELS['anthropic'] if m.startswith(prefix)), None)
+    if fallback is None:
+        raise ValueError(f"No Anthropic model found for class '{model_class}'")
+    logger.warning("Using fallback model %s for class '%s'", fallback, model_class)
+    return fallback
+
+
 class AnthropicClient(LLMClient):
     """Anthropic Claude client."""
 
-    def __init__(self, model: str = "claude-3-opus-20240229", api_key: Optional[str] = None):
-        self.model = model
+    def __init__(self, model: str = ANTHROPIC_DEFAULT_MODEL_CLASS, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
 
         if not self.api_key:
@@ -2180,6 +2254,8 @@ class AnthropicClient(LLMClient):
             raise ImportError(
                 "Anthropic package not installed. Run: pip install anthropic"
             )
+        # A class name ("sonnet") becomes the newest model ID in that class.
+        self.model = _resolve_anthropic_model(model, self.client)
 
     def chat(
         self,
@@ -2808,7 +2884,10 @@ PROVIDER_MODELS: dict = {
     "copilot":       [m for m in CopilotClient.MODEL_ALIASES.keys() if "." not in m],
     "github":        [m for m in GitHubModelsClient.MODEL_ALIASES.keys() if "." not in m],
     "openai":        ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo-preview", "gpt-3.5-turbo"],
-    "anthropic":     ["claude-sonnet-4-6", "claude-3-7-sonnet", "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"],
+    # Fallback when the live model list is unavailable; each confirmed served by
+    # GET /v1/models on 2026-10-21. The Claude 3.x IDs previously here are retired.
+    "anthropic":     ["claude-opus-5-5", "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5",
+                      "claude-fable-5-1", "claude-sonnet-4-6", "claude-haiku-4-5"],
     "gemini":        ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
     "groq":          ["llama-3.3-70b-versatile", "llama-4-scout", "llama-4-maverick", "llama-3.1-8b-instant", "llama3-70b-8192", "mixtral-8x7b-32768"],
     "local":         [],
@@ -2858,7 +2937,7 @@ MODEL_INFO: dict = {
     "claude-3-haiku":             {"context_window": 200_000, "cost_input":  0.25, "cost_output":  1.25, "copilot_multiplier": 0.33, "notes": "Claude 3 Haiku — fastest/cheapest"},
     "claude-3-haiku-20240307":    {"context_window": 200_000, "cost_input":  0.25, "cost_output":  1.25,                            "notes": "Claude 3 Haiku (dated release)"},
     "claude-3-opus":              {"context_window": 200_000, "cost_input": 15.00, "cost_output": 75.00, "copilot_multiplier": 3.0,  "notes": "Claude 3 Opus — most capable"},
-    "claude-sonnet-4-6":          {"context_window": 200_000, "cost_input":  3.00, "cost_output": 15.00, "copilot_multiplier": 1.0,  "notes": "Claude Sonnet 4.6 — latest Sonnet"},
+    "claude-sonnet-4-6":          {"context_window": 1_000_000, "cost_input":  3.00, "cost_output": 15.00, "copilot_multiplier": 1.0,  "notes": "Claude Sonnet 4.6"},
     # ── Google Gemini ──────────────────────────────────────────────────────
     "gemini-1.5-pro":             {"context_window": 1_000_000, "cost_input": 1.25, "cost_output":  5.00, "notes": "Gemini 1.5 Pro — 1M context"},
     "gemini-1.5-flash":           {"context_window": 1_000_000, "cost_input": 0.075,"cost_output":  0.30, "notes": "Gemini 1.5 Flash — fast"},
@@ -3006,7 +3085,7 @@ def get_llm_provider(
         )
     elif provider == "anthropic":
         return AnthropicClient(
-            model=model or "claude-3-opus-20240229",
+            model=model or ANTHROPIC_DEFAULT_MODEL_CLASS,
             api_key=api_key
         )
     elif provider == "gemini":

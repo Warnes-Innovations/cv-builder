@@ -265,6 +265,22 @@ class TestModelAPI(unittest.TestCase):
         self.assertIsNotNone(data)
         self.assertIn('provider', data)
 
+    def test_model_picker_rows_use_shared_context_windows(self):
+        """Picker rows get context_window from context_window_for(), not MODEL_INFO alone.
+
+        MODEL_INFO had no Claude 4.5/5.x entries (shown as "—") and a stale
+        200K for claude-sonnet-4-6.
+        """
+        response = self.client.get('/api/model')
+        self.assertEqual(response.status_code, 200)
+        windows = {
+            (row['provider'], row['model']): row['context_window']
+            for row in response.get_json()['all_models']
+        }
+        self.assertEqual(windows[('anthropic', 'claude-sonnet-5')],   1_000_000)
+        self.assertEqual(windows[('anthropic', 'claude-sonnet-4-6')], 1_000_000)
+        self.assertEqual(windows[('anthropic', 'claude-haiku-4-5')],    200_000)
+
     def test_model_catalog_endpoint_accessible(self):
         """GET /api/model-catalog returns available models."""
         response = self.client.get('/api/model-catalog')

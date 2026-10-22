@@ -83,7 +83,9 @@ data:
 ```yaml
 llm:
   default_provider: "github"
-  default_model: null            # null uses provider default
+  default_model: null            # null uses provider default. For anthropic, a class
+                                 # name (sonnet|opus|haiku|fable) picks the newest
+                                 # model in that class; default: sonnet
   temperature: 0.7               # 0.0 = deterministic, 1.0 = creative
   max_tokens: null               # Optional cap on reply length, applied to every
                                  # provider. null = no cap: the provider default,

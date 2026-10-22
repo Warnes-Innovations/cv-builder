@@ -189,12 +189,17 @@ async function _refreshContextStats() {
     const data = await res.json();
     if (!data.ok) return;
     const est    = data.estimated_tokens || 0;
-    const win    = data.context_window   || 128_000;
+    // null when the server does not know the model's window: show the count
+    // alone rather than a made-up denominator (this used to fall back to 128K).
+    const win    = data.context_window || null;
     const exact  = data.token_source === 'exact';
-    const pct    = Math.round((est / win) * 100);
-    const estStr = est >= 1000 ? `${(est / 1000).toFixed(1)}K` : `${est}`;
-    const winStr = win >= 1000 ? `${Math.round(win / 1000)}K`  : `${win}`;
-    tokenEl.textContent = `${exact ? '' : '~'}${estStr} / ${winStr} (${pct}%)`;
+    const fmt    = n => n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M`
+                      : n >= 1000      ? `${(n / 1000).toFixed(1)}K`
+                      : `${n}`;
+    const estStr = `${exact ? '' : '~'}${fmt(est)}`;
+    tokenEl.textContent = win
+      ? `${estStr} / ${fmt(win).replace(/\.0K$/, 'K')} (${Math.round((est / win) * 100)}%)`
+      : `${estStr} tokens`;
   } catch (_) { /* silently ignore */ }
 }
 
