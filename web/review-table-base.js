@@ -211,9 +211,7 @@ function _populateCustomiseGuideTab(content) {
       '<h3 style="margin:0 0 6px;">📋 Customisation Guide</h3>' +
       '<p style="margin:0 0 10px;font-size:0.88em;">Work through these review tabs in order for best results:</p>' +
       `<ol style="margin:0;padding-left:20px;line-height:1.8;font-size:0.85em;">${items}</ol>` +
-      '<div class="nav-buttons nav-end" style="margin-top:16px;">' +
-        '<button class="continue-btn" onclick="switchTab(\'goals\')">Start with Goals →</button>' +
-      '</div>' +
+      '<p style="margin:12px 0 0;font-size:0.85em;color:#6b7280;">Use <strong>Next</strong> at the bottom to move through the tabs; it saves each tab as you go.</p>' +
     '</div>';
 }
 
@@ -757,18 +755,17 @@ async function populateReviewTab(pane) {
     </div>
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
-  // No per-pane Back buttons: the Previous/Next bar (updateTabStepNav in
-  // ui-core.js) covers going back. Continue stays because it saves decisions.
+  // No per-pane Back/Continue buttons: the Previous/Next bar (updateTabStepNav
+  // in ui-core.js) covers both, and its Next runs each pane's submit function
+  // (_TAB_NEXT_ACTION). Publications keeps its button because it does more
+  // than Next: it starts the rewrite stage.
   const navContinue = {
-    experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Experience Bullets →</button>`,
-    skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
-    achievements: `<button class="continue-btn" onclick="submitAchievementDecisions()">Continue to Tagline →</button>`,
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
   };
-  const navHtml = pane === 'summary' ? '' : `
+  const navHtml = navContinue[pane] ? `
     <div class="nav-buttons nav-end" style="margin:16px 0;">
-      ${navContinue[pane] || ''}
-    </div>`;
+      ${navContinue[pane]}
+    </div>` : '';
 
   content.innerHTML = `
     ${headerHtml}

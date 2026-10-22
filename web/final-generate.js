@@ -200,15 +200,8 @@ async function populateFinalGenerateTab(cvData = {}) {
     </div>`;
   }
 
-  html += `
-    <div class="nav-buttons nav-end" style="margin-top:24px;">
-      <button class="continue-btn" id="final-generate-continue-btn"
-              onclick="finalGenerationComplete()"
-              style="font-size:1em;padding:10px 24px;">
-        ✅ Proceed to Download Review →
-      </button>
-    </div>`;
-
+  // Proceeding is the Previous/Next bar's Next, which runs
+  // finalGenerationComplete() (ui-core.js _TAB_NEXT_ACTION).
   content.innerHTML = html;
 
   // Wire up preview toggle

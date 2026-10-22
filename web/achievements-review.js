@@ -564,10 +564,8 @@ async function buildAchievementsEditor() {
     `;
   });
 
+  // Saving is the Previous/Next bar's Next (saveAchievementEditsAndContinue).
   html += `
-    <div style="margin-top:20px;display:flex;gap:12px;align-items:center;justify-content:flex-end;">
-      <button class="continue-btn" onclick="saveAchievementEditsAndContinue()">Save &amp; Continue to Skills →</button>
-    </div>
     </div>
   `;
 

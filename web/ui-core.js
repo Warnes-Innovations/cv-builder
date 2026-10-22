@@ -620,6 +620,7 @@ const _TAB_NEXT_ACTION = {
   'tagline-review':      { continue: 'taglineContinue' },
   'summary-review':      { continue: 'submitSummaryFocusDecision' },
   'publications-review': { save:     'savePublicationDecisions' },
+  'final_generate':      { continue: 'finalGenerationComplete' },
 };
 
 /** Save/submit *fromTab*, then move to *target* (unless the save failed). */

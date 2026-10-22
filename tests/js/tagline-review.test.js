@@ -126,29 +126,40 @@ describe('buildTaglineReviewSection', () => {
     expect(status.textContent).toContain('Requires your confirmation')
   })
 
-  it('continue button has opacity 0.5 and not-allowed cursor when unconfirmed', async () => {
+  it('renders no Continue button (the Previous/Next bar replaces it)', async () => {
     mockFetchStatus(makeStatusResponse({
       customizations: { applicant_tagline: 'Some Tagline' },
     }))
 
     await buildTaglineReviewSection()
 
-    const continueBtn = document.getElementById('tagline-continue-btn')
-    expect(continueBtn.style.opacity).toBe('0.5')
-    expect(continueBtn.style.cursor).toBe('not-allowed')
+    expect(document.getElementById('tagline-continue-btn')).toBeNull()
   })
 
-  it('continue button has no opacity restriction when already confirmed', async () => {
+  it('an unconfirmed tagline blocks moving on', async () => {
+    mockFetchStatus(makeStatusResponse({
+      customizations: { applicant_tagline: 'Some Tagline' },
+    }))
+
+    await buildTaglineReviewSection()
+    await taglineContinue()
+
+    expect(globalThis.switchTab).not.toHaveBeenCalled()
+    expect(globalThis.showToast).toHaveBeenCalledWith(
+      'Please confirm the tagline before continuing.', 'error'
+    )
+  })
+
+  it('an already-confirmed tagline lets Next move on', async () => {
     mockFetchStatus(makeStatusResponse({
       tagline_override:    'My Tagline',
       decisions_confirmed: { tagline: true },
     }))
 
     await buildTaglineReviewSection()
+    await taglineContinue()
 
-    const continueBtn = document.getElementById('tagline-continue-btn')
-    expect(continueBtn.style.opacity).toBe('')
-    expect(continueBtn.style.cursor).toBe('')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('summary-review')
   })
 
   it('shows "Use this" button when proposed differs from confirmed override', async () => {
@@ -220,8 +231,7 @@ describe('onTaglineInputChange', () => {
   beforeEach(() => {
     document.body.innerHTML = `
       <span id="tagline-confirm-status"><span style="color:#065f46;">✓ Confirmed</span></span>
-      <span id="tagline-confirmed-badge" style="display:'';">Saved ✓</span>
-      <button id="tagline-continue-btn" style="opacity:'';cursor:'';">Continue</button>`
+      <span id="tagline-confirmed-badge" style="display:'';">Saved ✓</span>`
   })
 
   it('hides the confirmed badge', () => {
@@ -235,21 +245,18 @@ describe('onTaglineInputChange', () => {
     expect(status.textContent).toContain('Requires your confirmation')
   })
 
-  it('sets continue button opacity to 0.5', () => {
-    onTaglineInputChange()
-    expect(document.getElementById('tagline-continue-btn').style.opacity).toBe('0.5')
-  })
+  it('editing a confirmed tagline blocks moving on until it is re-confirmed', async () => {
+    document.body.innerHTML = '<div id="tagline-review-container"></div>'
+    mockFetchStatus(makeStatusResponse({
+      tagline_override:    'My Tagline',
+      decisions_confirmed: { tagline: true },
+    }))
+    await buildTaglineReviewSection()
 
-  it('sets continue button cursor to not-allowed', () => {
     onTaglineInputChange()
-    expect(document.getElementById('tagline-continue-btn').style.cursor).toBe('not-allowed')
-  })
+    await taglineContinue()
 
-  it('sets continue button title to confirmation reminder', () => {
-    onTaglineInputChange()
-    expect(document.getElementById('tagline-continue-btn').title).toBe(
-      'Please confirm the tagline before continuing'
-    )
+    expect(globalThis.switchTab).not.toHaveBeenCalled()
   })
 
   it('does not throw when DOM elements are absent', () => {
@@ -265,8 +272,7 @@ describe('resetTaglineToProposed', () => {
     document.body.innerHTML = `
       <input id="tagline-input" value="Current Value" />
       <span id="tagline-confirm-status"></span>
-      <span id="tagline-confirmed-badge"></span>
-      <button id="tagline-continue-btn"></button>`
+      <span id="tagline-confirmed-badge"></span>`
   })
 
   it('resets input value to window._proposedTagline', () => {
@@ -315,8 +321,7 @@ describe('confirmTagline', () => {
       <input id="tagline-input" value="Senior Data Scientist" />
       <button id="tagline-confirm-btn">✓ Confirm</button>
       <span  id="tagline-confirmed-badge" style="display:none;">Saved ✓</span>
-      <span  id="tagline-confirm-status"></span>
-      <button id="tagline-continue-btn" style="opacity:0.5;cursor:not-allowed;">Continue</button>`
+      <span  id="tagline-confirm-status"></span>`
 
     markContentChangedSpy = vi.spyOn(stateManager, 'markContentChanged')
   })
@@ -356,15 +361,13 @@ describe('confirmTagline', () => {
     expect(document.getElementById('tagline-confirm-status').textContent).toContain('✓ Confirmed')
   })
 
-  it('enables the continue button on success', async () => {
+  it('lets Next move on after a successful confirm', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
 
     await confirmTagline()
+    await taglineContinue()
 
-    const btn = document.getElementById('tagline-continue-btn')
-    expect(btn.style.opacity).toBe('')
-    expect(btn.style.cursor).toBe('')
-    expect(btn.title).toBe('')
+    expect(globalThis.switchTab).toHaveBeenCalledWith('summary-review')
   })
 
   it('calls stateManager.markContentChanged on success', async () => {
@@ -461,18 +464,22 @@ describe('confirmTagline', () => {
 // ── taglineContinue ───────────────────────────────────────────────────────
 
 describe('taglineContinue', () => {
+  async function renderWith(status) {
+    document.body.innerHTML = '<div id="tagline-review-container"></div>'
+    mockFetchStatus(makeStatusResponse(status))
+    await buildTaglineReviewSection()
+  }
+
   it('calls switchTab("summary-review") when tagline is confirmed', async () => {
-    document.body.innerHTML = `
-      <button id="tagline-continue-btn" style="opacity:'';cursor:'';">Continue</button>`
+    await renderWith({ tagline_override: 'T', decisions_confirmed: { tagline: true } })
 
     await taglineContinue()
 
     expect(globalThis.switchTab).toHaveBeenCalledWith('summary-review')
   })
 
-  it('shows toast and does NOT switch tab when cursor is not-allowed', async () => {
-    document.body.innerHTML = `
-      <button id="tagline-continue-btn" style="cursor:not-allowed;">Continue</button>`
+  it('shows toast and does NOT switch tab when the tagline is unconfirmed', async () => {
+    await renderWith({ customizations: { applicant_tagline: 'T' } })
 
     await taglineContinue()
 
@@ -482,12 +489,23 @@ describe('taglineContinue', () => {
     expect(globalThis.switchTab).not.toHaveBeenCalled()
   })
 
-  it('calls switchTab when continue button is absent (no DOM guard)', async () => {
+  it('stays blocked with no button on the page (the old guard let this through)', async () => {
+    await renderWith({ customizations: { applicant_tagline: 'T' } })
     document.body.innerHTML = ''
 
     await taglineContinue()
 
-    // No button → cursor check is skipped → proceeds to switchTab
-    expect(globalThis.switchTab).toHaveBeenCalledWith('summary-review')
+    expect(globalThis.switchTab).not.toHaveBeenCalled()
+  })
+
+  it('a failed status call does not leave an earlier confirmation in place', async () => {
+    await renderWith({ tagline_override: 'T', decisions_confirmed: { tagline: true } })
+    document.body.innerHTML = '<div id="tagline-review-container"></div>'
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'))
+    await buildTaglineReviewSection()
+
+    await taglineContinue()
+
+    expect(globalThis.switchTab).not.toHaveBeenCalled()
   })
 })

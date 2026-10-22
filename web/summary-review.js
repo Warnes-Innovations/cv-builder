@@ -100,10 +100,7 @@ async function buildSummaryFocusSection() {
             onclick="submitSummaryFocusDecision()">Use Selected Stored Summary</button>
         </div>
       </details>
-    </div>
-    <div class="nav-buttons nav-end" style="margin-top:16px;">
-      <button class="continue-btn" onclick="submitSummaryFocusDecision()">Continue to Publications →</button>
-    </div>`;
+    </div>`;   // Continue is the Previous/Next bar's Next (submitSummaryFocusDecision)
 
   // Render stored summaries in the collapsible section
   _renderStoredSummaryRadios(professionalSummaries);

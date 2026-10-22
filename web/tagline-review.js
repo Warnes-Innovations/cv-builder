@@ -39,6 +39,12 @@ import { stateManager } from './state-manager.js';
  *   writes: ["dom:#tagline-review-container"]
  *   notes: "Renders proposed tagline (from LLM customizations) with an editable input and confirm button."
  */
+// Whether the tagline shown is confirmed. Next (taglineContinue) refuses to
+// move on until it is. Do not derive this from a button's style again: the
+// old guard read the Continue button's cursor, and silently passed once that
+// button was removed.
+let _taglineConfirmed = false;
+
 async function buildTaglineReviewSection() {
   const container = document.getElementById('tagline-review-container');
   if (!container) return;
@@ -47,6 +53,7 @@ async function buildTaglineReviewSection() {
   let proposedTagline  = '';
   let confirmedTagline = '';
   let alreadyConfirmed = false;
+  _taglineConfirmed = false;   // until the status call says otherwise
 
   try {
     const res    = await fetch('/api/status');
@@ -55,6 +62,7 @@ async function buildTaglineReviewSection() {
     // tagline_override is the user-confirmed value (may be null)
     confirmedTagline = status.tagline_override || '';
     alreadyConfirmed = !!(status.decisions_confirmed && status.decisions_confirmed.tagline);
+    _taglineConfirmed = alreadyConfirmed;
 
     // Proposed tagline from the LLM recommendations
     const customizations = status.customizations || {};
@@ -108,15 +116,6 @@ async function buildTaglineReviewSection() {
         </button>
         ${alreadyConfirmed ? '<span id="tagline-confirmed-badge" style="margin-left:10px;font-size:0.85em;color:#065f46;">Saved ✓</span>' : '<span id="tagline-confirmed-badge" style="display:none;margin-left:10px;font-size:0.85em;color:#065f46;">Saved ✓</span>'}
       </div>
-    </div>
-
-    <div class="nav-buttons nav-end" style="margin-top:16px;">
-      <button id="tagline-continue-btn" class="continue-btn"
-        style="${alreadyConfirmed ? '' : 'opacity:0.5;cursor:not-allowed;'}"
-        onclick="taglineContinue()"
-        ${alreadyConfirmed ? '' : 'title="Please confirm the tagline before continuing"'}>
-        Continue to Summary →
-      </button>
     </div>`;
 
   // Expose proposed tagline for the reset button
@@ -131,12 +130,7 @@ function onTaglineInputChange() {
   const statusSpan = document.getElementById('tagline-confirm-status');
   if (badge)      badge.style.display = 'none';
   if (statusSpan) statusSpan.innerHTML = '<span style="color:#92400e;">Requires your confirmation before generating</span>';
-  const continueBtn = document.getElementById('tagline-continue-btn');
-  if (continueBtn) {
-    continueBtn.style.opacity       = '0.5';
-    continueBtn.style.cursor        = 'not-allowed';
-    continueBtn.title               = 'Please confirm the tagline before continuing';
-  }
+  _taglineConfirmed = false;
 }
 
 // ── Reset to AI-proposed tagline ─────────────────────────────────────────────
@@ -197,12 +191,7 @@ async function confirmTagline() {
     if (badge)      { badge.style.display = ''; }
     if (statusSpan) { statusSpan.innerHTML = '<span style="color:#065f46;font-weight:600;">✓ Confirmed</span>'; }
 
-    const continueBtn = document.getElementById('tagline-continue-btn');
-    if (continueBtn) {
-      continueBtn.style.opacity = '';
-      continueBtn.style.cursor  = '';
-      continueBtn.title         = '';
-    }
+    _taglineConfirmed = true;
 
     stateManager.markContentChanged();
     showToast('Tagline confirmed.');
@@ -217,8 +206,7 @@ async function confirmTagline() {
 
 async function taglineContinue() {
   // Guard: must be confirmed before proceeding
-  const continueBtn = document.getElementById('tagline-continue-btn');
-  if (continueBtn && continueBtn.style.cursor === 'not-allowed') {
+  if (!_taglineConfirmed) {
     showToast('Please confirm the tagline before continuing.', 'error');
     return;
   }

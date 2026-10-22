@@ -79,25 +79,36 @@ class TestCustomisationsTab:
         page.evaluate("() => switchTab('job')")
         expect(nav).to_be_hidden()
 
-    def test_tabs_have_no_one_off_back_buttons(self, analysis_seeded_page: Page):
-        """The Previous/Next bar replaced the per-tab "← Back to …" buttons.
+    def test_tabs_have_no_duplicate_nav_buttons(self, analysis_seeded_page: Page):
+        """The Previous/Next bar replaced the per-tab Back and Continue buttons.
 
-        Each tab must still render its Continue button (which saves the
-        tab's decisions); that also keeps this test from passing on a tab
-        that failed to render at all.
+        Checking each tab's heading keeps this test from passing on a tab
+        that failed to render. Publications keeps "Continue to Rewrite",
+        which does more than Next (it starts the rewrite stage).
         """
         page = analysis_seeded_page
         page.evaluate("async () => { await sendAction('recommend_customizations'); }")
         self._show_customization_stage(page)
         # ach-editor (Experience Bullets) is not listed: this fixture's master
         # CV has no experiences, so that tab renders no buttons at all.
-        for tab in ("skills-review", "achievements-review", "tagline-review",
-                    "summary-review", "publications-review"):
+        headings = {
+            "skills-review":       "Skills",
+            "achievements-review": "Achievements",
+            "tagline-review":      "Applicant Tagline",
+            "summary-review":      "Professional Summary",
+        }
+        for tab, heading in headings.items():
             page.evaluate(f"() => switchTab('{tab}')")
             content = page.locator("#document-content")
-            expect(content.locator(".continue-btn").first).to_be_visible()
+            expect(content).to_contain_text(heading)
             expect(content.locator(".back-btn")).to_have_count(0)
-            expect(content).not_to_contain_text("← Back to")
+            expect(content.locator(".continue-btn")).to_have_count(0)
+
+        page.evaluate("() => switchTab('publications-review')")
+        content = page.locator("#document-content")
+        expect(content).to_contain_text("Publications")
+        expect(content.locator(".back-btn")).to_have_count(0)
+        expect(content.locator(".continue-btn")).to_have_text(["Continue to Rewrite →"])
 
     def test_next_saves_before_switching(self, analysis_seeded_page: Page):
         """Next submits the tab's decisions, then moves on (not just switches).
@@ -265,9 +276,9 @@ class TestCustomisationsTab:
             }"""
         )
 
-        proceed_btn = analysis_seeded_page.locator(
-            "button:has-text('Continue to Experience Bullets')"
-        )
+        # Proceeding is the Previous/Next bar's Next (runs
+        # submitExperienceDecisions); the per-tab Continue button is gone.
+        proceed_btn = analysis_seeded_page.locator('#tab-step-nav [data-dir="next"]')
         proceed_btn.wait_for(state="visible", timeout=3_000)
         proceed_btn.click()
         analysis_seeded_page.wait_for_timeout(500)

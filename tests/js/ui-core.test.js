@@ -848,6 +848,14 @@ describe('goToNextTab', () => {
     expect(next.disabled).toBe(false)
   })
 
+  it('Download stage: Next on the generate tab runs finalGenerationComplete', async () => {
+    const complete = vi.fn(async () => {})
+    vi.stubGlobal('finalGenerationComplete', complete)
+    await mod.goToNextTab('final_generate', 'download')
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(switchTab).not.toHaveBeenCalled()   // it switches itself on success
+  })
+
   it('Previous only switches (no save)', () => {
     document.body.innerHTML = `
       <div class="tab" id="tab-customise-guide" data-tab="customise-guide">Guide</div>
