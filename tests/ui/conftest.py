@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from playwright.sync_api import Page, Route  # noqa: E402
 from tests.conftest import _free_port  # noqa: E402
+from tests.helpers.server_startup import SERVER_STARTUP_TIMEOUT  # noqa: E402
 from tests.ui.fixtures.mock_responses import (  # noqa: E402
     API_JOB_OK,
     API_STATUS_INIT,
@@ -54,9 +55,6 @@ from tests.ui.fixtures.mock_responses import (  # noqa: E402
 
 # Explicit server URL, or "" to start a private server on a free port.
 EXPLICIT_BASE_URL = (os.environ.get("CV_SERVER_URL") or "").strip().rstrip("/")
-# Seconds. 30 was too tight: a busy machine took ~28s to boot the app and
-# whole UI runs skipped. Override with CV_SERVER_STARTUP_TIMEOUT.
-SERVER_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "120"))
 
 
 def _base_url_port(url: str) -> int:
