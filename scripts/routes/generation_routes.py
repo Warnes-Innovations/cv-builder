@@ -805,7 +805,7 @@ def _page_style_for_domain(domain: str, override: str = None) -> tuple:
     If *override* is a recognised style key (e.g. from a per-session user choice),
     it takes precedence over domain-matching.
     """
-    from scripts.utils.config import get_config
+    from utils.config import get_config
     cfg = get_config()
     if override and override in cfg.position_styles:
         return override, cfg.position_styles[override]

@@ -2350,7 +2350,7 @@ def create_blueprint(deps):
         conversation = entry.manager
         body = request.get_json(silent=True) or {}
         style = (body.get('style') or '').strip()
-        from scripts.utils.config import get_config
+        from utils.config import get_config
         cfg = get_config()
         if not style:
             conversation.state.pop('position_style_override', None)
@@ -2385,7 +2385,7 @@ def create_blueprint(deps):
             estimated_pages = round(total_chars / int(chars_per_page), 1)
             domain = job_analysis.get('domain', '')
             override = conversation.state.get('position_style_override')
-            from scripts.routes.generation_routes import _page_warning, _page_style_for_domain
+            from routes.generation_routes import _page_warning, _page_style_for_domain
             style_key, _style = _page_style_for_domain(domain, override)
             return jsonify({
                 'ok': True,
