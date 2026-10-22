@@ -124,6 +124,61 @@ class TestApplyRewriteConstraints(unittest.TestCase):
         text = 'Led a team of 5 scientists at Novartis'
         self.assertTrue(LLMClient.apply_rewrite_constraints(text, text))
 
+    # A sentence-opening word is Title-Case because of its position, not because
+    # it is a name. Treating it as a protected name silently vetoed approved
+    # rewrites whenever their first word changed, unless that word happened to
+    # be in the stop list ("Led" is; "Translated" is not).
+    _ORIGINAL_BULLET = (
+        'Translated complex customer inventory challenges into specific '
+        'analytic features and workflows.'
+    )
+
+    def test_opening_verb_replaced_is_valid(self):
+        """A: replacing the opening verb is not a lost name."""
+        proposed = (
+            'Conceived Category Compass and translated complex customer inventory '
+            'challenges into specific analytic features and workflows.'
+        )
+        self.assertTrue(LLMClient.apply_rewrite_constraints(self._ORIGINAL_BULLET, proposed))
+
+    def test_opening_verb_kept_later_words_changed_is_valid(self):
+        """B: keeping the opening verb and changing later words stays valid."""
+        proposed = (
+            'Translated complex customer inventory problems into concrete '
+            'analytic features and workflows.'
+        )
+        self.assertTrue(LLMClient.apply_rewrite_constraints(self._ORIGINAL_BULLET, proposed))
+
+    def test_opening_verb_lowercased_mid_sentence_is_valid(self):
+        """C: the same word, now lower-case mid-sentence, is not a lost name."""
+        proposed = (
+            'Then translated complex customer inventory challenges into specific '
+            'analytic features and workflows.'
+        )
+        self.assertTrue(LLMClient.apply_rewrite_constraints(self._ORIGINAL_BULLET, proposed))
+
+    def test_stop_word_opening_verb_replaced_is_valid(self):
+        """D (control): replacing a stop-listed opening verb was already valid."""
+        self.assertTrue(LLMClient.apply_rewrite_constraints('Led the team.', 'Directed the team.'))
+
+    def test_opening_word_of_later_sentence_replaced_is_valid(self):
+        """The exemption applies to every sentence start, not only the first."""
+        original = 'Built dashboards. Translated requirements into features.'
+        proposed = 'Built dashboards. Converted requirements into features.'
+        self.assertTrue(LLMClient.apply_rewrite_constraints(original, proposed))
+
+    def test_name_after_opening_verb_still_protected(self):
+        """E: a real name later in the sentence is still protected."""
+        original = 'Built dashboards for Pfizer clinical teams.'
+        proposed = 'Built dashboards for clinical teams.'
+        self.assertFalse(LLMClient.apply_rewrite_constraints(original, proposed))
+
+    def test_opening_name_repeated_mid_sentence_still_protected(self):
+        """An opening word that is also capitalised mid-sentence is a name."""
+        original = 'Genentech platform built for Genentech scientists.'
+        proposed = 'Platform built for scientists.'
+        self.assertFalse(LLMClient.apply_rewrite_constraints(original, proposed))
+
 
 # ---------------------------------------------------------------------------
 # _parse_json_response

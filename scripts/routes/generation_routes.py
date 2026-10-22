@@ -26,6 +26,7 @@ from utils.layout_digest import (
     compare_layout_digests,
 )
 from utils.layout_estimator_model import predict_layout_pages
+from utils.llm_client import LLMClient
 from utils.session_data_view import SessionDataView
 
 
@@ -67,6 +68,34 @@ def _get_spell_audit_from_state(state: Dict[str, Any]) -> List[Dict[str, Any]]:
         return legacy_spell.get('audit') or []
 
     return []
+
+
+def _approved_rewrite_skip_warnings(approved_rewrites: Any) -> List[Dict[str, Any]]:
+    """Return a content warning for each approved rewrite generation will skip.
+
+    CVOrchestrator.apply_approved_rewrites skips any rewrite that fails
+    LLMClient.apply_rewrite_constraints and only logs it. Use the same check
+    here so the person sees exactly the rewrites that will not be applied.
+    """
+    warnings: List[Dict[str, Any]] = []
+    for item in approved_rewrites or []:
+        if not isinstance(item, dict):
+            continue
+        if LLMClient.apply_rewrite_constraints(
+            str(item.get('original') or ''), str(item.get('proposed') or '')
+        ):
+            continue
+        where = item.get('location') or item.get('id') or 'a rewrite'
+        warnings.append({
+            'code': 'approved_rewrite_skipped',
+            'severity': 'warning',
+            'message': (
+                f'An approved rewrite ({where}) will not be applied: it would remove '
+                'a number, date or name from the original text, so the original '
+                'text is used instead. Review it in the Rewrites step.'
+            ),
+        })
+    return warnings
 
 
 def _extra_skill_name(skill: Any) -> str:
@@ -481,6 +510,10 @@ def _collect_render_snapshot_inputs(
                         'Add more in the Ach Editor tab.'
                     ),
                 })
+
+    content_warnings.extend(
+        _approved_rewrite_skip_warnings(state.get('approved_rewrites'))
+    )
 
     return {
         'job_analysis': job_analysis,

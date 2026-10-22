@@ -1102,12 +1102,30 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
             return False
 
         # 2. Proper-name tokens — Title-Case words not in the stop-word list.
-        def _extract_proper(text: str) -> set:
-            words = re.findall(r"[A-Z][a-z][a-zA-Z&'\-]*", text)
-            return {w for w in words if w not in _STOP_WORDS}
+        #
+        # In the ORIGINAL, a Title-Case word at a sentence start is capitalised
+        # by position, not because it is a name (bullets open with a verb), so
+        # only mid-sentence Title-Case words are protected; an opening word that
+        # is also capitalised mid-sentence is protected through that occurrence.
+        # Do not count sentence-opening words here: doing so silently vetoed
+        # approved rewrites whenever the first word changed, unless that word
+        # happened to be in _STOP_WORDS. The PROPOSED side counts every
+        # Title-Case word, so a name moved to the start of a sentence is kept.
+        _TITLE_WORD = r"[A-Z][a-z][a-zA-Z&'\-]*"
+        _SENTENCE_START = re.compile(r"(?:^|[.!?;:])[\s\-*•]*[\"'(\[]*$")
 
-        proper_orig = _extract_proper(original)
-        proper_prop = _extract_proper(proposed)
+        def _mid_sentence_proper(text: str) -> set:
+            return {
+                m.group() for m in re.finditer(_TITLE_WORD, text)
+                if m.group() not in _STOP_WORDS
+                and not _SENTENCE_START.search(text[:m.start()])
+            }
+
+        def _all_proper(text: str) -> set:
+            return {w for w in re.findall(_TITLE_WORD, text) if w not in _STOP_WORDS}
+
+        proper_orig = _mid_sentence_proper(original)
+        proper_prop = _all_proper(proposed)
         if not proper_orig.issubset(proper_prop):
             return False
 
