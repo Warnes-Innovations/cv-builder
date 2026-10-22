@@ -1063,7 +1063,27 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
     # ── Concrete helpers shared by all provider implementations ──────────────
 
     @staticmethod
-    def apply_rewrite_constraints(original: str, proposed: str) -> bool:
+    def rewrite_item_passes_constraints(item: Dict) -> bool:
+        """Apply :meth:`apply_rewrite_constraints` to one rewrite item dict.
+
+        The single predicate used by the proposal filter, by
+        ``CVOrchestrator.apply_approved_rewrites`` and by the generation
+        content warning, so they cannot disagree about which rewrites pass.
+        Skill renames keep the strict check: a skill name is a name even in
+        first position, so "Tableau" -> "Power BI" must be rejected.
+        """
+        if not isinstance(item, dict):
+            return False
+        return LLMClient.apply_rewrite_constraints(
+            str(item.get('original') or ''),
+            str(item.get('proposed') or ''),
+            exempt_sentence_start=item.get('type') != 'skill_rename',
+        )
+
+    @staticmethod
+    def apply_rewrite_constraints(
+        original: str, proposed: str, *, exempt_sentence_start: bool = False
+    ) -> bool:
         """Return ``True`` if *proposed* is an acceptable rewrite of *original*.
 
         Returns ``False`` (invalid) when the proposed text removes any number,
@@ -1074,6 +1094,11 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
         Args:
             original: The source text before rewriting.
             proposed: The candidate replacement text.
+            exempt_sentence_start: When ``True``, a word opening a sentence of
+                *original* is not treated as a name (for bullet and summary
+                prose). Defaults to ``False`` — the strict check — so a caller
+                that omits it can only over-protect; production callers go
+                through :meth:`rewrite_item_passes_constraints`.
 
         Returns:
             ``True``  — rewrite is acceptable (no protected tokens removed).
@@ -1103,28 +1128,57 @@ Cover ALL {n_exp} experiences and ALL {n_ach} achievements using their exact IDs
 
         # 2. Proper-name tokens — Title-Case words not in the stop-word list.
         #
-        # In the ORIGINAL, a Title-Case word at a sentence start is capitalised
-        # by position, not because it is a name (bullets open with a verb), so
-        # only mid-sentence Title-Case words are protected; an opening word that
-        # is also capitalised mid-sentence is protected through that occurrence.
-        # Do not count sentence-opening words here: doing so silently vetoed
-        # approved rewrites whenever the first word changed, unless that word
-        # happened to be in _STOP_WORDS. The PROPOSED side counts every
-        # Title-Case word, so a name moved to the start of a sentence is kept.
+        # In the ORIGINAL, a word that opens a sentence is capitalised by
+        # position, not because it is a name (bullets open with a verb), so it
+        # is not protected — unless the same word is also capitalised
+        # mid-sentence. Counting opening words silently vetoed approved
+        # rewrites whenever the first word changed. The PROPOSED side counts
+        # every Title-Case word, so a name moved to a sentence start is kept.
+        #
+        # Keep "sentence start" narrow, or names lose protection: only the start
+        # of the text, or after . ! ? plus whitespace where the preceding word is
+        # an ordinary lower-case word. NOT after : or ; ("Clients: Pfizer and
+        # Merck") and NOT after abbreviations ("St. Jude", "U.S. Army",
+        # "Acme Inc. Northwind").
         _TITLE_WORD = r"[A-Z][a-z][a-zA-Z&'\-]*"
-        _SENTENCE_START = re.compile(r"(?:^|[.!?;:])[\s\-*•]*[\"'(\[]*$")
+        _ABBREVIATIONS = frozenset({
+            'inc', 'corp', 'co', 'ltd', 'llc', 'plc', 'st', 'dr', 'mr', 'mrs',
+            'ms', 'prof', 'jr', 'sr', 'vs', 'etc', 'approx', 'dept', 'univ',
+            'no', 'vol', 'fig', 'al', 'intl', 'gov', 'rep', 'sen', 'assn',
+            'bros', 'mass', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug',
+            'sep', 'sept', 'oct', 'nov', 'dec',
+        })
 
-        def _mid_sentence_proper(text: str) -> set:
+        def _is_sentence_start(prefix: str) -> bool:
+            core = prefix.rstrip(" \t\n-*•\"'([")
+            if not core:
+                return True
+            tail = prefix[len(core):]
+            if core[-1] not in '.!?' or not any(c.isspace() for c in tail):
+                return False  # no sentence punctuation, or no whitespace after it
+            prev = re.search(r'(\S+)$', core[:-1])
+            word = prev.group(1) if prev else ''
+            return (
+                len(word) >= 3
+                and '.' not in word
+                and word[-1].islower()
+                and word.lower() not in _ABBREVIATIONS
+            )
+
+        def _protected_names(text: str) -> set:
             return {
                 m.group() for m in re.finditer(_TITLE_WORD, text)
                 if m.group() not in _STOP_WORDS
-                and not _SENTENCE_START.search(text[:m.start()])
+                and not _is_sentence_start(text[:m.start()])
             }
 
         def _all_proper(text: str) -> set:
             return {w for w in re.findall(_TITLE_WORD, text) if w not in _STOP_WORDS}
 
-        proper_orig = _mid_sentence_proper(original)
+        proper_orig = (
+            _protected_names(original) if exempt_sentence_start
+            else _all_proper(original)
+        )
         proper_prop = _all_proper(proposed)
         if not proper_orig.issubset(proper_prop):
             return False
@@ -2143,9 +2197,7 @@ Return ONLY a JSON array — no prose, no markdown fences.
                 raw = raw.get('rewrites') or raw.get('proposals') or []
             valid: List[Dict] = []
             for item in raw:
-                if self.apply_rewrite_constraints(
-                    item.get('original', ''), item.get('proposed', '')
-                ):
+                if self.rewrite_item_passes_constraints(item):
                     valid.append(item)
                 else:
                     warnings.warn(

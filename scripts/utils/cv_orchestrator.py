@@ -1804,7 +1804,7 @@ For manual generation:
             item_id  = item.get('id', '<unknown>')
 
             # Guard: validate constraint — skip if numbers/dates/names lost.
-            if not LLMClient.apply_rewrite_constraints(original, proposed):
+            if not LLMClient.rewrite_item_passes_constraints(item):
                 logger.warning(
                     "apply_approved_rewrites: skipping constraint violation "
                     "(id=%r) — protected tokens would be removed.",

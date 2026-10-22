@@ -74,16 +74,14 @@ def _approved_rewrite_skip_warnings(approved_rewrites: Any) -> List[Dict[str, An
     """Return a content warning for each approved rewrite generation will skip.
 
     CVOrchestrator.apply_approved_rewrites skips any rewrite that fails
-    LLMClient.apply_rewrite_constraints and only logs it. Use the same check
-    here so the person sees exactly the rewrites that will not be applied.
+    LLMClient.rewrite_item_passes_constraints and only logs it. Use the same
+    check here so the person sees exactly the rewrites that will not be applied.
     """
     warnings: List[Dict[str, Any]] = []
     for item in approved_rewrites or []:
         if not isinstance(item, dict):
             continue
-        if LLMClient.apply_rewrite_constraints(
-            str(item.get('original') or ''), str(item.get('proposed') or '')
-        ):
+        if LLMClient.rewrite_item_passes_constraints(item):
             continue
         where = item.get('location') or item.get('id') or 'a rewrite'
         warnings.append({

@@ -76,6 +76,11 @@ def _make_openai_client() -> OpenAIClient:
 # apply_rewrite_constraints
 # ---------------------------------------------------------------------------
 
+def _lenient(original, proposed):
+    """The check as used for bullet and summary prose (opening words exempt)."""
+    return LLMClient.apply_rewrite_constraints(original, proposed, exempt_sentence_start=True)
+
+
 class TestApplyRewriteConstraints(unittest.TestCase):
     """Unit tests for LLMClient.apply_rewrite_constraints (static method)."""
 
@@ -139,7 +144,7 @@ class TestApplyRewriteConstraints(unittest.TestCase):
             'Conceived Category Compass and translated complex customer inventory '
             'challenges into specific analytic features and workflows.'
         )
-        self.assertTrue(LLMClient.apply_rewrite_constraints(self._ORIGINAL_BULLET, proposed))
+        self.assertTrue(_lenient(self._ORIGINAL_BULLET, proposed))
 
     def test_opening_verb_kept_later_words_changed_is_valid(self):
         """B: keeping the opening verb and changing later words stays valid."""
@@ -147,7 +152,7 @@ class TestApplyRewriteConstraints(unittest.TestCase):
             'Translated complex customer inventory problems into concrete '
             'analytic features and workflows.'
         )
-        self.assertTrue(LLMClient.apply_rewrite_constraints(self._ORIGINAL_BULLET, proposed))
+        self.assertTrue(_lenient(self._ORIGINAL_BULLET, proposed))
 
     def test_opening_verb_lowercased_mid_sentence_is_valid(self):
         """C: the same word, now lower-case mid-sentence, is not a lost name."""
@@ -155,29 +160,88 @@ class TestApplyRewriteConstraints(unittest.TestCase):
             'Then translated complex customer inventory challenges into specific '
             'analytic features and workflows.'
         )
-        self.assertTrue(LLMClient.apply_rewrite_constraints(self._ORIGINAL_BULLET, proposed))
+        self.assertTrue(_lenient(self._ORIGINAL_BULLET, proposed))
 
     def test_stop_word_opening_verb_replaced_is_valid(self):
         """D (control): replacing a stop-listed opening verb was already valid."""
-        self.assertTrue(LLMClient.apply_rewrite_constraints('Led the team.', 'Directed the team.'))
+        self.assertTrue(_lenient('Led the team.', 'Directed the team.'))
 
     def test_opening_word_of_later_sentence_replaced_is_valid(self):
         """The exemption applies to every sentence start, not only the first."""
         original = 'Built dashboards. Translated requirements into features.'
         proposed = 'Built dashboards. Converted requirements into features.'
-        self.assertTrue(LLMClient.apply_rewrite_constraints(original, proposed))
+        self.assertTrue(_lenient(original, proposed))
 
     def test_name_after_opening_verb_still_protected(self):
         """E: a real name later in the sentence is still protected."""
         original = 'Built dashboards for Pfizer clinical teams.'
         proposed = 'Built dashboards for clinical teams.'
-        self.assertFalse(LLMClient.apply_rewrite_constraints(original, proposed))
+        self.assertFalse(_lenient(original, proposed))
 
     def test_opening_name_repeated_mid_sentence_still_protected(self):
         """An opening word that is also capitalised mid-sentence is a name."""
         original = 'Genentech platform built for Genentech scientists.'
         proposed = 'Platform built for scientists.'
-        self.assertFalse(LLMClient.apply_rewrite_constraints(original, proposed))
+        self.assertFalse(_lenient(original, proposed))
+
+    # Names after a colon, a semicolon or an abbreviation are NOT at a sentence
+    # start and must stay protected.
+
+    def test_name_after_colon_still_protected(self):
+        self.assertFalse(_lenient(
+            'Clients: Pfizer and Merck.', 'Clients: Merck.'))
+
+    def test_name_after_semicolon_still_protected(self):
+        self.assertFalse(_lenient(
+            'Built tools; Pfizer adopted them.', 'Built tools; others adopted them.'))
+
+    def test_name_after_abbreviation_still_protected(self):
+        for original, proposed in [
+            ('Analyst at St. Jude hospital.', 'Analyst at St. hospital.'),
+            ('Served in the U.S. Army reserves.', 'Served in the reserves.'),
+            ('Partnered with Acme Inc. Northwind team.', 'Partnered with Acme Inc. team.'),
+        ]:
+            with self.subTest(original=original):
+                self.assertFalse(_lenient(original, proposed))
+
+    def test_name_moved_to_sentence_start_is_valid(self):
+        """The proposed side counts every Title-Case word, opening ones included."""
+        self.assertTrue(_lenient(
+            'Built dashboards for Pfizer.', 'Pfizer dashboards built.'))
+
+    def test_name_only_at_opening_may_be_dropped(self):
+        """Accepted trade-off: a name appearing only as the first word is not protected."""
+        self.assertTrue(_lenient(
+            'Pfizer trials expanded.', 'Trials expanded.'))
+
+    def test_name_after_month_abbreviation_still_protected(self):
+        self.assertFalse(_lenient(
+            'Released in Jan. Novartis adopted it.', 'Released in Jan. Others adopted it.'))
+
+    def test_default_check_is_strict(self):
+        """Omitting the keyword gives the strict check, so a caller can only over-protect."""
+        self.assertFalse(LLMClient.apply_rewrite_constraints(
+            'Translated requirements into features.', 'Converted requirements into features.'))
+
+    def test_skill_rename_keeps_strict_name_check(self):
+        """A skill name is a name even in first position."""
+        for original, proposed in [('Tableau', 'Power BI'), ('Python', 'R'),
+                                   ('Machine Learning', 'Statistical Learning')]:
+            with self.subTest(original=original):
+                self.assertFalse(LLMClient.rewrite_item_passes_constraints(
+                    {'type': 'skill_rename', 'original': original, 'proposed': proposed}))
+
+    def test_item_predicate_applies_exemption_to_bullets(self):
+        self.assertTrue(LLMClient.rewrite_item_passes_constraints({
+            'type': 'bullet',
+            'original': 'Translated requirements into features.',
+            'proposed': 'Converted requirements into features.',
+        }))
+
+    def test_item_predicate_tolerates_missing_text(self):
+        self.assertTrue(LLMClient.rewrite_item_passes_constraints(
+            {'type': 'bullet', 'original': None, 'proposed': None}))
+        self.assertFalse(LLMClient.rewrite_item_passes_constraints('not a dict'))
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +440,23 @@ class TestProposeRewrites(unittest.TestCase):
             len(constraint_warnings) >= 1,
             "Expected a warning about the filtered constraint violation",
         )
+
+    def test_proposal_filter_keeps_opening_verb_swap_and_drops_skill_swap(self):
+        """The filter applies the bullet exemption but keeps skill renames strict."""
+        verb_swap = {
+            'id': 'bullet_exp001_0', 'type': 'bullet', 'location': 'exp_001.achievements[0]',
+            'original': 'Translated requirements into features.',
+            'proposed': 'Converted requirements into features.',
+        }
+        skill_swap = {
+            'id': 'skill_tableau', 'type': 'skill_rename', 'location': 'skills',
+            'original': 'Tableau', 'proposed': 'Power BI',
+        }
+        self._mock_chat([verb_swap, skill_swap])
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            result = self.client.propose_rewrites(SAMPLE_CONTENT, SAMPLE_JOB_ANALYSIS)
+        self.assertEqual([r['id'] for r in result], ['bullet_exp001_0'])
 
     # ── edge cases ────────────────────────────────────────────────────────
 
