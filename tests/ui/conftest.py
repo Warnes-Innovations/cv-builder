@@ -9,7 +9,8 @@ Playwright conftest for cv-builder UI tests.
 
 Fixtures
 --------
-live_server   (session-scoped) — starts Flask on port 5001, yields base URL
+live_server   (session-scoped) — starts Flask on a free port (or reuses
+              CV_SERVER_URL when set), yields base URL
 page          (function-scoped) — fresh browser context, clears localStorage,
               intercepts all LLM-backed API routes with fixture JSON
 seeded_page   (function-scoped) — `page` with a job already submitted
@@ -31,6 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from playwright.sync_api import Page, Route  # noqa: E402
+from tests.conftest import _free_port  # noqa: E402
 from tests.ui.fixtures.mock_responses import (  # noqa: E402
     API_JOB_OK,
     API_STATUS_INIT,
@@ -39,7 +41,6 @@ from tests.ui.fixtures.mock_responses import (  # noqa: E402
     API_STATUS_IN_ANALYSIS,
     API_STATUS_REWRITE,
     API_STATUS_SPELL,
-    API_STATUS_GENERATE,
     API_STATUS_FINALISE,
     API_ACTION_ANALYZE_OK,
     API_ACTION_RECOMMEND_OK,
@@ -51,7 +52,8 @@ from tests.ui.fixtures.mock_responses import (  # noqa: E402
     API_HISTORY_EMPTY,
 )
 
-BASE_URL = os.environ.get("CV_SERVER_URL", "http://127.0.0.1:5002")
+# Explicit server URL, or "" to start a private server on a free port.
+EXPLICIT_BASE_URL = (os.environ.get("CV_SERVER_URL") or "").strip().rstrip("/")
 # Seconds. 30 was too tight: a busy machine took ~28s to boot the app and
 # whole UI runs skipped. Override with CV_SERVER_STARTUP_TIMEOUT.
 SERVER_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "120"))
@@ -113,18 +115,20 @@ def _playwright_browsers_installed() -> bool:
 @pytest.fixture(scope="session")
 def live_server():
     """
-    Start the Flask web app on BASE_URL's port for the test session.
+    Start the Flask web app for the test session and yield its base URL.
 
-    BASE_URL defaults to http://127.0.0.1:5002 and is overridden by the
-    CV_SERVER_URL env var. (It is deliberately NOT 5001, the default port
-    of a developer's own running app.)
+    Without CV_SERVER_URL, the server is started on an OS-assigned free port
+    and every page fixture gets that URL from this fixture. Never pin a fixed
+    port here: a fixed port silently REUSES whatever already answers on it —
+    e.g. another worktree's or session's test server — so the run tests the
+    wrong code and still reports green (happened 2026-10-21).
+
+    With CV_SERVER_URL set, a server already answering there is reused;
+    otherwise one is started on that URL's port (CI sets it this way).
 
     Skips gracefully when:
     - Playwright Chromium is not installed, OR
     - A server cannot be started within the timeout.
-
-    If a server is already answering at BASE_URL (e.g. started by the outer
-    test harness), it is reused without launching a new process.
 
     NOTE: when reusing an already-running server, neither the output
     directory NOR the log destination is controlled by this fixture. The
@@ -142,16 +146,21 @@ def live_server():
             "run `playwright install chromium` to enable UI tests."
         )
 
-    # Reuse an already-running server (e.g. started by the test harness).
-    # /api/status now returns 200 without a session_id so urlopen succeeds.
-    if _wait_for_server(f"{BASE_URL}/api/status", timeout=2):
-        yield BASE_URL
-        return
+    # Reuse only an explicitly named server (e.g. started by the test
+    # harness). /api/status returns 200 without a session_id.
+    if EXPLICIT_BASE_URL:
+        base_url = EXPLICIT_BASE_URL
+        if _wait_for_server(f"{base_url}/api/status", timeout=2):
+            yield base_url
+            return
+        server_port = _base_url_port(base_url)
+    else:
+        server_port = _free_port()
+        base_url = f"http://127.0.0.1:{server_port}"
 
     project_root = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")
     )
-    server_port = _base_url_port(BASE_URL)
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="cv_builder_ui_test_")
     try:
@@ -180,7 +189,7 @@ def live_server():
         )
 
         reachable = _wait_for_server(
-            f"{BASE_URL}/api/status", SERVER_STARTUP_TIMEOUT
+            f"{base_url}/api/status", SERVER_STARTUP_TIMEOUT
         )
         if not reachable:
             proc.terminate()
@@ -188,7 +197,7 @@ def live_server():
                 f"Flask server did not start within {SERVER_STARTUP_TIMEOUT}s"
             )
 
-        yield BASE_URL
+        yield base_url
 
         proc.terminate()
         try:
