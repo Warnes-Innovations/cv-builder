@@ -382,6 +382,39 @@ describe('handleCustomizationResponse', () => {
     await handleCustomizationResponse(data)
     expect(globalThis.appendMessage).not.toHaveBeenCalled()
   })
+
+  it('lands on the Customisation Guide tab, not a review sub-tab', async () => {
+    document.body.innerHTML += '<button class="tab" id="tab-customise-guide"></button>'
+    await handleCustomizationResponse({ recommended_experiences: ['e1'] })
+    expect(stateManager.getCurrentTab()).toBe('customise-guide')
+    expect(document.getElementById('tab-customise-guide').classList.contains('active')).toBe(true)
+  })
+})
+
+// ── Customisation Guide tab ───────────────────────────────────────────────
+
+describe('customise-guide tab', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="document-content"></div>'
+  })
+
+  it('renders the guide with one link per Customise review tab', async () => {
+    await loadTabContent('customise-guide')
+    const content = document.getElementById('document-content')
+    expect(content.querySelector('h3').textContent).toContain('Customisation Guide')
+    const targets = [...content.querySelectorAll('[data-guide-target]')].map(el => el.dataset.guideTarget)
+    expect(targets).toEqual([
+      'goals', 'questions', 'exp-review', 'ach-editor', 'skills-review',
+      'achievements-review', 'tagline-review', 'summary-review',
+      'publications-review', 'ats-score',
+    ])
+  })
+
+  it('is not prepended to the review sub-tabs any more', async () => {
+    window._customGuideShown = false
+    await loadTabContent('questions')
+    expect(document.getElementById('customizations-guide')).toBeNull()
+  })
 })
 
 // ── showTableBasedReview ──────────────────────────────────────────────────

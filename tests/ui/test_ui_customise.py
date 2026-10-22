@@ -15,6 +15,8 @@ Covers:
 - Proceed / review-decisions call is triggered appropriately
 """
 
+import re
+
 from playwright.sync_api import Page, expect
 
 from tests.ui.fixtures.mock_responses import (
@@ -91,6 +93,32 @@ class TestCustomisationsTab:
         self._show_customization_stage(analysis_seeded_page)
         expect(analysis_seeded_page.locator("#tab-exp-review")).to_be_visible()
         expect(analysis_seeded_page.locator("#experience-table-container")).to_be_visible()
+
+    def test_recommend_lands_on_guide_tab(self, analysis_seeded_page: Page):
+        """After recommend, the user lands on the Customisation Guide — the
+        first tab of the Customise stage — rather than on a review sub-tab."""
+        analysis_seeded_page.evaluate(
+            """async () => {
+                await sendAction('recommend_customizations');
+            }"""
+        )
+        # The stubbed /api/status stays in job_analysis, so reveal the
+        # customise stage's tab bar — but do NOT switchTab: which tab is
+        # active must come from the app's own post-recommend landing.
+        analysis_seeded_page.evaluate("() => updateTabBarForStage('customizations')")
+        guide_tab = analysis_seeded_page.locator("#tab-customise-guide")
+        expect(guide_tab).to_be_visible()
+        expect(guide_tab).to_have_class(re.compile(r"\bactive\b"))
+        first_visible = analysis_seeded_page.evaluate(
+            """() => [...document.querySelectorAll('#tab-bar .tab')]
+                     .find(t => t.style.display !== 'none').id"""
+        )
+        assert first_visible == "tab-customise-guide"
+        expect(analysis_seeded_page.locator("#customizations-guide-tab")).to_be_visible()
+        analysis_seeded_page.locator('[data-guide-target="exp-review"]').click()
+        expect(analysis_seeded_page.locator("#tab-exp-review")).to_have_class(
+            re.compile(r"\bactive\b")
+        )
 
     def test_review_decisions_endpoint_called_on_proceed(
         self, analysis_seeded_page: Page

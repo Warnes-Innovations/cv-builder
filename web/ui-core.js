@@ -358,7 +358,7 @@ function pushFocusStack(el) {
 const STAGE_TABS = {
   job:            ['job'],
   analysis:       ['analysis'],
-  customizations: ['goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score'],
+  customizations: ['customise-guide', 'goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score'],
   rewrite:        ['rewrite'],
   spell:          ['spell'],
   layout:         ['layout'],

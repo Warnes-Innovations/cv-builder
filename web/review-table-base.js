@@ -169,7 +169,7 @@ function _populateGenerateTab(cvData, content) {
 
 // Tracks which customise-stage sub-tabs have been viewed this session (GAP-269).
 const _visitedCustomiseTabs = new Set();
-const _CUSTOMISE_TABS = new Set(['goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score']);
+const _CUSTOMISE_TABS = new Set(['customise-guide', 'goals', 'questions', 'exp-review', 'ach-editor', 'skills-review', 'achievements-review', 'tagline-review', 'summary-review', 'publications-review', 'ats-score']);
 
 function _updateVisitedTabIndicators() {
   _visitedCustomiseTabs.forEach(name => {
@@ -178,37 +178,43 @@ function _updateVisitedTabIndicators() {
   });
 }
 
-// Inject a dismissible guidance card on the first visit to any Customise sub-tab (GAP-351).
-function _maybeShowCustomizationsGuide(content) {
-  if (window._customGuideShown) return;
-  window._customGuideShown = true;
+// Customisation Guide — its own first tab in the Customise stage, and where the
+// user lands when Recommend Customisations completes. Previously this was a
+// card prepended to whichever sub-tab was opened first (GAP-351), which put it
+// on the third tab (Experiences). Each row links to the tab it describes.
+const _GUIDE_STEPS = [
+  ['goals',               'Goals',              'set page length and ATS constraints',          'optional'],
+  ['questions',           'Screening Questions', 'pre-answer role questions',                   'optional'],
+  ['exp-review',          'Experiences',        'include/exclude roles and set prominence',     'required'],
+  ['ach-editor',          'Experience Bullets', 'review AI-generated bullet points',            'required'],
+  ['skills-review',       'Skills',             'include/exclude skills',                       'required'],
+  ['achievements-review', 'Achievements',       'select key achievements',                      'recommended'],
+  ['tagline-review',      'Tagline',            'review or edit your professional tagline',     'recommended'],
+  ['summary-review',      'Summary',            'review or edit your professional summary',     'recommended'],
+  ['publications-review', 'Publications',       'include/exclude publications',                 'if applicable'],
+  ['ats-score',           'ATS Score',          'check your keyword match score',               'optional'],
+];
+
+function _populateCustomiseGuideTab(content) {
   if (!content) content = document.getElementById('document-content');
   if (!content) return;
-  const guide = document.createElement('div');
-  guide.id = 'customizations-guide';
-  guide.className = 'intake-confirm-card';
-  guide.style.marginBottom = '20px';
-  guide.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+  const items = _GUIDE_STEPS.map(([tab, label, desc, need]) => {
+    const needStyle = need === 'required'
+      ? 'color:#dc2626;font-style:normal;font-weight:600'
+      : 'color:#64748b';
+    return '<li>' +
+      `<a href="#" data-guide-target="${tab}" onclick="switchTab('${tab}');return false;"><strong>${label}</strong></a>` +
+      ` — ${desc} <em style="${needStyle}">(${need})</em></li>`;
+  }).join('');
+  content.innerHTML =
+    '<div id="customizations-guide-tab" class="intake-confirm-card" style="max-width:720px;margin:0 auto;">' +
       '<h3 style="margin:0 0 6px;">📋 Customisation Guide</h3>' +
-      '<button onclick="document.getElementById(\'customizations-guide\').remove()" ' +
-              'style="background:none;border:none;cursor:pointer;font-size:1.1em;color:#64748b;padding:0;" ' +
-              'title="Dismiss" aria-label="Dismiss guide">✕</button>' +
-    '</div>' +
-    '<p style="margin:0 0 10px;font-size:0.88em;">Work through these review tabs in order for best results:</p>' +
-    '<ol style="margin:0;padding-left:20px;line-height:1.8;font-size:0.85em;">' +
-      '<li><strong>Goals</strong> — set page length and ATS constraints <em style="color:#64748b">(optional)</em></li>' +
-      '<li><strong>Screening Questions</strong> — pre-answer role questions <em style="color:#64748b">(optional)</em></li>' +
-      '<li><strong>Experiences</strong> — include/exclude roles and set prominence <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
-      '<li><strong>Experience Bullets</strong> — review AI-generated bullet points <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
-      '<li><strong>Skills</strong> — include/exclude skills <em style="color:#dc2626;font-style:normal;font-weight:600">(required)</em></li>' +
-      '<li><strong>Achievements</strong> — select key achievements <em style="color:#64748b">(recommended)</em></li>' +
-      '<li><strong>Tagline</strong> — review or edit your professional tagline <em style="color:#64748b">(recommended)</em></li>' +
-      '<li><strong>Summary</strong> — review or edit your professional summary <em style="color:#64748b">(recommended)</em></li>' +
-      '<li><strong>Publications</strong> — include/exclude publications <em style="color:#64748b">(if applicable)</em></li>' +
-      '<li><strong>ATS Score</strong> — check your keyword match score <em style="color:#64748b">(optional)</em></li>' +
-    '</ol>';
-  content.prepend(guide);
+      '<p style="margin:0 0 10px;font-size:0.88em;">Work through these review tabs in order for best results:</p>' +
+      `<ol style="margin:0;padding-left:20px;line-height:1.8;font-size:0.85em;">${items}</ol>` +
+      '<div class="nav-buttons nav-end" style="margin-top:16px;">' +
+        '<button class="continue-btn" onclick="switchTab(\'goals\')">Start with Goals →</button>' +
+      '</div>' +
+    '</div>';
 }
 
 function switchTab(tab) {
@@ -334,6 +340,9 @@ async function loadTabContent(tab) {
     case 'job':
       await populateJobTab();
       break;
+    case 'customise-guide':
+      _populateCustomiseGuideTab(content);
+      break;
     case 'goals':
       if (typeof populateGoalsTab === 'function') await populateGoalsTab();
       break;
@@ -453,9 +462,6 @@ async function loadTabContent(tab) {
     return;
   }
 
-  // Show customisations guidance on the first visit to any Customise sub-tab (GAP-351).
-  if (_CUSTOMISE_TABS.has(tab)) _maybeShowCustomizationsGuide(content);
-
   // Inject stale-content banner when this tab's step has been superseded
   const _staleStep = _STALE_TAB_STEP[tab];
   if (_staleStep) _injectStaleBanner(content, _staleStep);
@@ -472,7 +478,7 @@ async function showTableBasedReview() {
     return;
   }
 
-  switchTab('exp-review');
+  switchTab('customise-guide');
   appendMessage('assistant', '✅ Customizations generated! Please review each section in the **Customizations** tab — Experiences, Achievements, Skills, Summary, and Publications. Select your preferences using the action buttons, then submit your decisions.');
 }
 
@@ -644,7 +650,7 @@ async function handleCustomizationResponse(response) {
 
       if (!isReconnectInProgress()) {
         appendMessage('assistant', '✅ Customizations generated! Please review each section in the **Customizations** tab — Experiences, Achievements, Skills, Summary, and Publications. Select your preferences using the action buttons, then submit your decisions.');
-        switchTab('exp-review');
+        switchTab('customise-guide');
       }
     } else if (!isReconnectInProgress()) {
       appendMessage('assistant', response);
