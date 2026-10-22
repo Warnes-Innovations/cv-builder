@@ -110,8 +110,7 @@ async function buildTaglineReviewSection() {
       </div>
     </div>
 
-    <div class="nav-buttons" style="margin-top:16px;">
-      <button class="back-btn" onclick="switchTab('achievements-review')">← Back to Achievements</button>
+    <div class="nav-buttons nav-end" style="margin-top:16px;">
       <button id="tagline-continue-btn" class="continue-btn"
         style="${alreadyConfirmed ? '' : 'opacity:0.5;cursor:not-allowed;'}"
         onclick="taglineContinue()"

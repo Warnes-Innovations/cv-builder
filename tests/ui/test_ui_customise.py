@@ -76,6 +76,26 @@ class TestCustomisationsTab:
         page.evaluate("() => switchTab('job')")
         expect(nav).to_be_hidden()
 
+    def test_tabs_have_no_one_off_back_buttons(self, analysis_seeded_page: Page):
+        """The Previous/Next bar replaced the per-tab "← Back to …" buttons.
+
+        Each tab must still render its Continue button (which saves the
+        tab's decisions); that also keeps this test from passing on a tab
+        that failed to render at all.
+        """
+        page = analysis_seeded_page
+        page.evaluate("async () => { await sendAction('recommend_customizations'); }")
+        self._show_customization_stage(page)
+        # ach-editor (Experience Bullets) is not listed: this fixture's master
+        # CV has no experiences, so that tab renders no buttons at all.
+        for tab in ("skills-review", "achievements-review", "tagline-review",
+                    "summary-review", "publications-review"):
+            page.evaluate(f"() => switchTab('{tab}')")
+            content = page.locator("#document-content")
+            expect(content.locator(".continue-btn").first).to_be_visible()
+            expect(content.locator(".back-btn")).to_have_count(0)
+            expect(content).not_to_contain_text("← Back to")
+
     def test_click_customizations_tab(self, page: Page):
         """Clicking the exp-review tab shows document content."""
         page.locator("#tab-exp-review").click()

@@ -757,11 +757,8 @@ async function populateReviewTab(pane) {
     </div>
   ` : (cfg.title ? `<h2 style="margin:0 0 12px;">${cfg.title}</h2>` : '');
 
-  const navBack = {
-    skills:       `<button class="back-btn" onclick="switchTab('ach-editor')">← Back to Experience Bullets</button>`,
-    achievements: `<button class="back-btn" onclick="switchTab('skills-review')">← Back to Skills</button>`,
-    publications: `<button class="back-btn" onclick="switchTab('summary-review')">← Back to Summary</button>`,
-  };
+  // No per-pane Back buttons: the Previous/Next bar (updateTabStepNav in
+  // ui-core.js) covers going back. Continue stays because it saves decisions.
   const navContinue = {
     experiences:  `<button class="continue-btn" onclick="submitExperienceDecisions()">Continue to Experience Bullets →</button>`,
     skills:       `<button class="continue-btn" onclick="submitSkillDecisions()">Continue to Achievements →</button>`,
@@ -769,8 +766,7 @@ async function populateReviewTab(pane) {
     publications: `<button class="continue-btn" onclick="submitPublicationDecisions()">Continue to Rewrite →</button>`,
   };
   const navHtml = pane === 'summary' ? '' : `
-    <div class="nav-buttons${pane === 'experiences' ? ' nav-end' : ''}" style="margin:16px 0;">
-      ${navBack[pane] || ''}
+    <div class="nav-buttons nav-end" style="margin:16px 0;">
       ${navContinue[pane] || ''}
     </div>`;
 
