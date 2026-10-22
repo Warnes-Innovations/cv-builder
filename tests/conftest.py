@@ -76,6 +76,7 @@ import pytest
 import requests
 
 from tests.helpers.example_profiles import materialize_example_profile
+from tests.helpers.server_startup import SERVER_STARTUP_TIMEOUT
 
 
 def _test_server_base_url() -> str:
@@ -224,9 +225,7 @@ def require_server():
             stderr=subprocess.DEVNULL,
         )
 
-        timeout_raw = os.environ.get("CV_SERVER_STARTUP_TIMEOUT") or "20"
-        timeout_seconds = int(timeout_raw.strip())
-        if not _wait_for_server(base_url, timeout_seconds):
+        if not _wait_for_server(base_url, SERVER_STARTUP_TIMEOUT):
             proc.terminate()
             try:
                 proc.wait(timeout=5)
@@ -234,7 +233,7 @@ def require_server():
                 proc.kill()
             pytest.skip(
                 f"Auto-started test server failed to come up at {base_url} "
-                f"within {timeout_seconds}s — skipping (server resource "
+                f"within {SERVER_STARTUP_TIMEOUT}s — skipping (server resource "
                 f"unavailable in this environment)"
             )
 

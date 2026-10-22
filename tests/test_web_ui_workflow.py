@@ -35,13 +35,9 @@ from pathlib import Path
 import pytest
 import requests
 from tests.helpers.example_profiles import materialize_example_profile
+from tests.helpers.server_startup import SERVER_STARTUP_TIMEOUT as _STARTUP_TIMEOUT
 
 _PROJECT_ROOT = Path(__file__).parent.parent
-# Seconds to wait for the server to answer /api/status. Startup measured
-# 22-30s on an idle machine and up to ~70s under heavy load (2026-10-21);
-# the old 15s limit meant this test skipped on every run. The wait polls, so
-# a generous limit costs nothing when the server starts quickly.
-_STARTUP_TIMEOUT = int(os.environ.get("CV_SERVER_STARTUP_TIMEOUT", "180"))
 _REQUEST_TIMEOUT = 10
 _GENERATION_REQUEST_TIMEOUT = 30
 
